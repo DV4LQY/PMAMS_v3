@@ -1,60 +1,160 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# PMAMS 2.0
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+PMAMS (Property Management and Asset Monitoring System) is a Laravel-based ICT equipment inventory and issuance system. It helps an organization register equipment, track conditions and locations, issue assets to staff, maintain equipment history, and generate operational reports.
 
-## About Laravel
+## Features
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Equipment inventory with property numbers, serial numbers, specifications, condition, status, and maintenance remarks
+- Staff, office, and location directory
+- Equipment issuance, return, relocation, and issuance history
+- Dashboard cards and charts for availability, condition, type, and office summaries
+- QR code generation and browser-based QR scanning
+- Bulk equipment deletion with related issuance and maintenance history cleanup
+- CSV/XLS/XLSX inventory and issuance import with office/location-aware staff matching
+- Excel and PDF reporting
+- Activity logging for equipment and organization changes
+- Responsive mobile sidebar and SPA-style page navigation powered by Livewire
+- Dark mode and synchronized support contacts on the login and authenticated support pages
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Technology stack
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- PHP 8.2+
+- Laravel 12
+- Livewire 4
+- MySQL (SQLite can be used for automated tests)
+- Tailwind CSS 4 and Vite
+- Chart.js
+- Maatwebsite Excel
+- Simple Software QR Code
+- Dompdf
 
-## Learning Laravel
+## Requirements
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Install the following before setting up the project:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- PHP 8.2 or newer with required Laravel extensions
+- Composer
+- Node.js and npm
+- MySQL 8+ or MariaDB
+- A web server such as Laravel's built-in server, Laragon, Apache, or Nginx
 
-## Laravel Sponsors
+## Installation
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+Clone the repository and enter the project directory:
 
-### Premium Partners
+```bash
+git clone <repository-url> pms_systemv2
+cd pms_systemv2
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Install PHP and frontend dependencies:
 
-## Contributing
+```bash
+composer install
+npm install
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Create the environment file and application key:
 
-## Code of Conduct
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Configure the database values in `.env`:
 
-## Security Vulnerabilities
+```dotenv
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=pms_system
+DB_USERNAME=root
+DB_PASSWORD=
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Create the database, run migrations, seed the equipment types, and build frontend assets:
+
+```bash
+php artisan migrate --seed
+npm run build
+```
+
+For local development, start Laravel and Vite in separate terminals:
+
+```bash
+php artisan serve
+npm run dev
+```
+
+The application is then available at `http://127.0.0.1:8000`.
+
+### Laragon
+
+Place the project in `C:\laragon\www\pms_systemv2`, start Apache and MySQL, and open:
+
+```text
+http://localhost/pms_systemv2/public
+```
+
+Alternatively, use `php artisan serve` from the project directory.
+
+## User roles
+
+The application supports three roles:
+
+- **Admin** - full system administration, organization management, user management, reports, imports, and deletion
+- **Unit Head** - administrative equipment and reporting access
+- **Custodian** - equipment, issuance, directory browsing, and operational workflows without administrative deletion or user management
+
+Create or manage accounts through the user-management screen or an application-specific seeder. Do not commit real credentials to the repository.
+
+## Equipment import
+
+The Equipment page provides an **Import Inventory** action with two modes:
+
+1. **Inventory records** - add new equipment or update an existing record using `property_number`.
+2. **Issuance records** - issue existing equipment to an existing staff member using `property_number` or `serial_number`.
+
+The import dialog includes a downloadable CSV template. Staff can be matched by email or name, with optional `office` and `location_code` columns to disambiguate users in detailed locations. Inventory rows can also include staff and location fields to create an issuance during import.
+
+## Useful commands
+
+```bash
+php artisan migrate
+php artisan db:seed
+php artisan route:list
+php artisan view:cache
+php artisan test
+npm run build
+```
+
+Clear cached application state when changing configuration or routes:
+
+```bash
+php artisan optimize:clear
+```
+
+## Project structure
+
+```text
+app/                 Controllers, models, imports, exports, and Livewire components
+database/migrations/ Database schema
+database/seeders/    Initial equipment type and application seeders
+resources/js/        SPA navigation, sidebar state, scanner, and chart initialization
+resources/css/       Tailwind application styles
+resources/views/     Authentication, admin pages, reports, and shared components
+routes/web.php       Public and authenticated web routes
+public/              Public assets and compiled Vite output
+```
+
+## Security notes
+
+- Keep `.env` and production credentials out of version control.
+- Use HTTPS in production.
+- Change database and application credentials before deployment.
+- Review role permissions before creating production users.
+- Validate and review imported spreadsheets before applying them to live inventory.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-# PMAMS_v3
+The application declares the MIT license in `composer.json`. Add a `LICENSE` file before publishing if your GitHub repository requires an explicit license document.
