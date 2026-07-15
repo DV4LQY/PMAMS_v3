@@ -11,7 +11,7 @@
 
 @section('content')
 <div class="bg-white rounded shadow-sm p-6 max-w-4xl">
-    <form method="POST" action="{{ route('admin.devices.update', $device) }}" class="space-y-6">
+    <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-6">
         @csrf
         @method('PUT')
 
@@ -221,6 +221,11 @@
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
             </div>
+
+            @include('admin.devices._photo-input', [
+                'photoInputId' => 'edit_page_equipment_photo',
+                'existingPhotoPath' => $device->photo_path,
+            ])
         </div>
 
         <div class="flex gap-2">

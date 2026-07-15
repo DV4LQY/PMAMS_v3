@@ -711,8 +711,8 @@
     </datalist>
 
     {{-- Add modal --}}
-    <x-modal show="addOpen" title="Add Equipment">
-        <form method="POST" action="{{ route('admin.devices.store') }}" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
+    <x-modal show="addOpen" title="Add Equipment" max-width="max-w-4xl">
+        <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             <input type="hidden" name="status" value="available">
 
@@ -961,6 +961,8 @@
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     >
                 </div>
+
+                @include('admin.devices._photo-input', ['photoInputId' => 'add_equipment_photo'])
             </div>
 
             <div>
@@ -990,8 +992,8 @@
     </x-modal>
 
     {{-- Edit modal --}}
-    <x-modal show="editOpen" title="Edit Equipment">
-        <form method="POST" :action="`{{ url('/admin/devices') }}/${editDevice.id}`" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
+    <x-modal show="editOpen" title="Edit Equipment" max-width="max-w-4xl">
+        <form method="POST" :action="`{{ url('/admin/devices') }}/${editDevice.id}`" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             @method('PUT')
             <input type="hidden" name="status" x-model="editDevice.status">
@@ -1240,6 +1242,8 @@
                         x-model="editDevice.last_maintenance_date"
                     >
                 </div>
+
+                @include('admin.devices._photo-input', ['photoInputId' => 'edit_equipment_photo'])
             </div>
 
             <div>

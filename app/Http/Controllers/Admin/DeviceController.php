@@ -18,6 +18,7 @@ use App\Models\Staff;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
@@ -145,6 +146,7 @@ class DeviceController extends Controller
     public function store(StoreDeviceRequest $request)
     {
         $data = $request->validated();
+        unset($data['equipment_photo']);
 
         /*
         |--------------------------------------------------------------------------
@@ -166,6 +168,10 @@ class DeviceController extends Controller
         $data['condition'] = $data['condition'] ?? 'serviceable';
 
         $data = $this->cleanDeviceDataByType($data);
+
+        if ($photoPath = $this->storeEquipmentPhoto($request)) {
+            $data['photo_path'] = $photoPath;
+        }
 
         $device = Device::create($data);
         $device->load('type');
@@ -196,6 +202,7 @@ class DeviceController extends Controller
             'condition' => $device->condition,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
+            'photo' => $device->photo_path ? 'Uploaded' : null,
             'notes' => $device->notes,
         ] as $key => $value) {
             if (filled($value)) {
@@ -394,6 +401,7 @@ class DeviceController extends Controller
     public function update(UpdateDeviceRequest $request, Device $device)
     {
         $data = $request->validated();
+        unset($data['equipment_photo']);
 
         /*
         |--------------------------------------------------------------------------
@@ -409,6 +417,11 @@ class DeviceController extends Controller
         $data['condition'] = $data['condition'] ?? $device->condition ?? 'serviceable';
 
         $data = $this->cleanDeviceDataByType($data);
+        $oldPhotoPath = $device->photo_path;
+
+        if ($photoPath = $this->storeEquipmentPhoto($request)) {
+            $data['photo_path'] = $photoPath;
+        }
 
         $before = [
             'property_number' => $device->property_number,
@@ -433,10 +446,14 @@ class DeviceController extends Controller
             'condition' => $device->condition,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
+            'photo' => $device->photo_path ? 'Uploaded' : null,
             'notes' => $device->notes,
         ];
 
         $device->update($data);
+        if (($data['photo_path'] ?? null) && $oldPhotoPath && $oldPhotoPath !== $data['photo_path']) {
+            $this->deleteEquipmentPhoto($oldPhotoPath);
+        }
         $device->load('type');
 
         $summary = [
@@ -465,6 +482,7 @@ class DeviceController extends Controller
             'condition' => $device->condition,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
+            'photo' => $device->photo_path ? 'Uploaded' : null,
             'notes' => $device->notes,
         ] as $key => $value) {
 
@@ -504,6 +522,7 @@ class DeviceController extends Controller
                         'condition' => $device->condition,
                         'status' => $device->status,
                         'maintenance_remarks' => $device->maintenance_remarks,
+                        'photo' => $device->photo_path ? 'Uploaded' : null,
                         'notes' => $device->notes,
                     ]
                 ) ?? []
@@ -513,6 +532,49 @@ class DeviceController extends Controller
         return redirect()
             ->route('admin.devices.index')
             ->with('success', 'Equipment updated.');
+    }
+
+    /**
+     * Capture and save an equipment photo without requiring the full edit form.
+     */
+    public function updatePhoto(Request $request, Device $device)
+    {
+        $request->validate([
+            'equipment_photo' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,heic,heif', 'max:10240'],
+        ], [
+            'equipment_photo.required' => 'Please take a photo before submitting.',
+            'equipment_photo.mimes' => 'The equipment photo must be a JPG, PNG, WEBP, HEIC, or HEIF file.',
+            'equipment_photo.max' => 'The equipment photo must not be larger than 10 MB.',
+        ]);
+
+        $oldPhotoPath = $device->photo_path;
+        $photoPath = $this->storeEquipmentPhoto($request);
+
+        if (! $photoPath) {
+            return back()->withErrors(['equipment_photo' => 'The equipment photo could not be captured.']);
+        }
+
+        $device->update(['photo_path' => $photoPath]);
+        $this->deleteEquipmentPhoto($oldPhotoPath);
+
+        ActivityLog::record(
+            'updated',
+            "Updated photo for device \"{$device->property_number}\"",
+            $device,
+            ActivityLog::makePayload(
+                ['property_number' => $device->property_number, 'photo' => 'Uploaded'],
+                ['photo' => ['old' => $oldPhotoPath ? 'Uploaded' : null, 'new' => 'Uploaded']]
+            )
+        );
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Equipment photo updated successfully.',
+                'photo_url' => asset('storage/' . $photoPath),
+            ]);
+        }
+
+        return back()->with('success', 'Equipment photo updated successfully.');
     }
 
     public function destroy(Device $device)
@@ -538,6 +600,7 @@ class DeviceController extends Controller
             'condition' => $device->condition,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
+            'photo' => $device->photo_path ? 'Uploaded' : null,
             'notes' => $device->notes,
         ];
 
@@ -571,6 +634,7 @@ class DeviceController extends Controller
 
         DeviceAssignment::where('device_id', $device->id)->delete();
         DeviceMaintenanceRecord::where('device_id', $device->id)->delete();
+        $this->deleteEquipmentPhoto($device->photo_path);
         $device->delete();
         return redirect()
             ->route('admin.devices.index')
@@ -612,6 +676,7 @@ class DeviceController extends Controller
 
         DB::transaction(function () use ($devices, $data, $items) {
             $ids = $devices->modelKeys();
+            $photoPaths = $devices->pluck('photo_path')->filter()->values();
 
             // Remove all history rows before deleting the equipment rows.
             DeviceAssignment::whereIn('device_id', $ids)->delete();
@@ -621,6 +686,8 @@ class DeviceController extends Controller
                 ->delete();
 
             Device::whereIn('id', $ids)->delete();
+
+            $photoPaths->each(fn ($path) => $this->deleteEquipmentPhoto($path));
 
             ActivityLog::record(
                 'deleted',
@@ -1305,6 +1372,26 @@ class DeviceController extends Controller
     /**
      * Remove computer-only fields when the device is not Desktop or Laptop.
      */
+    private function storeEquipmentPhoto(Request $request): ?string
+    {
+        if (! $request->hasFile('equipment_photo')) {
+            return null;
+        }
+
+        $file = $request->file('equipment_photo');
+        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'jpg');
+        $filename = Str::uuid() . '.' . $extension;
+
+        return $file->storeAs('equipment-photos', $filename, 'public');
+    }
+
+    private function deleteEquipmentPhoto(?string $path): void
+    {
+        if ($path) {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
     private function cleanDeviceDataByType(array $data): array
     {
         $type = DeviceType::find($data['device_type_id'] ?? null);

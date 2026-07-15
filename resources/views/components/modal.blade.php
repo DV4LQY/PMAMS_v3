@@ -1,6 +1,7 @@
 @props([
     'show' => 'open',
     'title' => 'Modal Title',
+    'maxWidth' => 'max-w-lg',
 ])
 
 <div
@@ -19,7 +20,7 @@
     <div class="flex min-h-full items-start justify-center p-3 sm:items-center sm:p-6">
         <div
             x-transition
-            class="relative mt-6 w-full max-w-lg rounded-2xl bg-white shadow-xl ring-1 ring-gray-200 sm:mt-0 max-h-[92vh] flex flex-col"
+            class="relative mt-6 w-full {{ $maxWidth }} rounded-2xl bg-white shadow-xl ring-1 ring-gray-200 sm:mt-0 max-h-[92vh] flex flex-col"
         >
             <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 sm:px-5">
                 <h2 class="text-lg font-semibold text-gray-900">{{ $title }}</h2>

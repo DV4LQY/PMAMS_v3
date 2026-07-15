@@ -92,6 +92,49 @@
             }
         };
     }
+
+    async function submitDevicePhoto(input) {
+        if (!input.files.length) return;
+
+        const form = document.getElementById('device-photo-form');
+        const button = document.getElementById('device-take-photo-button');
+        const preview = document.getElementById('device-photo-preview');
+        const status = document.getElementById('device-photo-status');
+
+        button.disabled = true;
+        button.classList.add('opacity-60', 'cursor-wait');
+        status.textContent = 'Saving photo...';
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error('Photo upload failed.');
+
+            const result = await response.json();
+            preview.innerHTML = '';
+
+            const image = document.createElement('img');
+            image.src = result.photo_url + '?v=' + Date.now();
+            image.alt = 'Photo of equipment';
+            image.className = 'h-full w-full object-cover';
+            preview.appendChild(image);
+            status.textContent = result.message;
+        } catch (error) {
+            status.textContent = 'Photo upload failed. Please try again.';
+            form.submit();
+        } finally {
+            input.value = '';
+            button.disabled = false;
+            button.classList.remove('opacity-60', 'cursor-wait');
+        }
+    }
 </script>
 
 <div
@@ -161,7 +204,60 @@
                 </div>
             </div>
 
-            <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div class="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+                <div>
+                    <h2 class="font-semibold text-gray-900 dark:text-white">Equipment Photo</h2>
+                    <div id="device-photo-preview" class="mt-3 aspect-square w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
+                        @if($device->photo_path)
+                            <img
+                                id="device-photo-image"
+                                src="{{ asset('storage/' . $device->photo_path) }}"
+                                alt="Photo of {{ $device->property_number }}"
+                                class="h-full w-full object-cover"
+                            >
+                        @else
+                            <div class="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                                No equipment photo uploaded.
+                            </div>
+                        @endif
+                    </div>
+                    <form
+                        id="device-photo-form"
+                        method="POST"
+                        action="{{ route('admin.devices.photo', $device) }}"
+                        enctype="multipart/form-data"
+                        class="sr-only"
+                    >
+                        @csrf
+                        @method('PATCH')
+                        <input
+                            id="device-photo-input"
+                            type="file"
+                            name="equipment_photo"
+                            accept="image/*,.heic,.heif"
+                            capture="environment"
+                            class="sr-only"
+                            onchange="submitDevicePhoto(this)"
+                        >
+                    </form>
+                    <button
+                        id="device-take-photo-button"
+                        type="button"
+                        onclick="document.getElementById('device-photo-input').click()"
+                        class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-800"
+                    >
+                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.5A2.5 2.5 0 0 1 5.5 6H7l1.2-1.8A2 2 0 0 1 9.9 3.3h4.2a2 2 0 0 1 1.7.9L17 6h1.5A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z" />
+                            <circle cx="12" cy="12.5" r="3.5" />
+                        </svg>
+                        Take Photo
+                    </button>
+                    <p id="device-photo-status" class="mt-2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></p>
+                </div>
+
+                <div>
+                    <h2 class="font-semibold text-gray-900 dark:text-white">Equipment Specifications</h2>
+                    <div class="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                     <div class="text-sm text-gray-500">Equipment Type</div>
                     <div class="font-medium text-gray-900">
@@ -281,6 +377,8 @@
                     <div class="text-sm text-gray-500">Last Maintenance</div>
                     <div class="font-medium text-gray-900">
                         {{ $device->last_maintenance_date ? $device->last_maintenance_date->format('M d, Y') : 'Not yet checked' }}
+                    </div>
+                </div>
                     </div>
                 </div>
             </div>
@@ -413,7 +511,7 @@
                 </button>
             </div>
 
-            <form method="POST" action="{{ route('admin.devices.update', $device) }}" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
+            <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
                 @csrf
                 @method('PUT')
 
@@ -652,6 +750,11 @@
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                             >
                         </div>
+
+                        @include('admin.devices._photo-input', [
+                            'photoInputId' => 'show_equipment_photo',
+                            'existingPhotoPath' => $device->photo_path,
+                        ])
                     </div>
 
                     <div class="mt-3">

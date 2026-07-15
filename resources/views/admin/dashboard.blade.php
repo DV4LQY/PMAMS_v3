@@ -5,6 +5,23 @@
 
 @section('content')
 <style>
+    .dashboard-quick-actions > a,
+    .dashboard-quick-actions > button {
+        min-height: 4.75rem;
+        width: 100%;
+    }
+
+    .dashboard-quick-actions .quick-action-text {
+        flex: 1 1 0%;
+        min-width: 0;
+    }
+
+    .dashboard-quick-actions .quick-action-text span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     html.dark .dashboard-quick-actions a:hover,
     html.dark .dashboard-quick-actions button:hover {
         background-color: #1e293b !important;
@@ -152,7 +169,7 @@
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700 transition group-hover:bg-blue-600 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 </span>
-                <span>
+                <span class="quick-action-text min-w-0 flex-1">
                     <span class="block text-sm font-semibold text-gray-900">Add Equipment</span>
                     <span class="block text-xs text-gray-500">Register item</span>
                 </span>
@@ -161,31 +178,37 @@
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 transition group-hover:bg-slate-700 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
                 </span>
-                <span>View Equipment</span><span>→</span>
+                <span class="quick-action-text min-w-0 flex-1">
+                    <span class="block text-sm font-semibold text-gray-900">View Equipment</span>
+                    <span class="block text-xs text-gray-500">Inventory list</span>
+                </span>
             </a>
             <a href="{{ route('admin.locations.index', ['action' => 'add']) }}" class="group flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50 hover:shadow-sm">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 transition group-hover:bg-emerald-600 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s7-4.5 7-11a7 7 0 0 0-14 0c0 6.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2"/></svg>
                 </span>
-                <span><span class="block text-sm font-semibold text-gray-900">Add Location</span><span class="block text-xs text-gray-500">Open locations</span></span>
+                <span class="quick-action-text min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-900">Add Location</span><span class="block text-xs text-gray-500">Open locations</span></span>
             </a>
             <a href="{{ route('admin.users.index', ['action' => 'add']) }}" class="group flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50 hover:shadow-sm">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 transition group-hover:bg-indigo-600 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/></svg>
                 </span>
-                <span><span class="block text-sm font-semibold text-gray-900">Add User</span><span class="block text-xs text-gray-500">Manage accounts</span></span>
+                <span class="quick-action-text min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-900">Add User</span><span class="block text-xs text-gray-500">Manage accounts</span></span>
             </a>
             <a href="{{ route('admin.reports.assets') }}" class="group flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:border-amber-200 hover:bg-amber-50 hover:shadow-sm">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition group-hover:bg-amber-500 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
                 </span>
-                <span><span class="block text-sm font-semibold text-gray-900">Export Inventory</span><span class="block text-xs text-gray-500">Print report</span></span>
+                <span class="quick-action-text min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-900">Export Inventory</span><span class="block text-xs text-gray-500">Print report</span></span>
             </a>
             <a href="{{ route('admin.scanner', ['start' => 1]) }}" class="group flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:border-purple-200 hover:bg-purple-50 hover:shadow-sm">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-purple-700 transition group-hover:bg-purple-600 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h1M11 8h1M16 8h1M7 12h1M11 12h5M7 16h5M16 16h1"/></svg>
                 </span>
-                <span>Scan QR Code</span><span>→</span>
+                <span class="quick-action-text min-w-0 flex-1">
+                    <span class="block text-sm font-semibold text-gray-900">Scan QR Code</span>
+                    <span class="block text-xs text-gray-500">Start scanner</span>
+                </span>
             </a>
         </div>
     </div>
@@ -332,7 +355,7 @@
                 </div>
                 <button type="button" @click="addDeviceOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700">&times;</button>
             </div>
-            <form method="POST" action="{{ route('admin.devices.store') }}" x-on:submit="cleanUnitPrices($event.target)">
+            <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" x-on:submit="cleanUnitPrices($event.target)">
                 @csrf
                 <input type="hidden" name="status" value="available">
                 <div class="max-h-[75vh] overflow-y-auto px-6 py-5">
@@ -482,6 +505,7 @@
                             <input type="date" name="last_maintenance_date" value="{{ old('last_maintenance_date') }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                             @error('last_maintenance_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
+                        @include('admin.devices._photo-input', ['photoInputId' => 'dashboard_equipment_photo'])
                     </div>
                     <div class="mt-5">
                         <label class="mb-1 block text-sm font-medium text-gray-700">Maintenance Remarks</label>

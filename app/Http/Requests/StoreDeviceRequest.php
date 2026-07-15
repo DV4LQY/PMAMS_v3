@@ -72,6 +72,7 @@ class StoreDeviceRequest extends FormRequest
             'condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
 
             'notes' => ['nullable', 'string', 'max:2000'],
+            'equipment_photo' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,heic,heif', 'max:10240'],
 
             'last_maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
             'maintenance_remarks' => ['nullable', 'string', 'max:1000'],
@@ -118,6 +119,8 @@ class StoreDeviceRequest extends FormRequest
             'condition.in' => 'The condition must be serviceable, unserviceable, or condemned.',
 
             'serial_number.max' => 'The serial number must not exceed 100 characters.',
+            'equipment_photo.mimes' => 'The equipment photo must be a JPG, PNG, WEBP, HEIC, or HEIF file.',
+            'equipment_photo.max' => 'The equipment photo must not be larger than 10 MB.',
 
             'specs.memory.max'      => 'The memory field must not exceed 255 characters.',
             'specs.storage.max'     => 'The storage field must not exceed 255 characters.',

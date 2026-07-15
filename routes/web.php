@@ -146,6 +146,9 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::post('/devices/{device}/relocate', [DeviceController::class, 'relocate'])
             ->name('admin.devices.relocate');
 
+        Route::patch('/devices/{device}/photo', [DeviceController::class, 'updatePhoto'])
+            ->name('admin.devices.photo');
+
         Route::post('/devices/import', [DeviceController::class, 'import'])
             ->name('admin.devices.import');
 

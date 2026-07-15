@@ -1,5 +1,6 @@
 *.log
 .DS_Store
+TODO*
 TODO.md
 .env
 .env.backup

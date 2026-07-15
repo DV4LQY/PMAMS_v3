@@ -11,7 +11,7 @@
 
 @section('content')
 <div class="bg-white rounded shadow-sm p-6 max-w-4xl">
-    <form method="POST" action="{{ route('admin.devices.store') }}" class="space-y-6">
+    <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-6">
         @csrf
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -211,6 +211,8 @@
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
             </div>
+
+            @include('admin.devices._photo-input', ['photoInputId' => 'create_equipment_photo'])
         </div>
 
         <div class="flex gap-2">

@@ -25,6 +25,7 @@ class Device extends Model
         'specs',
         'last_maintenance_date',
         'maintenance_remarks',
+        'photo_path',
         'os_version',
         'os_license',
         'ms_office_version',
