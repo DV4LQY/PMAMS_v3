@@ -1,6 +1,6 @@
-# PMAMS 2.0
+# PMAMS 3.0
 
-PMAMS (Property Management and Asset Monitoring System) is a Laravel-based ICT equipment inventory and issuance system. It helps an organization register equipment, track conditions and locations, issue assets to staff, maintain equipment history, and generate operational reports.
+PMAMS (Preventive Maintenance and Asset Monitoring System) is a Laravel-based ICT equipment management system. It helps an organization register equipment, track conditions and locations, issue assets to staff, maintain equipment history, and generate operational reports.
 
 ## Features
 
