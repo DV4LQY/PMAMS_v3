@@ -647,7 +647,7 @@
         </main>
 
         <footer class="px-3 pb-5 text-center text-xs text-gray-500 dark:text-gray-400 sm:px-6">
-            PMAMS Version 2.0 &copy; 2026. All rights reserved.
+            PMAMS Version 3.0 &copy; 2026. All rights reserved.
         </footer>
     </div>
 </div>

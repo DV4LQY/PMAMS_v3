@@ -149,6 +149,9 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::patch('/devices/{device}/photo', [DeviceController::class, 'updatePhoto'])
             ->name('admin.devices.photo');
 
+        Route::delete('/devices/{device}/photo', [DeviceController::class, 'destroyPhoto'])
+            ->name('admin.devices.photo.destroy');
+
         Route::post('/devices/import', [DeviceController::class, 'import'])
             ->name('admin.devices.import');
 

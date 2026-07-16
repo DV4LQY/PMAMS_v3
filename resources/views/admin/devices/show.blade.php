@@ -93,22 +93,122 @@
         };
     }
 
-    async function submitDevicePhoto(input) {
-        if (!input.files.length) return;
+    let deviceCameraStream = null;
 
-        const form = document.getElementById('device-photo-form');
+    function renderEmptyDevicePhotoPreview() {
+        const preview = document.getElementById('device-photo-preview');
+
+        preview.innerHTML = '';
+
+        const emptyState = document.createElement('div');
+        emptyState.className = 'flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400';
+        emptyState.textContent = 'No equipment photo uploaded.';
+        preview.appendChild(emptyState);
+    }
+
+    function setDevicePhotoBusy(isBusy) {
         const button = document.getElementById('device-take-photo-button');
+        const captureButton = document.getElementById('device-capture-photo-button');
+        const clearButton = document.getElementById('device-clear-photo-button');
+
+        [button, captureButton, clearButton].filter(Boolean).forEach((control) => {
+            control.disabled = isBusy;
+            control.classList.toggle('opacity-60', isBusy);
+            control.classList.toggle('cursor-wait', isBusy);
+        });
+    }
+
+    function closeDeviceCamera() {
+        const panel = document.getElementById('device-camera-panel');
+        const video = document.getElementById('device-camera-video');
+
+        if (deviceCameraStream) {
+            deviceCameraStream.getTracks().forEach((track) => track.stop());
+            deviceCameraStream = null;
+        }
+
+        if (video) {
+            video.srcObject = null;
+        }
+
+        panel?.classList.add('hidden');
+        panel?.classList.remove('flex');
+    }
+
+    async function openDeviceCamera() {
+        const panel = document.getElementById('device-camera-panel');
+        const video = document.getElementById('device-camera-video');
+        const status = document.getElementById('device-photo-status');
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            status.textContent = 'Camera access is not available in this browser.';
+            return;
+        }
+
+        status.textContent = 'Opening camera...';
+        setDevicePhotoBusy(true);
+
+        try {
+            deviceCameraStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 1280 }
+                },
+                audio: false
+            });
+
+            video.srcObject = deviceCameraStream;
+            await video.play();
+
+            panel.classList.remove('hidden');
+            panel.classList.add('flex');
+            status.textContent = 'Camera ready.';
+        } catch (error) {
+            status.textContent = window.isSecureContext
+                ? 'Camera permission was blocked or no camera was found.'
+                : 'Camera requires HTTPS or localhost.';
+        } finally {
+            setDevicePhotoBusy(false);
+        }
+    }
+
+    async function captureDevicePhoto() {
+        const form = document.getElementById('device-photo-form');
+        const video = document.getElementById('device-camera-video');
+        const canvas = document.getElementById('device-camera-canvas');
         const preview = document.getElementById('device-photo-preview');
         const status = document.getElementById('device-photo-status');
 
-        button.disabled = true;
-        button.classList.add('opacity-60', 'cursor-wait');
+        if (!deviceCameraStream || !video.videoWidth || !video.videoHeight) {
+            status.textContent = 'Camera is not ready yet.';
+            return;
+        }
+
+        setDevicePhotoBusy(true);
         status.textContent = 'Saving photo...';
 
         try {
+            const size = Math.min(video.videoWidth, video.videoHeight);
+            const sourceX = (video.videoWidth - size) / 2;
+            const sourceY = (video.videoHeight - size) / 2;
+
+            canvas.width = 1280;
+            canvas.height = 1280;
+            canvas.getContext('2d').drawImage(video, sourceX, sourceY, size, size, 0, 0, canvas.width, canvas.height);
+
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+
+            if (!blob || blob.size > 10 * 1024 * 1024) {
+                throw new Error('The captured photo is larger than 10 MB.');
+            }
+
+            const formData = new FormData(form);
+            formData.append('equipment_photo', blob, 'equipment-photo.jpg');
+
             const response = await fetch(form.action, {
                 method: 'POST',
-                body: new FormData(form),
+                body: formData,
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
                     'Accept': 'application/json'
@@ -126,13 +226,48 @@
             image.className = 'h-full w-full object-cover';
             preview.appendChild(image);
             status.textContent = result.message;
+            const clearButton = document.getElementById('device-clear-photo-button');
+            clearButton?.classList.remove('hidden');
+            clearButton?.classList.add('inline-flex');
+            closeDeviceCamera();
         } catch (error) {
-            status.textContent = 'Photo upload failed. Please try again.';
-            form.submit();
+            status.textContent = error.message || 'Photo upload failed. Please try again.';
         } finally {
-            input.value = '';
-            button.disabled = false;
-            button.classList.remove('opacity-60', 'cursor-wait');
+            setDevicePhotoBusy(false);
+        }
+    }
+
+    async function clearDevicePhoto() {
+        if (!confirm('Delete this equipment photo?')) return;
+
+        const form = document.getElementById('device-photo-delete-form');
+        const status = document.getElementById('device-photo-status');
+        const clearButton = document.getElementById('device-clear-photo-button');
+
+        setDevicePhotoBusy(true);
+        status.textContent = 'Clearing photo...';
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error('Photo delete failed.');
+
+            const result = await response.json();
+            renderEmptyDevicePhotoPreview();
+            clearButton?.classList.add('hidden');
+            clearButton?.classList.remove('inline-flex');
+            status.textContent = result.message;
+        } catch (error) {
+            status.textContent = error.message || 'Photo delete failed. Please try again.';
+        } finally {
+            setDevicePhotoBusy(false);
         }
     }
 </script>
@@ -226,32 +361,48 @@
                         method="POST"
                         action="{{ route('admin.devices.photo', $device) }}"
                         enctype="multipart/form-data"
-                        class="sr-only"
+                        class="hidden"
                     >
                         @csrf
                         @method('PATCH')
-                        <input
-                            id="device-photo-input"
-                            type="file"
-                            name="equipment_photo"
-                            accept="image/*,.heic,.heif"
-                            capture="environment"
-                            class="sr-only"
-                            onchange="submitDevicePhoto(this)"
-                        >
                     </form>
-                    <button
-                        id="device-take-photo-button"
-                        type="button"
-                        onclick="document.getElementById('device-photo-input').click()"
-                        class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-800"
+                    <form
+                        id="device-photo-delete-form"
+                        method="POST"
+                        action="{{ route('admin.devices.photo.destroy', $device) }}"
+                        class="hidden"
                     >
-                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.5A2.5 2.5 0 0 1 5.5 6H7l1.2-1.8A2 2 0 0 1 9.9 3.3h4.2a2 2 0 0 1 1.7.9L17 6h1.5A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z" />
-                            <circle cx="12" cy="12.5" r="3.5" />
-                        </svg>
-                        Take Photo
-                    </button>
+                        @csrf
+                        @method('DELETE')
+                    </form>
+                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <button
+                            id="device-take-photo-button"
+                            type="button"
+                            onclick="openDeviceCamera()"
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-800"
+                        >
+                            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.5A2.5 2.5 0 0 1 5.5 6H7l1.2-1.8A2 2 0 0 1 9.9 3.3h4.2a2 2 0 0 1 1.7.9L17 6h1.5A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z" />
+                                <circle cx="12" cy="12.5" r="3.5" />
+                            </svg>
+                            Take Photo
+                        </button>
+                        <button
+                            id="device-clear-photo-button"
+                            type="button"
+                            onclick="clearDevicePhoto()"
+                            class="{{ $device->photo_path ? 'inline-flex' : 'hidden' }} w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-800"
+                        >
+                            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 6V4h8v2" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l1 14h10l1-14" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v5M14 11v5" />
+                            </svg>
+                            Clear Photo
+                        </button>
+                    </div>
                     <p id="device-photo-status" class="mt-2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></p>
                 </div>
 
@@ -786,6 +937,63 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<div
+    id="device-camera-panel"
+    class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-950/90 px-4 py-6"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Equipment camera"
+>
+    <div class="w-full max-w-md overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-700 px-4 py-3">
+            <h2 class="text-base font-semibold text-white">Take Equipment Photo</h2>
+            <button
+                type="button"
+                onclick="closeDeviceCamera()"
+                class="rounded-lg p-2 text-gray-300 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Close camera"
+            >
+                <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="aspect-square bg-black">
+            <video
+                id="device-camera-video"
+                class="h-full w-full object-cover"
+                autoplay
+                playsinline
+                muted
+            ></video>
+            <canvas id="device-camera-canvas" class="hidden"></canvas>
+        </div>
+
+        <div class="flex gap-3 px-4 py-4">
+            <button
+                type="button"
+                onclick="closeDeviceCamera()"
+                class="inline-flex flex-1 items-center justify-center rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+            >
+                Cancel
+            </button>
+            <button
+                id="device-capture-photo-button"
+                type="button"
+                onclick="captureDevicePhoto()"
+                class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3.5" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.1-1.6a2 2 0 0 1 1.7-.9h2.4a2 2 0 0 1 1.7.9L16 6h1.5A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z" />
+                </svg>
+                Capture Photo
+            </button>
         </div>
     </div>
 </div>

@@ -577,6 +577,41 @@ class DeviceController extends Controller
         return back()->with('success', 'Equipment photo updated successfully.');
     }
 
+    /**
+     * Remove the equipment photo without changing the rest of the record.
+     */
+    public function destroyPhoto(Request $request, Device $device)
+    {
+        $oldPhotoPath = $device->photo_path;
+
+        if ($oldPhotoPath) {
+            $device->update(['photo_path' => null]);
+            $this->deleteEquipmentPhoto($oldPhotoPath);
+
+            ActivityLog::record(
+                'updated',
+                "Removed photo for device \"{$device->property_number}\"",
+                $device,
+                ActivityLog::makePayload(
+                    ['property_number' => $device->property_number, 'photo' => null],
+                    ['photo' => ['old' => 'Uploaded', 'new' => null]]
+                )
+            );
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $oldPhotoPath
+                    ? 'Equipment photo cleared successfully.'
+                    : 'No equipment photo to clear.',
+            ]);
+        }
+
+        return back()->with('success', $oldPhotoPath
+            ? 'Equipment photo cleared successfully.'
+            : 'No equipment photo to clear.');
+    }
+
     public function destroy(Device $device)
     {
         $deviceType = DeviceType::where('id', $device->device_type_id)->value('name');
