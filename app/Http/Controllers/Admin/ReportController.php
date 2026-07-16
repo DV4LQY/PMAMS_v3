@@ -76,6 +76,7 @@ class ReportController extends Controller
     {
         $checkerId = $request->integer('checker_id') ?: $request->integer('admin_id') ?: null;
         $typeId = $request->integer('type_id') ?: null;
+        $locationId = $request->integer('location_id') ?: null;
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
         $q = $request->string('q')->toString();
@@ -104,6 +105,8 @@ class ReportController extends Controller
             'adminId' => $checkerId,
             'checkerId' => $checkerId,
             'typeId' => $typeId,
+            'locations' => Location::orderBy('name')->get(),
+            'locationId' => $locationId,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'q' => $q,
@@ -115,6 +118,9 @@ class ReportController extends Controller
         $record->load([
             'device.type',
             'device.currentAssignment.staff.office.location',
+            'staff',
+            'office',
+            'location',
             'checkedBy',
         ]);
 
@@ -136,6 +142,35 @@ class ReportController extends Controller
         return $pdf->stream("maintenance-checklist-{$propertyNumber}-{$date}.pdf");
     }
 
+    public function checkedEquipmentFilteredPdf(Request $request)
+    {
+        $records = $this->checkedEquipmentQuery($request)
+            ->orderBy('maintenance_date')
+            ->orderBy('id')
+            ->get();
+
+        if ($records->isEmpty()) {
+            return back()->withErrors([
+                'report' => 'No maintenance checklist records match the selected filters.',
+            ]);
+        }
+
+        $unitHead = User::where('role', User::ROLE_UNIT_HEAD)->first();
+
+        $pdf = Pdf::loadView('admin.reports.checked-equipment-pdf', [
+            'records' => $records,
+            'unitHead' => $unitHead,
+            'checklistItems' => $this->checklistItems(),
+            'softwareItems' => $this->softwareItems(),
+        ])->setPaper([0, 0, 612, 936], 'landscape');
+
+        $datePart = collect([$request->query('date_from'), $request->query('date_to')])
+            ->filter()
+            ->join('-to-') ?: now()->format('Y-m-d');
+
+        return $pdf->stream("maintenance-checklists-filtered-{$datePart}.pdf");
+    }
+
     public function checkedEquipmentSelectedPdf(Request $request)
     {
         $data = $request->validate([
@@ -150,6 +185,9 @@ class ReportController extends Controller
             ->with([
                 'device.type',
                 'device.currentAssignment.staff.office.location',
+                'staff',
+                'office',
+                'location',
                 'checkedBy',
             ])
             ->whereNotNull('checked_by')
@@ -193,6 +231,7 @@ class ReportController extends Controller
     {
         $checkerId = $request->integer('checker_id') ?: $request->integer('admin_id') ?: null;
         $typeId = $request->integer('type_id') ?: null;
+        $locationId = $request->integer('location_id') ?: null;
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
         $q = $request->string('q')->toString();
@@ -201,6 +240,9 @@ class ReportController extends Controller
             ->with([
                 'device.type',
                 'device.currentAssignment.staff.office.location',
+                'staff',
+                'office',
+                'location',
                 'checkedBy',
             ])
             ->whereNotNull('checked_by')
@@ -208,11 +250,23 @@ class ReportController extends Controller
             ->when($typeId, function ($query) use ($typeId) {
                 $query->whereHas('device', fn ($deviceQuery) => $deviceQuery->where('device_type_id', $typeId));
             })
+            ->when($locationId, function ($query) use ($locationId) {
+                $query->where(function ($locationQuery) use ($locationId) {
+                    $locationQuery->where('location_id', $locationId)
+                        ->orWhere(function ($legacyQuery) use ($locationId) {
+                            $legacyQuery->whereNull('location_id')
+                                ->whereHas('device.currentAssignment.staff.office', function ($officeQuery) use ($locationId) {
+                                    $officeQuery->where('location_id', $locationId);
+                                });
+                        });
+                });
+            })
             ->when($dateFrom, fn ($query) => $query->whereDate('maintenance_date', '>=', $dateFrom))
             ->when($dateTo, fn ($query) => $query->whereDate('maintenance_date', '<=', $dateTo))
             ->when($q, function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
                     $sub->where('remarks', 'like', "%{$q}%")
+                        ->orWhere('corrective_action', 'like', "%{$q}%")
                         ->orWhere('maintenance_type', 'like', "%{$q}%")
                         ->orWhereHas('device', function ($deviceQuery) use ($q) {
                             $deviceQuery->where('property_number', 'like', "%{$q}%")

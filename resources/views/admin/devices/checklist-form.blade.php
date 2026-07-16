@@ -28,7 +28,7 @@
                     Preventive Maintenance Checklist
                 </h1>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Choose OK or Not OK for each hardware item. For software, choose ✓ or -.
+                    Choose OK or Not OK for each hardware item. UPS/AVR and Printer may also be marked Not Available.
                 </p>
             </div>
 
@@ -45,6 +45,26 @@
         method="POST"
         action="{{ route('admin.devices.checklist.save', $device) }}"
         target="_self"
+        x-data="{
+            remarks: @js(old('remarks', '')),
+            correctiveAction: @js(old('corrective_action', '')),
+            applyAvailabilityDefaults() {
+                const avrUnavailable = this.$el.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
+                const printerUnavailable = this.$el.elements['hardware[printer_printout]']?.value === 'Not Available';
+
+                if (avrUnavailable && !this.remarks.trim()) {
+                    this.remarks = 'not available UPS/AVR';
+                } else if (!avrUnavailable && this.remarks.trim() === 'not available UPS/AVR') {
+                    this.remarks = '';
+                }
+
+                if ((avrUnavailable || printerUnavailable) && !this.correctiveAction.trim()) {
+                    this.correctiveAction = 'office is advised to procure the equipment';
+                } else if (!avrUnavailable && !printerUnavailable && this.correctiveAction.trim() === 'office is advised to procure the equipment') {
+                    this.correctiveAction = '';
+                }
+            }
+        }"
         class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
     >
         @csrf
@@ -125,6 +145,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Checklist Item</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">OK</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not OK</th>
+                        <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not Available</th>
                     </tr>
                 </thead>
 
@@ -141,6 +162,7 @@
                                         name="hardware[{{ $key }}]"
                                         value="OK"
                                         class="peer sr-only"
+                                        x-on:change="applyAvailabilityDefaults()"
                                         @checked(old("hardware.$key") === 'OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-green-600 peer-checked:bg-green-50 peer-checked:text-green-700 dark:peer-checked:bg-green-900/30 dark:peer-checked:text-green-400">
@@ -156,12 +178,33 @@
                                         name="hardware[{{ $key }}]"
                                         value="Not OK"
                                         class="peer sr-only"
+                                        x-on:change="applyAvailabilityDefaults()"
                                         @checked(old("hardware.$key") === 'Not OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-red-600 peer-checked:bg-red-50 peer-checked:text-red-700 dark:peer-checked:bg-red-900/30 dark:peer-checked:text-red-400">
                                         ✓
                                     </span>
                                 </label>
+                            </td>
+
+                            <td class="px-4 py-3 text-center">
+                                @if($item['not_available'] ?? false)
+                                    <label class="inline-flex cursor-pointer items-center justify-center">
+                                        <input
+                                            type="radio"
+                                            name="hardware[{{ $key }}]"
+                                            value="Not Available"
+                                            class="peer sr-only"
+                                            x-on:change="applyAvailabilityDefaults()"
+                                            @checked(old("hardware.$key") === 'Not Available')
+                                        >
+                                        <span class="flex min-h-8 min-w-8 items-center justify-center rounded border-2 border-gray-400 px-2 text-xs font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
+                                            N/A
+                                        </span>
+                                    </label>
+                                @else
+                                    <span class="text-gray-300 dark:text-gray-600">—</span>
+                                @endif
                             </td>
                         </tr>
                     @endforeach
@@ -200,6 +243,7 @@
                                     </span>
                                 </label>
                             </td>
+                            <td class="px-4 py-3 text-center text-gray-300 dark:text-gray-600">—</td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -211,20 +255,22 @@
                 <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
                 <textarea
                     name="remarks"
+                    x-model="remarks"
                     rows="4"
                     class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     placeholder="Optional remarks"
-                >{{ old('remarks') }}</textarea>
+                ></textarea>
             </div>
 
             <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Corrective Action</label>
                 <textarea
                     name="corrective_action"
+                    x-model="correctiveAction"
                     rows="4"
                     class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     placeholder="Optional corrective action"
-                >{{ old('corrective_action') }}</textarea>
+                ></textarea>
             </div>
         </div>
 

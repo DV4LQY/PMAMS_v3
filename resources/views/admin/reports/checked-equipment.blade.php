@@ -26,6 +26,12 @@
 
 <div class="space-y-5">
 
+    @if($errors->any())
+        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+            {{ $errors->first() }}
+        </div>
+    @endif
+
     <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 
         <div>
@@ -86,7 +92,7 @@
     <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
 
         <form method="GET"
-              class="grid grid-cols-1 gap-3 lg:grid-cols-6">
+              class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
 
 
             <input
@@ -112,6 +118,17 @@
 
                 @endforeach
 
+            </select>
+
+
+            <select name="location_id"
+                    class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">
+                <option value="">All locations</option>
+                @foreach($locations as $location)
+                    <option value="{{ $location->id }}" @selected((int) $locationId === $location->id)>
+                        {{ $location->name }}@if($location->code) ({{ $location->code }})@endif
+                    </option>
+                @endforeach
             </select>
 
 
@@ -193,7 +210,16 @@
 
 
 
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
+<!-- Print PDF Buttons 
+                <a
+                    href="{{ route('admin.reports.checkedEquipment.pdfFiltered', request()->query()) }}"
+                    target="_blank"
+                    data-no-spa="true"
+                    class="rounded-xl bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700"
+                >
+                    Print Filtered PDF
+                </a>-->
 
 
                 <label class="flex items-center gap-2 text-sm">
@@ -265,6 +291,10 @@
                         </th>
 
                         <th class="px-4 py-3">
+                            Corrective Action
+                        </th>
+
+                        <th class="px-4 py-3">
                             PDF
                         </th>
 
@@ -285,11 +315,16 @@
 
                         $device = $record->device;
 
+                        $snapshot = is_array($record->checklist_data) ? data_get($record->checklist_data, 'snapshot', []) : [];
+
                         $assignment = $device?->currentAssignment;
 
                         $office = $assignment?->staff?->office;
 
-                        $location = $office?->location;
+                        $location = $record->location ?? $office?->location;
+                        $locationName = data_get($snapshot, 'location') ?? $location?->name;
+                        $propertyNumber = data_get($snapshot, 'property_number') ?? $device?->property_number;
+                        $equipmentType = data_get($snapshot, 'equipment_type') ?? $device?->type?->name;
 
                     @endphp
 
@@ -337,7 +372,7 @@
 
                         <td class="px-4 py-3">
 
-                            {{ $device?->property_number ?? '-' }}
+                            {{ $propertyNumber ?? '-' }}
 
                         </td>
 
@@ -345,7 +380,7 @@
 
                         <td class="px-4 py-3">
 
-                            {{ $device?->type?->name ?? '-' }}
+                            {{ $equipmentType ?? '-' }}
 
                         </td>
 
@@ -354,7 +389,7 @@
 
                         <td class="px-4 py-3">
 
-                            {{ $location?->name ?? '-' }}
+                            {{ $locationName ?? '-' }}
 
                         </td>
 
@@ -364,6 +399,12 @@
                         <td class="px-4 py-3">
 
                             {{ $record->remarks ?? '-' }}
+
+                        </td>
+
+                        <td class="px-4 py-3">
+
+                            {{ $record->corrective_action ?? '-' }}
 
                         </td>
 
@@ -399,7 +440,7 @@
 
                     <tr>
 
-                        <td colspan="8"
+                        <td colspan="9"
                             class="px-5 py-10 text-center">
 
                             No records found.

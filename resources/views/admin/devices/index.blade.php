@@ -184,7 +184,7 @@
                     class="inline-flex shrink-0 items-center rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
                     x-on:click="importOpen = true"
                 >
-                    Import Inventory
+                    Import Equipment
                 </button>
             @endif
 
@@ -197,7 +197,7 @@
             </a>
 
             <a
-                href="{{ route('admin.reports.preventiveMaintenance.export') }}"
+                href="{{ route('admin.reports.preventiveMaintenance.export', request()->query()) }}"
                 data-no-spa="true"
                 class="inline-flex shrink-0 items-center rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600"
             >
@@ -1357,20 +1357,9 @@
 
     {{-- Import modal --}}
     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
-        <x-modal show="importOpen" title="Import Equipment and Issuance">
+        <x-modal show="importOpen" title="Import Complete Equipment Records">
             <form method="POST" action="{{ route('admin.devices.import') }}" enctype="multipart/form-data" class="space-y-4">
                 @csrf
-
-                <div>
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Import type</label>
-                    <select
-                        name="import_mode"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    >
-                        <option value="inventory">Inventory records (add or update equipment)</option>
-                        <option value="issuance">Issuance records (existing equipment to staff)</option>
-                    </select>
-                </div>
 
                 <div>
                     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">CSV or Excel file</label>
@@ -1384,7 +1373,7 @@
                 </div>
 
                 <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                    Use the template for headings. Issuance rows match staff by email first, then name, with optional office and location_code filters. Inventory rows can include the same staff and location columns to create an issuance immediately.
+                    One file covers the complete equipment specifications and optional issuance. End users are matched by staff email first, then by name, with optional office and location_code filters. Leave the staff fields blank when equipment is not yet issued.
                 </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
@@ -1397,7 +1386,7 @@
                     </a>
                     <div class="flex gap-2">
                         <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600" x-on:click="importOpen = false">Cancel</button>
-                        <button type="submit" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600">Import records</button>
+                        <button type="submit" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600">Import equipment</button>
                     </div>
                 </div>
             </form>

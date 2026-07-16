@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -37,6 +38,35 @@ class Device extends Model
         'date_acquired' => 'date',
         'last_maintenance_date' => 'date',
     ];
+
+    public function scopeFilterInventory(Builder $query, array $filters): Builder
+    {
+        $q = trim((string) ($filters['q'] ?? ''));
+        $typeId = (int) ($filters['type_id'] ?? 0);
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        $status = $filters['status'] ?? null;
+        $condition = $filters['condition'] ?? null;
+
+        return $query
+            ->when($q !== '', function (Builder $query) use ($q) {
+                $query->where(function (Builder $sub) use ($q) {
+                    $sub->where('property_number', 'like', "%{$q}%")
+                        ->orWhere('serial_number', 'like', "%{$q}%")
+                        ->orWhere('computer_name', 'like', "%{$q}%")
+                        ->orWhere('brand', 'like', "%{$q}%")
+                        ->orWhere('model', 'like', "%{$q}%")
+                        ->orWhere('mac_address', 'like', "%{$q}%");
+                });
+            })
+            ->when($typeId, fn (Builder $query) => $query->where('device_type_id', $typeId))
+            ->when($locationId, function (Builder $query) use ($locationId) {
+                $query->whereHas('currentAssignment.staff.office', function (Builder $office) use ($locationId) {
+                    $office->where('location_id', $locationId);
+                });
+            })
+            ->when($status, fn (Builder $query) => $query->where('status', $status))
+            ->when($condition, fn (Builder $query) => $query->where('condition', $condition));
+    }
 
     public function type(): BelongsTo
     {

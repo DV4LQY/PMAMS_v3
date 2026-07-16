@@ -8,6 +8,7 @@ use App\Models\Device;
 use App\Models\DeviceMaintenanceRecord;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class DeviceChecklistController extends Controller
 {
@@ -15,7 +16,7 @@ class DeviceChecklistController extends Controller
     {
         $device->load([
             'type',
-            'currentAssignment.staff.office.college',
+            'currentAssignment.staff.office.location',
         ]);
 
         return view('admin.devices.checklist-form', [
@@ -33,31 +34,86 @@ class DeviceChecklistController extends Controller
 
     public function store(Request $request, Device $device)
     {
-        $data = $request->validate([
+        $hardwareRules = [];
+        foreach ($this->checklistItems() as $key => $item) {
+            $allowedValues = ['OK', 'Not OK'];
+            if ($item['not_available'] ?? false) {
+                $allowedValues[] = 'Not Available';
+            }
+
+            $hardwareRules["hardware.{$key}"] = ['nullable', 'string', Rule::in($allowedValues)];
+        }
+
+        $data = $request->validate(array_merge([
             'date_checked' => ['nullable', 'date', 'before_or_equal:today'],
             'maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
 
             'hardware' => ['nullable', 'array'],
-            'hardware.*' => ['nullable', 'string', 'in:OK,Not OK'],
 
             'software' => ['nullable', 'array'],
             'software.*' => ['nullable', 'string', 'in:check,dash'],
 
             'remarks' => ['nullable', 'string', 'max:1000'],
             'corrective_action' => ['nullable', 'string', 'max:1000'],
-        ]);
+        ], $hardwareRules));
 
         $dateChecked = $data['date_checked']
             ?? $data['maintenance_date']
             ?? now()->toDateString();
 
-        $hardwareResponses = $data['hardware'] ?? [];
-        $softwareResponses = $data['software'] ?? [];
-        $remarks = $data['remarks'] ?? 'Preventive maintenance checklist completed.';
-        $correctiveAction = $data['corrective_action'] ?? null;
+        $hardwareResponses = array_intersect_key(
+            $data['hardware'] ?? [],
+            $this->checklistItems()
+        );
+        $softwareResponses = array_intersect_key(
+            $data['software'] ?? [],
+            $this->softwareItems()
+        );
+        $remarks = trim((string) ($data['remarks'] ?? ''));
+        $correctiveAction = trim((string) ($data['corrective_action'] ?? ''));
+
+        $avrUpsUnavailable = ($hardwareResponses['avr_ups_power_recovery'] ?? null) === 'Not Available';
+        $printerUnavailable = ($hardwareResponses['printer_printout'] ?? null) === 'Not Available';
+
+        // Printer being unavailable must not add a default remark. The UPS/AVR
+        // default is applied only when the user did not supply their own text.
+        if ($remarks === '') {
+            $remarks = $avrUpsUnavailable
+                ? 'not available UPS/AVR'
+                : ($printerUnavailable ? null : 'Preventive maintenance checklist completed.');
+        }
+
+        if ($correctiveAction === '' && ($avrUpsUnavailable || $printerUnavailable)) {
+            $correctiveAction = 'office is advised to procure the equipment';
+        }
+
+        $assignment = $device->currentAssignment()
+            ->with('staff.office.location')
+            ->first();
+        $staff = $assignment?->staff;
+        $office = $staff?->office;
+        $location = $office?->location;
+
+        $snapshot = [
+            'property_number' => $device->property_number,
+            'equipment_type' => $device->type?->name,
+            'computer_name' => $device->computer_name ?: data_get($device->specs, 'computer_name'),
+            'condition' => $device->condition,
+            'staff_id' => $staff?->id,
+            'end_user' => $staff ? trim($staff->first_name . ' ' . $staff->last_name) : null,
+            'staff_email' => $staff?->email,
+            'office_id' => $office?->id,
+            'office' => $office?->name,
+            'location_id' => $location?->id,
+            'location' => $location?->name,
+            'location_code' => $location?->code,
+        ];
 
         $record = DeviceMaintenanceRecord::create([
             'device_id' => $device->id,
+            'staff_id' => $staff?->id,
+            'office_id' => $office?->id,
+            'location_id' => $location?->id,
             'maintenance_date' => $dateChecked,
             'maintenance_type' => 'Checked',
             'condition' => $device->condition ?? 'serviceable',
@@ -66,13 +122,19 @@ class DeviceChecklistController extends Controller
             'checklist_data' => [
                 'hardware' => $hardwareResponses,
                 'software' => $softwareResponses,
+                'snapshot' => $snapshot,
             ],
             'checked_by' => Auth::id(),
         ]);
 
+        $latestRecord = $device->maintenanceRecords()
+            ->orderByDesc('maintenance_date')
+            ->orderByDesc('id')
+            ->first();
+
         $device->update([
-            'last_maintenance_date' => $dateChecked,
-            'maintenance_remarks' => $remarks,
+            'last_maintenance_date' => $latestRecord?->maintenance_date,
+            'maintenance_remarks' => $latestRecord?->remarks,
         ]);
 
         ActivityLog::record(
@@ -118,10 +180,12 @@ class DeviceChecklistController extends Controller
             'avr_ups_power_recovery' => [
                 'group' => 'AVR/UPS',
                 'label' => 'Check for power recovery',
+                'not_available' => true,
             ],
             'printer_printout' => [
                 'group' => 'Printer',
                 'label' => 'Check printout',
+                'not_available' => true,
             ],
         ];
     }

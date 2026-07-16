@@ -8,8 +8,8 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 /**
  * Reads equipment/import spreadsheets without writing rows directly.
- * DeviceController validates and persists each row so inventory and issuance
- * imports can share the same transaction and location-aware staff lookup.
+ * DeviceController validates and persists each complete row so equipment
+ * specifications and an optional location-aware issuance share one transaction.
  */
 class DeviceInventoryImport implements ToCollection, WithHeadingRow
 {

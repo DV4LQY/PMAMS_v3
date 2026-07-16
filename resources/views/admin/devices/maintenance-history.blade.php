@@ -24,6 +24,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Type</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Condition</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Remarks</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Corrective Action</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Checked By</th>
                     </tr>
                 </thead>
@@ -34,10 +35,11 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->maintenance_type }}</td>
                             <td class="px-4 py-3 capitalize text-gray-700 dark:text-gray-300">{{ $record->condition ?: ($device->condition ?: 'serviceable') }}</td>
                             <td class="max-w-md px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->remarks ?: '-' }}</td>
+                            <td class="max-w-md px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->corrective_action ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->checkedBy?->name ?? $record->checkedBy?->email ?? '-' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No maintenance records yet.</td></tr>
+                        <tr><td colspan="6" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No maintenance records yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

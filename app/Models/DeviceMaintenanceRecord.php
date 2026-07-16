@@ -9,6 +9,9 @@ class DeviceMaintenanceRecord extends Model
 {
     protected $fillable = [
         'device_id',
+        'staff_id',
+        'office_id',
+        'location_id',
         'maintenance_date',
         'maintenance_type',
         'condition',
@@ -31,5 +34,20 @@ class DeviceMaintenanceRecord extends Model
     public function checkedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'checked_by');
+    }
+
+    public function staff(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class);
+    }
+
+    public function office(): BelongsTo
+    {
+        return $this->belongsTo(Office::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 }

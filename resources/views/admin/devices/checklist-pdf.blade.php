@@ -16,7 +16,7 @@
 
         body {
             font-family: DejaVu Sans, Arial, sans-serif;
-            font-size: 8px;
+            font-size: 9px;
             color: #111827;
             margin: 0;
             padding: 0;
@@ -85,19 +85,19 @@
 
         .school-top {
             font-style: italic;
-            font-size: 7px;
+            font-size: 8px;
             line-height: 1.05;
         }
 
         .school-name {
             font-weight: bold;
-            font-size: 9px;
+            font-size: 10px;
             line-height: 1.05;
             letter-spacing: .15px;
         }
 
         .school-address {
-            font-size: 7px;
+            font-size: 8px;
             line-height: 1.05;
         }
 
@@ -122,21 +122,21 @@
             border: none;
             padding: 0;
             vertical-align: bottom;
-            font-size: 8px;
+            font-size: 9px;
         }
 
         .unit-title {
             width: 32%;
             text-align: left;
             padding-left: 52px !important;
-            font-size: 8px;
+            font-size: 9px;
         }
 
         .checklist-title {
             width: 36%;
             text-align: center;
             font-weight: bold;
-            font-size: 9px;
+            font-size: 10px;
             letter-spacing: .2px;
             white-space: nowrap;
         }
@@ -144,7 +144,7 @@
         .date-title {
             width: 32%;
             text-align: right;
-            font-size: 8px;
+            font-size: 9px;
             padding-right: 2px !important;
         }
 
@@ -153,6 +153,7 @@
             border-bottom: 1px solid #111827;
             min-height: 9px;
             vertical-align: bottom;
+            line-height: 1;
         }
 
         .date-line {
@@ -163,6 +164,13 @@
         .office-line {
             width: 160px;
             text-align: center;
+            min-height: 13px;
+        }
+
+        .office-line .line-value {
+            display: block;
+            position: relative;
+            top: -2px;
         }
 
         .office-unit-row {
@@ -175,7 +183,7 @@
         .office-unit-row td {
             border: none;
             padding: 0;
-            font-size: 8px;
+            font-size: 9px;
         }
 
         .main-table {
@@ -205,12 +213,12 @@
         .main-table th {
             font-weight: bold;
             background: #ffffff;
-            font-size: 6.7px;
+            font-size: 7.7px;
             line-height: 1.05;
         }
 
         .main-table td {
-            font-size: 7px;
+            font-size: 8px;
             line-height: 1.05;
         }
 
@@ -244,7 +252,7 @@
 
         .check {
             font-family: DejaVu Sans, Arial, sans-serif;
-            font-size: 8px;
+            font-size: 9px;
             font-weight: bold;
         }
 
@@ -267,7 +275,7 @@
             border: none;
             padding: 0;
             width: 50%;
-            font-size: 9px;
+            font-size: 10px;
             vertical-align: top;
         }
 
@@ -302,7 +310,7 @@
         .footer-table td {
             border: none;
             padding-top: 3px;
-            font-size: 7px;
+            font-size: 8px;
             color: #1f2937;
         }
 
@@ -431,7 +439,7 @@
     <table class="header-table">
         <tr>
             <td class="logo-cell">
-                @if(file_exists($logoPath))
+                @if(file_exists($logoPath) && (extension_loaded('gd') || extension_loaded('imagick')))
                     <img src="{{ $logoPath }}" class="logo" alt="CatSU Logo">
                 @endif
             </td>
@@ -463,7 +471,7 @@
         <tr>
             <td>
                 Office/Unit:
-                <span class="line office-line">{{ $officeUnitText }}</span>
+                <span class="line office-line"><span class="line-value">{{ $officeUnitText }}</span></span>
             </td>
         </tr>
     </table>
@@ -525,9 +533,14 @@
                     <td class="left">{!! nl2br(e($deviceLabel($rowDevice))) !!}</td>
 
                     @foreach($hardwareItems as $key => $item)
-                        @php $value = $rowHardware[$key] ?? ''; @endphp
-                        <td class="check">{{ $value === 'OK' ? '✓' : '' }}</td>
-                        <td class="check">{{ $value === 'Not OK' ? '✓' : '' }}</td>
+                        @php
+                            $value = $rowHardware[$key] ?? '';
+                            $notAvailableStyle = $value === 'Not Available'
+                                ? 'background-color: #9ca3af; color: #9ca3af;'
+                                : '';
+                        @endphp
+                        <td class="check" style="{{ $notAvailableStyle }}">{{ $value === 'OK' ? '✓' : '' }}</td>
+                        <td class="check" style="{{ $notAvailableStyle }}">{{ $value === 'Not OK' ? '✓' : '' }}</td>
                     @endforeach
 
                     <td class="check">{{ ($rowSoftware['setup_antivirus'] ?? '') === 'check' ? '✓' : '' }}</td>

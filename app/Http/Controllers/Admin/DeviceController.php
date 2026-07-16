@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\EquipmentInventoryExport;
 use App\Exports\PreventiveMaintenanceReportExport;
 use App\Imports\DeviceInventoryImport;
 use App\Models\ActivityLog;
@@ -50,29 +51,13 @@ class DeviceController extends Controller
                 'currentAssignment.staff.office.location',
                 'latestMaintenanceRecord',
             ])
-            ->when($q, function ($query) use ($q) {
-                return $query->where(function ($sub) use ($q) {
-                    $sub->where('property_number', 'like', "%{$q}%")
-                        ->orWhere('serial_number', 'like', "%{$q}%")
-                        ->orWhere('brand', 'like', "%{$q}%")
-                        ->orWhere('model', 'like', "%{$q}%")
-                        ->orWhere('mac_address', 'like', "%{$q}%");
-                });
-            })
-            ->when($typeId, function ($query) use ($typeId) {
-                return $query->where('device_type_id', $typeId);
-            })
-            ->when($locationId, function ($query) use ($locationId) {
-                return $query->whereHas('currentAssignment.staff.office', function ($office) use ($locationId) {
-                    $office->where('location_id', $locationId);
-                });
-            })
-            ->when($status, function ($query) use ($status) {
-                return $query->where('status', $status);
-            })
-            ->when($condition, function ($query) use ($condition) {
-                return $query->where('condition', $condition);
-            })
+            ->filterInventory([
+                'q' => $q,
+                'type_id' => $typeId,
+                'location_id' => $locationId,
+                'status' => $status,
+                'condition' => $condition,
+            ])
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString();
@@ -742,17 +727,14 @@ class DeviceController extends Controller
     }
 
     /**
-     * Import inventory rows or issue existing equipment to existing staff.
-     * Spreadsheets use a heading row; aliases are accepted for common legacy
-     * inventory column names. Location and office columns are used when
-     * resolving the staff member for an issuance.
+     * Import complete equipment rows. The same row may contain all inventory
+     * specifications plus an optional existing end user and issuance details.
      */
     public function import(Request $request)
     {
         abort_unless(Auth::user()?->isAdmin() || Auth::user()?->isUnitHead(), 403);
 
-        $data = $request->validate([
-            'import_mode' => ['required', 'in:inventory,issuance'],
+        $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:10240'],
         ]);
 
@@ -791,16 +773,10 @@ class DeviceController extends Controller
                 $rowNumber = $index + 2; // account for the heading row
 
                 try {
-                    if ($data['import_mode'] === 'issuance') {
-                        $device = $this->findImportedDevice($row);
-                        $this->issueImportedDevice($device, $row);
+                    [$wasCreated, $wasIssued] = $this->persistImportedInventoryRow($row);
+                    $wasCreated ? $created++ : $updated++;
+                    if ($wasIssued) {
                         $issued++;
-                    } else {
-                        [$wasCreated, $wasIssued] = $this->persistImportedInventoryRow($row);
-                        $wasCreated ? $created++ : $updated++;
-                        if ($wasIssued) {
-                            $issued++;
-                        }
                     }
                 } catch (\Throwable $exception) {
                     $rowErrors[] = "Row {$rowNumber}: {$exception->getMessage()}";
@@ -822,9 +798,8 @@ class DeviceController extends Controller
             ]);
         }
 
-        $message = $data['import_mode'] === 'issuance'
-            ? "{$issued} issuance record(s) imported."
-            : "{$created} equipment added, {$updated} equipment updated" . ($issued ? ", {$issued} issuance record(s) created." : '.');
+        $message = "{$created} equipment added, {$updated} equipment updated"
+            . ($issued ? ", {$issued} issuance record(s) created." : '.');
 
         return back()->with('success', $message);
     }
@@ -837,15 +812,16 @@ class DeviceController extends Controller
                 'property_number', 'equipment_type', 'serial_number', 'brand', 'model',
                 'computer_name', 'mac_address', 'unit_price', 'date_acquired', 'condition',
                 'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
-                'memory', 'storage', 'form_factor', 'maintenance_remarks',
+                'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks', 'notes',
                 'staff_email', 'staff_name', 'first_name', 'last_name', 'office',
-                'location_code', 'issued_at', 'remarks',
+                'location_code', 'issued_at', 'issuance_remarks',
             ]);
             fputcsv($handle, [
                 'PN-2026-0001', 'Laptop', 'SN-0001', 'Example', 'Model', 'PC-001', '',
-                '25000', '2026-01-15', 'serviceable', 'available', 'Windows 11',
+                '25000', '2026-01-15', 'serviceable', 'issued', 'Windows 11',
                 'OEM Licensed', 'Microsoft 365', 'OEM Licensed', '16 GB', '512 GB SSD',
-                '', '', '', '', '', '', '', '', '', '',
+                '', '', '', '', 'juan@example.edu', 'Juan Dela Cruz', '', '', 'ICTU',
+                'MAIN', '2026-01-15', 'Initial issuance',
             ]);
             fclose($handle);
         }, 'equipment-import-template.csv', [
@@ -866,9 +842,11 @@ class DeviceController extends Controller
         }
 
         $typeName = trim((string) $typeName);
-        $type = DeviceType::firstOrCreate([
+        $type = DeviceType::query()
+            ->whereRaw('LOWER(name) = ?', [strtolower($typeName)])
+            ->first();
+        $type ??= DeviceType::create([
             'name' => $typeName,
-        ], [
             'slug' => Str::slug($typeName),
         ]);
 
@@ -879,7 +857,7 @@ class DeviceController extends Controller
         foreach ([
             'serial_number', 'computer_name', 'brand', 'model', 'mac_address',
             'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
-            'maintenance_remarks',
+            'maintenance_remarks', 'notes',
         ] as $field) {
             if (array_key_exists($field, $row)) {
                 $device->{$field} = blank($row[$field]) ? null : $row[$field];
@@ -898,6 +876,10 @@ class DeviceController extends Controller
             $device->date_acquired = $this->importDate($row['date_acquired'], 'date_acquired');
         }
 
+        if (array_key_exists('last_maintenance_date', $row) && filled($row['last_maintenance_date'])) {
+            $device->last_maintenance_date = $this->importDate($row['last_maintenance_date'], 'last_maintenance_date');
+        }
+
         if (array_key_exists('condition', $row) && filled($row['condition'])) {
             $condition = strtolower(trim((string) $row['condition']));
             if (!in_array($condition, ['serviceable', 'unserviceable', 'condemned'], true)) {
@@ -912,6 +894,9 @@ class DeviceController extends Controller
             $status = strtolower(trim((string) $row['status']));
             if (!in_array($status, ['available', 'repair', 'retired', 'issued'], true)) {
                 throw new \RuntimeException('status must be available, issued, repair, or retired.');
+            }
+            if ($status === 'issued' && !$this->importStaffDetailsPresent($row)) {
+                throw new \RuntimeException('An issued status requires staff_email or staff_name in the same row.');
             }
             $device->status = $status === 'issued' ? 'available' : $status;
         } elseif ($wasCreated) {
@@ -933,41 +918,29 @@ class DeviceController extends Controller
 
         $wasIssued = false;
         if ($this->importStaffDetailsPresent($row)) {
-            $this->issueImportedDevice($device->fresh(), $row);
-            $wasIssued = true;
+            $wasIssued = $this->issueImportedDevice($device->fresh(), $row);
+        } elseif ($device->currentAssignment()->exists() && $device->status !== 'issued') {
+            $device->update(['status' => 'issued']);
         }
 
         return [$wasCreated, $wasIssued];
     }
 
-    private function findImportedDevice(array $row): Device
+    private function issueImportedDevice(Device $device, array $row): bool
     {
-        $propertyNumber = $this->importValue($row, ['property_number', 'property_no', 'asset_number', 'asset_no']);
-        $serialNumber = $this->importValue($row, ['serial_number', 'serial_no']);
-
-        if (blank($propertyNumber) && blank($serialNumber)) {
-            throw new \RuntimeException('property_number or serial_number is required.');
-        }
-
-        $device = Device::query()
-            ->when(filled($propertyNumber), fn ($query) => $query->where('property_number', trim((string) $propertyNumber)))
-            ->when(blank($propertyNumber) && filled($serialNumber), fn ($query) => $query->where('serial_number', trim((string) $serialNumber)))
-            ->first();
-
-        if (!$device) {
-            throw new \RuntimeException('The equipment record could not be found. Import inventory first.');
-        }
-
-        return $device;
-    }
-
-    private function issueImportedDevice(Device $device, array $row): void
-    {
-        if ($device->currentAssignment()->exists()) {
-            throw new \RuntimeException('This equipment already has an active issuance.');
-        }
-
         $staff = $this->resolveImportedStaff($row);
+        $currentAssignment = $device->currentAssignment()->first();
+
+        if ($currentAssignment) {
+            if ((int) $currentAssignment->staff_id === (int) $staff->id) {
+                $device->update(['status' => 'issued']);
+
+                return false;
+            }
+
+            throw new \RuntimeException('This equipment already has an active issuance to another end user.');
+        }
+
         $issuedAt = filled($this->importValue($row, ['issued_at', 'issue_date']))
             ? $this->importDate($this->importValue($row, ['issued_at', 'issue_date']), 'issued_at')
             : now();
@@ -977,10 +950,12 @@ class DeviceController extends Controller
             'staff_id' => $staff->id,
             'issued_by' => Auth::id(),
             'issued_at' => $issuedAt,
-            'remarks' => $this->importValue($row, ['remarks', 'issuance_remarks']),
+            'remarks' => $this->importValue($row, ['issuance_remarks', 'remarks']),
         ]);
 
         $device->update(['status' => 'issued']);
+
+        return true;
     }
 
     private function resolveImportedStaff(array $row): Staff
@@ -1056,7 +1031,7 @@ class DeviceController extends Controller
             'equipment' => 'equipment_type', 'device' => 'equipment_type', 'type_name' => 'equipment_type',
             'serial_no' => 'serial_number', 'office_name' => 'office', 'location_name' => 'location',
             'user_email' => 'staff_email', 'issued_to_email' => 'staff_email', 'user_name' => 'staff_name',
-            'issued_to' => 'staff_name', 'issue_date' => 'issued_at', 'issue_remarks' => 'remarks',
+            'issued_to' => 'staff_name', 'issue_date' => 'issued_at', 'issue_remarks' => 'issuance_remarks',
         ];
         foreach ($aliases as $from => $to) {
             if (array_key_exists($from, $normalized) && !array_key_exists($to, $normalized)) {
@@ -1302,6 +1277,7 @@ class DeviceController extends Controller
             'maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
             'maintenance_type' => ['nullable', 'string', 'max:100'],
             'remarks' => ['nullable', 'string', 'max:1000'],
+            'corrective_action' => ['nullable', 'string', 'max:1000'],
         ], [
             'maintenance_date.before_or_equal' => 'Maintenance date cannot be in the future.',
         ]);
@@ -1310,18 +1286,48 @@ class DeviceController extends Controller
         $maintenanceType = $data['maintenance_type'] ?? 'Checked';
         $remarks = $data['remarks'] ?? 'Checked/Maintained today';
 
+        $device->loadMissing(['type', 'currentAssignment.staff.office.location']);
+        $staff = $device->currentAssignment?->staff;
+        $office = $staff?->office;
+        $location = $office?->location;
+
         DeviceMaintenanceRecord::create([
             'device_id' => $device->id,
+            'staff_id' => $staff?->id,
+            'office_id' => $office?->id,
+            'location_id' => $location?->id,
             'maintenance_date' => $maintenanceDate,
             'maintenance_type' => $maintenanceType,
             'condition' => $device->condition ?? 'serviceable',
             'remarks' => $remarks,
+            'corrective_action' => $data['corrective_action'] ?? null,
+            'checklist_data' => [
+                'snapshot' => [
+                    'property_number' => $device->property_number,
+                    'equipment_type' => $device->type?->name,
+                    'computer_name' => $device->computer_name ?: data_get($device->specs, 'computer_name'),
+                    'condition' => $device->condition,
+                    'staff_id' => $staff?->id,
+                    'end_user' => $staff ? trim($staff->first_name . ' ' . $staff->last_name) : null,
+                    'staff_email' => $staff?->email,
+                    'office_id' => $office?->id,
+                    'office' => $office?->name,
+                    'location_id' => $location?->id,
+                    'location' => $location?->name,
+                    'location_code' => $location?->code,
+                ],
+            ],
             'checked_by' => Auth::id(),
         ]);
 
+        $latestRecord = $device->maintenanceRecords()
+            ->orderByDesc('maintenance_date')
+            ->orderByDesc('id')
+            ->first();
+
         $device->update([
-            'last_maintenance_date' => $maintenanceDate,
-            'maintenance_remarks' => $remarks,
+            'last_maintenance_date' => $latestRecord?->maintenance_date,
+            'maintenance_remarks' => $latestRecord?->remarks,
         ]);
 
         ActivityLog::record(
@@ -1385,11 +1391,30 @@ class DeviceController extends Controller
         return view('admin.devices.generate-qr', compact('devices', 'qrCodes'));
     }
 
-    public function exportPreventiveMaintenanceReport()
+    public function exportPreventiveMaintenanceReport(Request $request)
     {
-        $filename = 'preventive-maintenance-report-' . now()->format('Y-m-d') . '.xlsx';
+        $status = $request->query('status');
+        $condition = $request->query('condition');
 
-        return Excel::download(new PreventiveMaintenanceReportExport, $filename);
+        if (!in_array($status, ['available', 'issued', 'repair', 'retired'], true)) {
+            $status = null;
+        }
+
+        if (!in_array($condition, ['serviceable', 'unserviceable', 'condemned'], true)) {
+            $condition = null;
+        }
+
+        $filters = [
+            'q' => $request->string('q')->toString(),
+            'type_id' => $request->integer('type'),
+            'location_id' => $request->integer('location') ?: $request->integer('college'),
+            'status' => $status,
+            'condition' => $condition,
+        ];
+
+        $filename = 'equipment-inventory-filtered-' . now()->format('Y-m-d-His') . '.xlsx';
+
+        return Excel::download(new EquipmentInventoryExport($filters), $filename);
     }
 
     public function exportOfficePreventiveMaintenanceReport(Office $office)

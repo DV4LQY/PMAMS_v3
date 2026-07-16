@@ -106,6 +106,7 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
                 ->name('accounts');
             Route::get('/checked-equipment', [ReportController::class, 'checkedEquipment'])->name('checkedEquipment');
             Route::post('/checked-equipment/pdf-selected', [ReportController::class, 'checkedEquipmentSelectedPdf'])->name('checkedEquipment.pdfSelected');
+            Route::get('/checked-equipment/pdf-filtered', [ReportController::class, 'checkedEquipmentFilteredPdf'])->name('checkedEquipment.pdfFiltered');
             Route::get('/checked-equipment/{record}/pdf', [ReportController::class, 'checkedEquipmentPdf'])->name('checkedEquipment.pdf');
             Route::get('/checklist', [ReportController::class, 'checklist'])->name('checklist');
         });

@@ -18,7 +18,7 @@
         body {
             margin: 0;
             font-family: DejaVu Sans, Arial, sans-serif;
-            font-size: 7.4px;
+            font-size: 8.4px;
             color: #111827;
         }
 
@@ -68,14 +68,14 @@
         }
 
         .school-text {
-            font-size: 11px;
+            font-size: 12px;
             line-height: 1.15;
             padding-top: 5px !important;
             margin-left: 0;
         }
 
         .school-name {
-            font-size: 9.3px;
+            font-size: 10.3px;
             font-weight: bold;
             text-transform: uppercase;
             line-height: 1.05;
@@ -90,7 +90,7 @@
             position: absolute;
             top: 70px;
             left: 52px;
-            font-size: 11px;
+            font-size: 12px;
             font-family: Arial, Helvetica, sans-serif;
             white-space: nowrap;
         }
@@ -100,7 +100,7 @@
             top: 101px;
             right: 0;
             width: 190px;
-            font-size: 8.1px;
+            font-size: 9.1px;
             text-align: left;
         }
 
@@ -109,6 +109,7 @@
             border-bottom: 1px solid #111827;
             height: 11px;
             vertical-align: bottom;
+            line-height: 1;
         }
 
         .date-line {
@@ -131,12 +132,19 @@
             top: 101px;
             left: 52px;
             width: 380px;
-            font-size: 11px;
+            font-size: 12px;
         }
 
         .office-line {
             width: 115px;
             text-align: center;
+            height: 14px;
+        }
+
+        .office-line .line-value {
+            display: block;
+            position: relative;
+            top: -2px;
         }
 
         .form-title {
@@ -145,7 +153,7 @@
             left: 0;
             right: 0;
             text-align: center;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: bold;
             letter-spacing: 0.2px;
             text-transform: uppercase;
@@ -166,7 +174,7 @@
 
         .remarks-cell,
         .action-cell {
-            font-size: 9px;
+            font-size: 10px;
             line-height: 1.05;
             text-align: left;
             padding-left: 2px;
@@ -182,7 +190,7 @@
             table-layout: fixed;
             page-break-inside: auto;
             margin: 0;
-            font-size: 6.9px;
+            font-size: 7.9px;
         }
 
         thead {
@@ -208,7 +216,7 @@
             overflow-wrap: break-word;
             overflow: hidden;
             line-height: 1.05;
-            font-size: 9px;
+            font-size: 10px;
         }
 
         .main-table th {
@@ -218,18 +226,18 @@
         .main-table .left {
             text-align: left;
             padding-left: 2px;
-            font-size: 9px;
+            font-size: 10px;
             line-height: 1.05;
         }
 
         .label-row th {
-            font-size: 9px;
+            font-size: 10px;
             font-weight: normal;
             line-height: 1.05;
         }
 
         .status-head {
-            font-size: 9px;
+            font-size: 10px;
             line-height: 1.05;
             font-weight: normal;
         }
@@ -240,14 +248,14 @@
 
         .check {
             font-family: DejaVu Sans, Arial, sans-serif;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: bold;
             line-height: 1.05;
         }
 
         .remarks-cell,
         .action-cell {
-            font-size: 6.2px;
+            font-size: 7.2px;
             line-height: 1.04;
             text-align: left;
             padding-left: 2px;
@@ -268,7 +276,7 @@
             border: 0;
             padding: 0 18px;
             vertical-align: top;
-            font-size: 8.5px;
+            font-size: 9.5px;
         }
 
         .sig-label {
@@ -309,7 +317,7 @@
             bottom: 0;
             height: 18px;
             border-top: 2px solid #1d70b8;
-            font-size: 9px;
+            font-size: 10px;
         }
 
         .document-footer .code {
@@ -345,15 +353,19 @@
 
     $firstRecord = $records->first() ?? null;
     $firstDevice = $firstRecord?->device;
+    $firstData = $firstRecord?->checklist_data ?? [];
+    $firstData = is_array($firstData) ? $firstData : [];
     $firstAssignment = $firstDevice?->currentAssignment;
-    $firstStaff = $firstAssignment?->staff;
-    $firstOffice = $firstStaff?->office;
-    $firstCollege = $firstOffice?->college;
+    $firstStaff = $firstRecord?->staff ?? $firstAssignment?->staff;
+    $firstOffice = $firstRecord?->office ?? $firstStaff?->office;
+    $firstLocation = $firstRecord?->location ?? $firstOffice?->location;
 
     // Fixed header unit based on the official printed form.
     $fixedUnitName = 'Information and Communications Technology Unit';
 
-    $officeUnitCode = $firstCollege?->code
+    $officeUnitCode = data_get($firstData, 'snapshot.location_code')
+        ?? data_get($firstData, 'snapshot.office')
+        ?? $firstLocation?->code
         ?? $firstOffice?->name
         ?? '';
 
@@ -387,18 +399,21 @@
         return is_array($data) ? $data : [];
     };
 
-    $displayComputerPeripheral = function ($record) {
+    $displayComputerPeripheral = function ($record) use ($getChecklistData) {
         $device = $record->device;
 
         if (! $device) {
             return '-';
         }
 
-        $computerName = $device->computer_name
+        $data = $getChecklistData($record);
+        $computerName = data_get($data, 'snapshot.computer_name')
+            ?: $device->computer_name
             ?: data_get($device->specs, 'computer_name')
+            ?: data_get($data, 'snapshot.property_number')
             ?: $device->property_number;
 
-        $status = strtoupper($device->condition ?? '');
+        $status = strtoupper(data_get($data, 'snapshot.condition') ?: ($device->condition ?? ''));
 
         return trim($computerName . ($status ? ' (' . $status . ')' : ''));
     };
@@ -494,7 +509,7 @@
     <table class="header-table">
         <tr>
             <td class="logo-cell">
-                @if(file_exists($logoPath))
+                @if(file_exists($logoPath) && (extension_loaded('gd') || extension_loaded('imagick')))
                     <img src="{{ $logoPath }}" class="logo">
                 @endif
             </td>
@@ -520,7 +535,7 @@
 
     <div class="office-line-wrap">
         Office/Unit:
-        <span class="line office-line">{{ $officeUnitCode }}</span>
+        <span class="line office-line"><span class="line-value">{{ $officeUnitCode }}</span></span>
     </div>
 
     <div class="form-title">PREVENTIVE MAINTENANCE CHECKLIST</div>
@@ -655,9 +670,15 @@
                     <td class="left" style="{{ $rowHeightStyle }}">{{ $displayComputerPeripheral($record) }}</td>
 
                     @foreach($hardwareItems as $key => $item)
-                        @php $value = $hardware[$key] ?? ''; @endphp
-                        <td class="check" style="{{ $rowHeightStyle }} width: 3.5%;">{{ $value === 'OK' ? '✓' : '' }}</td>
-                        <td class="check" style="{{ $rowHeightStyle }} width: 3.5%;">{{ $value === 'Not OK' ? '✓' : '' }}</td>
+                        @php
+                            $value = $hardware[$key] ?? '';
+                            $hardwareCellStyle = $rowHeightStyle;
+                            if ($value === 'Not Available') {
+                                $hardwareCellStyle .= ' background-color: #9ca3af; color: #9ca3af;';
+                            }
+                        @endphp
+                        <td class="check" style="{{ $hardwareCellStyle }} width: 3.5%;">{{ $value === 'OK' ? '✓' : '' }}</td>
+                        <td class="check" style="{{ $hardwareCellStyle }} width: 3.5%;">{{ $value === 'Not OK' ? '✓' : '' }}</td>
                     @endforeach
 
                     <td class="check" style="{{ $rowHeightStyle }} width: 6%;">{{ ($software['setup_antivirus'] ?? '') === 'check' ? '✓' : '' }}</td>
