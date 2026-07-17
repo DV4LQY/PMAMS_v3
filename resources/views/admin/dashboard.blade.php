@@ -60,6 +60,7 @@
 
         openAddEquipment() {
             this.addDeviceOpen = true;
+            window.pmamsOpenModal?.('dashboard-add-equipment-modal');
             this.$nextTick(() => this.syncAddEquipmentType());
         },
 
@@ -371,28 +372,30 @@
     </div>
 
     {{-- Add Equipment Modal --}}
-    <div id="dashboard-add-equipment-modal" role="dialog" aria-modal="true" x-show="addDeviceOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div @click.away="addDeviceOpen = false" class="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-900">Add Equipment</h2>
-                    <p class="mt-1 text-sm text-gray-500">Register new equipment in the inventory.</p>
+    <div id="dashboard-add-equipment-modal" role="dialog" aria-modal="true" x-show="addDeviceOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto bg-black/50 px-4">
+        <div @click.self="addDeviceOpen = false" class="flex min-h-full items-center justify-center py-4 sm:py-6">
+            <div class="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+                <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">Add Equipment</h2>
+                        <p class="mt-1 text-sm text-gray-500">Register new equipment in the inventory.</p>
+                    </div>
+                    <button type="button" data-native-modal-close="dashboard-add-equipment-modal" @click="addDeviceOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700">&times;</button>
                 </div>
-                <button type="button" data-native-modal-close="dashboard-add-equipment-modal" @click="addDeviceOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700">&times;</button>
-            </div>
 
-            <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" x-on:submit="cleanUnitPrices($event.target)">
-                @csrf
-                <input type="hidden" name="form_context" value="add_equipment">
-                <input type="hidden" name="status" value="available">
-                <div class="max-h-[75vh] overflow-y-auto px-6 py-5">
-                    @include('admin.devices._add-equipment-fields', ['photoInputId' => 'dashboard_equipment_photo'])
-                </div>
-                <div class="flex justify-end gap-2 border-t border-gray-200 px-6 py-4">
-                    <button type="button" data-native-modal-close="dashboard-add-equipment-modal" @click="addDeviceOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Cancel</button>
-                    <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save Equipment</button>
-                </div>
-            </form>
+                <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="flex min-h-0 flex-1 flex-col" x-on:submit="cleanUnitPrices($event.target)">
+                    @csrf
+                    <input type="hidden" name="form_context" value="add_equipment">
+                    <input type="hidden" name="status" value="available">
+                    <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                        @include('admin.devices._add-equipment-fields')
+                    </div>
+                    <div class="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-6 py-4">
+                        <button type="button" data-native-modal-close="dashboard-add-equipment-modal" @click="addDeviceOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Cancel</button>
+                        <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save Equipment</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>

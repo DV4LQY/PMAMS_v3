@@ -1,4 +1,4 @@
-@php($photoInputId = $photoInputId ?? 'equipment_photo')
+@php($lockEquipmentType = $lockEquipmentType ?? false)
 
 <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
     <div>
@@ -9,11 +9,16 @@
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             required
             x-model="addTypeId"
+            @disabled($lockEquipmentType)
         >
             @foreach($types as $type)
                 <option value="{{ $type->id }}">{{ $type->name }}</option>
             @endforeach
         </select>
+        @if($lockEquipmentType)
+            <input type="hidden" name="device_type_id" x-bind:value="addTypeId">
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Equipment type is locked for this item.</p>
+        @endif
         @error('device_type_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
@@ -257,7 +262,6 @@
         @error('last_maintenance_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
-    @include('admin.devices._photo-input', ['photoInputId' => $photoInputId])
 </div>
 
 <div class="mt-5">

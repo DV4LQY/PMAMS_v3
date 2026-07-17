@@ -96,6 +96,7 @@
 
         openAddEquipment() {
             this.addOpen = true;
+            window.pmamsOpenModal?.('add-equipment-modal');
             this.$nextTick(() => this.syncAddEquipmentType());
         },
 
@@ -196,6 +197,54 @@
             });
         },
 
+        populateEditEquipmentForm() {
+            const form = this.$refs.editEquipmentForm;
+
+            if (!form || !this.editDevice) {
+                return;
+            }
+
+            const device = this.editDevice;
+            const specs = device.specs ?? {};
+
+            this.addTypeId = String(device.device_type_id ?? '');
+            this.addComputerName = device.computer_name ?? specs.computer_name ?? '';
+            this.addOsVersion = device.os_version ?? '';
+            this.addMsVersion = device.ms_office_version ?? '';
+
+            const setValue = (name, value) => {
+                const input = form.querySelector(`[name='${name}']`);
+
+                if (!input) {
+                    return;
+                }
+
+                input.value = value ?? '';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+
+            setValue('device_type_id', device.device_type_id);
+            setValue('property_number', device.property_number);
+            setValue('serial_number', device.serial_number);
+            setValue('computer_name', this.addComputerName);
+            setValue('brand', device.brand);
+            setValue('model', device.model);
+            setValue('mac_address', device.mac_address);
+            setValue('specs[memory]', specs.memory);
+            setValue('specs[storage]', specs.storage);
+            setValue('specs[form_factor]', specs.form_factor);
+            setValue('os_version', this.addOsVersion);
+            setValue('os_license', device.os_license);
+            setValue('ms_office_version', this.addMsVersion);
+            setValue('ms_office_license', device.ms_office_license);
+            setValue('unit_price', this.formatUnitPriceValue(device.unit_price));
+            setValue('date_acquired', device.date_acquired);
+            setValue('condition', device.condition ?? 'serviceable');
+            setValue('last_maintenance_date', device.last_maintenance_date);
+            setValue('maintenance_remarks', device.maintenance_remarks);
+        },
+
         openEdit(device) {
             device.specs = device.specs ?? {};
             device.specs.computer_name = device.specs.computer_name ?? '';
@@ -215,6 +264,7 @@
             this.editDevice = device;
             this.editDevice.unit_price = this.formatUnitPriceValue(this.editDevice.unit_price);
             this.editOpen = true;
+            this.$nextTick(() => this.populateEditEquipmentForm());
         },
 
         openIssue(device) {
@@ -384,14 +434,15 @@
                 autocomplete="off"
                 class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
             >
-<!--
             <div class="flex gap-2">
+                <!--
                 <button
                     type="submit"
                     class="inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                 >
                     Search
-                </button> -->
+                </button>
+                -->
 
                 <a
                     href="{{ route('admin.devices.index') }}"
@@ -548,25 +599,6 @@
                         Mark Checked
                     </a>
 
-                    @if(($d->status ?? 'available') === 'available' && !$d->currentAssignment)
-                        <button
-                            type="button"
-                            class="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
-                            x-on:click="openIssue({
-                                id: {{ $d->id }},
-                                property_number: @js($d->property_number),
-                                type: @js($d->type?->name ?? 'Equipment'),
-                                issue_url: @js(route('admin.devices.issue', $d))
-                            })"
-                        >
-                            Issue
-                        </button>
-                    @else
-                        <span class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                            {{ ucfirst($d->status ?? 'issued') }}
-                        </span>
-                    @endif
-
                     <button
                         type="button"
                         class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
@@ -705,25 +737,6 @@
                                         Mark Checked
                                     </a>
 
-                                    @if(($d->status ?? 'available') === 'available' && !$d->currentAssignment)
-                                        <button
-                                            type="button"
-                                            class="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
-                                            x-on:click="openIssue({
-                                                id: {{ $d->id }},
-                                                property_number: @js($d->property_number),
-                                                type: @js($d->type?->name ?? 'Equipment'),
-                                                issue_url: @js(route('admin.devices.issue', $d))
-                                            })"
-                                        >
-                                            Issue
-                                        </button>
-                                    @else
-                                        <span class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                                            {{ ucfirst($d->status ?? 'issued') }}
-                                        </span>
-                                    @endif
-
                                     <button
                                         type="button"
                                         class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
@@ -808,7 +821,7 @@
             <input type="hidden" name="form_context" value="add_equipment">
             <input type="hidden" name="status" value="available">
 
-            @include('admin.devices._add-equipment-fields', ['photoInputId' => 'add_equipment_photo'])
+            @include('admin.devices._add-equipment-fields')
 
             <div class="flex gap-2 pt-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
@@ -828,12 +841,43 @@
 
     {{-- Edit modal --}}
     <x-modal show="editOpen" title="Edit Equipment" max-width="max-w-4xl">
-        <form method="POST" :action="`{{ url('/admin/devices') }}/${editDevice.id}`" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
+        <form
+            method="POST"
+            :action="`{{ url('/admin/devices') }}/${editDevice.id}`"
+            enctype="multipart/form-data"
+            class="space-y-4"
+            x-ref="editEquipmentForm"
+            x-on:submit="cleanUnitPrices($event.target)"
+        >
             @csrf
             @method('PUT')
             <input type="hidden" name="status" x-model="editDevice.status">
 
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            @include('admin.devices._add-equipment-fields', [
+                'lockEquipmentType' => true,
+            ])
+
+            <div class="flex gap-2 pt-2">
+                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
+                    Save Changes
+                </button>
+                <button
+                    type="button"
+                    class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    x-on:click="editOpen = false"
+                >
+                    Cancel
+                </button>
+            </div>
+        </form>
+
+        @if(false)
+        <form method="POST" :action="`{{ url('/admin/devices') }}/${editDevice.id}`" enctype="multipart/form-data" class="edit-equipment-form space-y-4" x-on:submit="cleanUnitPrices($event.target)">
+            @csrf
+            @method('PUT')
+            <input type="hidden" name="status" x-model="editDevice.status">
+
+            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
                     <label class="text-sm font-medium dark:text-gray-300">Equipment Type</label>
                     <select
@@ -858,6 +902,7 @@
                         maxlength="50"
                         pattern="[A-Za-z0-9][A-Za-z0-9\-\/]*"
                         title="Letters, numbers, hyphens, and slashes only"
+                        placeholder="e.g. PN-2026-0001"
                     >
                 </div>
 
@@ -870,25 +915,18 @@
                         maxlength="100"
                         pattern="[A-Za-z0-9\-]*"
                         title="Letters, numbers, and hyphens only"
+                        placeholder="Enter serial number"
                     >
                 </div>
 
-                <div x-show="isComputerType(editDevice.device_type_id)" x-cloak>
+                <div>
                     <label class="text-sm font-medium dark:text-gray-300">Computer Name</label>
                     <input
-                        list="computer_name_options"
                         name="computer_name"
                         x-model="editDevice.computer_name"
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         maxlength="100"
-                        placeholder="Select or type computer name"
-                        :disabled="!isComputerType(editDevice.device_type_id)"
-                    >
-                    <input
-                        type="hidden"
-                        name="specs[computer_name]"
-                        x-model="editDevice.computer_name"
-                        :disabled="!isComputerType(editDevice.device_type_id)"
+                        placeholder="Enter computer name"
                     >
                 </div>
 
@@ -899,6 +937,7 @@
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.brand"
                         maxlength="100"
+                        placeholder="Example: ACER, EPSON"
                         pattern="[A-Za-zÑñ0-9][A-Za-zÑñ0-9.\-\s]*"
                         title="Letters and numbers only"
                     >
@@ -911,6 +950,7 @@
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.model"
                         maxlength="100"
+                        placeholder="Example: L3210, 2199"
                         pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*"
                         title="Letters and numbers only"
                     >
@@ -926,6 +966,7 @@
                         pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}"
                         title="Format: 00:1A:2B:3C:4D:5E"
                         :disabled="!isComputerType(editDevice.device_type_id)"
+                        placeholder="00:1A:2B:3C:4D:5E"
                     >
                 </div>
 
@@ -936,6 +977,7 @@
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.specs.memory"
                         maxlength="50"
+                        placeholder="Example: 8GB RAM"
                         :disabled="!isComputerType(editDevice.device_type_id)"
                     >
                 </div>
@@ -947,6 +989,7 @@
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.specs.storage"
                         maxlength="50"
+                        placeholder="Example: 256GB SSD"
                         :disabled="!isComputerType(editDevice.device_type_id)"
                     >
                 </div>
@@ -1040,6 +1083,7 @@
                         class="unit-price-input mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.unit_price"
                         x-on:input="formatUnitPriceInput($event)"
+                        placeholder="e.g. 25,000.00"
                     >
                 </div>
 
@@ -1089,6 +1133,7 @@
                     maxlength="1000"
                     class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     x-model="editDevice.maintenance_remarks"
+                    placeholder="Example: Initial check, cleaned, inspected"
                 ></textarea>
             </div>
 
@@ -1105,6 +1150,7 @@
                 </button>
             </div>
         </form>
+        @endif
     </x-modal>
 
     {{-- Issue modal --}}

@@ -212,7 +212,6 @@
                 @enderror
             </div>
 
-            @include('admin.devices._photo-input', ['photoInputId' => 'create_equipment_photo'])
         </div>
 
         <div class="flex gap-2">

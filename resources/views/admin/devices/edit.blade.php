@@ -11,6 +11,58 @@
 
 @section('content')
 <div class="bg-white rounded shadow-sm p-6 max-w-4xl">
+    <div
+        x-data="{
+            addTypeId: @js(old('device_type_id', $device->device_type_id)),
+            addOsVersion: @js(old('os_version', $device->os_version ?? '')),
+            addMsVersion: @js(old('ms_office_version', $device->ms_office_version ?? '')),
+            typeNames: @js($types->pluck('name', 'id')),
+            getTypeName(typeId) {
+                return String(this.typeNames?.[String(typeId)] ?? '').trim().toLowerCase();
+            },
+            isComputerType(typeId) {
+                const name = this.getTypeName(typeId ?? this.addTypeId);
+                return name === 'desktop' || name === 'laptop';
+            },
+            isDesktopType(typeId) {
+                return this.getTypeName(typeId ?? this.addTypeId) === 'desktop';
+            },
+            formatUnitPriceValue(value) {
+                value = String(value ?? '').replace(/[^0-9.]/g, '');
+                const parts = value.split('.');
+                let whole = parts.shift() || '';
+                const decimals = parts.length ? '.' + parts.join('').slice(0, 2) : '';
+                whole = whole.replace(/^0+(?=\d)/, '');
+                whole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                return whole + decimals;
+            },
+            formatUnitPriceInput(event) {
+                event.target.value = this.formatUnitPriceValue(event.target.value);
+            },
+            cleanUnitPrices(form) {
+                form.querySelectorAll('.unit-price-input').forEach((input) => {
+                    input.value = String(input.value ?? '').replace(/,/g, '');
+                });
+            }
+        }"
+    >
+        <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-6" x-on:submit="cleanUnitPrices($event.target)">
+            @csrf
+            @method('PUT')
+            <input type="hidden" name="status" value="{{ old('status', $device->status ?? 'available') }}">
+
+            @include('admin.devices._add-equipment-fields', [
+                'lockEquipmentType' => true,
+            ])
+
+            <div class="flex gap-2">
+                <button class="rounded bg-blue-600 px-4 py-2 text-white">Save Changes</button>
+                <a href="{{ route('admin.devices.index') }}" class="rounded bg-gray-100 px-4 py-2">Cancel</a>
+            </div>
+        </form>
+    </div>
+
+    @if(false)
     <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-6">
         @csrf
         @method('PUT')
@@ -233,58 +285,7 @@
             <a href="{{ route('admin.devices.index') }}" class="px-4 py-2 rounded bg-gray-100">Cancel</a>
         </div>
     </form>
+    @endif
 </div>
 
-@push('scripts')
-<script>
-    (function () {
-        var typeSelect      = document.getElementById('device_type_select');
-        var osVersionSel    = document.getElementById('os_version_select');
-        var msVersionSel    = document.getElementById('ms_office_version_select');
-
-        var osVersionWrap   = document.getElementById('os_version_wrapper');
-        var osLicenseWrap   = document.getElementById('os_license_wrapper');
-        var msVersionWrap   = document.getElementById('ms_office_version_wrapper');
-        var msLicenseWrap   = document.getElementById('ms_office_license_wrapper');
-
-        function isComputer(name) {
-            return name === 'Desktop' || name === 'Laptop';
-        }
-
-        function show(el) { el.style.display = ''; }
-        function hide(el) { el.style.display = 'none'; }
-
-        function updateFields() {
-            var selected = typeSelect.options[typeSelect.selectedIndex];
-            var typeName = selected ? selected.dataset.name : '';
-            var computer = isComputer(typeName);
-
-            if (computer) {
-                show(osVersionWrap);
-                show(msVersionWrap);
-                if (osVersionSel.value) { show(osLicenseWrap); } else { hide(osLicenseWrap); }
-                if (msVersionSel.value) { show(msLicenseWrap); } else { hide(msLicenseWrap); }
-            } else {
-                hide(osVersionWrap);
-                hide(osLicenseWrap);
-                hide(msVersionWrap);
-                hide(msLicenseWrap);
-            }
-        }
-
-        typeSelect.addEventListener('change', updateFields);
-
-        osVersionSel.addEventListener('change', function () {
-            if (this.value) { show(osLicenseWrap); } else { hide(osLicenseWrap); }
-        });
-
-        msVersionSel.addEventListener('change', function () {
-            if (this.value) { show(msLicenseWrap); } else { hide(msLicenseWrap); }
-        });
-
-        // Run on page load to restore state
-        updateFields();
-    })();
-</script>
-@endpush
 @endsection

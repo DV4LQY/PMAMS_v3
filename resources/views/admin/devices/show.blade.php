@@ -16,12 +16,44 @@
     $isComputerType = in_array($deviceTypeName, ['desktop', 'laptop']);
     $isDesktopType = $deviceTypeName === 'desktop';
     $deviceUrl = route('admin.devices.show', $device);
+    $editComputerName = old('computer_name', $device->computer_name ?? data_get($device->specs, 'computer_name', ''));
+    $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
+    $editLastMaintenanceDate = old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '');
+    $editCondition = old('condition', $device->condition ?? 'serviceable');
 @endphp
 
 <script>
     window.__deviceShowData = {
         selectedTypeId: @json(old('device_type_id', $device->device_type_id)),
-        typeNames: @json($types->pluck('name', 'id'))
+        typeNames: @json($types->pluck('name', 'id')),
+        selectedOsVersion: @json(old('os_version', $device->os_version)),
+        selectedMsOfficeVersion: @json(old('ms_office_version', $device->ms_office_version)),
+        editDevice: {
+            id: @json($device->id),
+            device_type_id: @json(old('device_type_id', $device->device_type_id)),
+            property_number: @json(old('property_number', $device->property_number)),
+            serial_number: @json(old('serial_number', $device->serial_number)),
+            computer_name: @json($editComputerName),
+            brand: @json(old('brand', $device->brand)),
+            model: @json(old('model', $device->model)),
+            mac_address: @json(old('mac_address', $device->mac_address)),
+            unit_price: @json(old('unit_price', $device->unit_price)),
+            date_acquired: @json($editDateAcquired),
+            last_maintenance_date: @json($editLastMaintenanceDate),
+            maintenance_remarks: @json(old('maintenance_remarks', $device->maintenance_remarks)),
+            status: @json($device->status ?? 'available'),
+            condition: @json($editCondition),
+            os_version: @json(old('os_version', $device->os_version)),
+            os_license: @json(old('os_license', $device->os_license)),
+            ms_office_version: @json(old('ms_office_version', $device->ms_office_version)),
+            ms_office_license: @json(old('ms_office_license', $device->ms_office_license)),
+            specs: {
+                memory: @json(data_get($device->specs, 'memory', '')),
+                storage: @json(data_get($device->specs, 'storage', '')),
+                form_factor: @json(data_get($device->specs, 'form_factor', '')),
+                computer_name: @json(data_get($device->specs, 'computer_name', ''))
+            }
+        }
     };
 
     function deviceEditor() {
@@ -43,6 +75,13 @@
             reissueStaffAbort: null,
             selectedTypeId: window.__deviceShowData.selectedTypeId,
             typeNames: window.__deviceShowData.typeNames,
+            selectedOsVersion: window.__deviceShowData.selectedOsVersion,
+            selectedMsOfficeVersion: window.__deviceShowData.selectedMsOfficeVersion,
+            addTypeId: window.__deviceShowData.selectedTypeId,
+            addComputerName: window.__deviceShowData.editDevice.computer_name || '',
+            addOsVersion: window.__deviceShowData.selectedOsVersion || '',
+            addMsVersion: window.__deviceShowData.selectedMsOfficeVersion || '',
+            editDevice: window.__deviceShowData.editDevice,
 
             getTypeName(typeId) {
                 return (this.typeNames[typeId] || '').toLowerCase();
@@ -82,9 +121,64 @@
                 });
             },
 
+            populateEditEquipmentForm() {
+                const form = this.$refs.editEquipmentForm;
+
+                if (!form || !this.editDevice) {
+                    return;
+                }
+
+                const device = this.editDevice;
+                const specs = device.specs ?? {};
+
+                this.addTypeId = String(device.device_type_id ?? '');
+                this.addComputerName = device.computer_name ?? specs.computer_name ?? '';
+                this.addOsVersion = device.os_version ?? '';
+                this.addMsVersion = device.ms_office_version ?? '';
+
+                const setValue = (name, value) => {
+                    const input = form.querySelector(`[name='${name}']`);
+
+                    if (!input) {
+                        return;
+                    }
+
+                    input.value = value ?? '';
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                };
+
+                setValue('device_type_id', device.device_type_id);
+                setValue('property_number', device.property_number);
+                setValue('serial_number', device.serial_number);
+                setValue('computer_name', this.addComputerName);
+                setValue('brand', device.brand);
+                setValue('model', device.model);
+                setValue('mac_address', device.mac_address);
+                setValue('specs[memory]', specs.memory);
+                setValue('specs[storage]', specs.storage);
+                setValue('specs[form_factor]', specs.form_factor);
+                setValue('os_version', this.addOsVersion);
+                setValue('os_license', device.os_license);
+                setValue('ms_office_version', this.addMsVersion);
+                setValue('ms_office_license', device.ms_office_license);
+                setValue('unit_price', this.formatUnitPriceValue(device.unit_price));
+                setValue('date_acquired', device.date_acquired);
+                setValue('condition', device.condition ?? 'serviceable');
+                setValue('last_maintenance_date', device.last_maintenance_date);
+                setValue('maintenance_remarks', device.maintenance_remarks);
+            },
+
+            openEdit() {
+                this.editOpen = true;
+                this.$nextTick(() => this.populateEditEquipmentForm());
+            },
+
             selectReissueStaff(staff) {
                 this.reissueStaffId = staff.id;
-                this.reissueStaffQuery = staff.label;
+                this.reissueStaffQuery = [staff.name, staff.position, staff.office]
+                    .filter(Boolean)
+                    .join(' - ');
                 this.reissueStaffSelected = staff;
                 this.reissueStaffResults = [];
             },
@@ -374,7 +468,8 @@
                     <button
                         id="open-edit-device-modal"
                         type="button"
-                        x-on:click="editOpen = true"
+                        data-open-modal="edit-device-modal"
+                        x-on:click="openEdit()"
                         class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                     >
                         Edit Specs
@@ -702,11 +797,11 @@
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Relocation remarks</label>
-                    <textarea name="remarks" x-model="relocateRemarks" rows="3" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or location transfer details"></textarea>
+                    <textarea name="remarks" x-model="relocateRemarks" rows="3" maxlength="1000" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or location transfer details"></textarea>
                 </div>
                 <div class="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
                     <button type="button" x-on:click="relocateOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
-                    <button type="submit" :disabled="!relocateLocationId" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50">Save Relocation</button>
+                    <button type="submit" :disabled="!relocateLocationId || !relocateRemarks.trim()" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50">Save Relocation</button>
                 </div>
             </form>
         </div>
@@ -726,19 +821,19 @@
                 @csrf
                 <div>
                     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search registered end user</label>
-                    <input type="text" x-ref="reissueStaffSearch" x-model="reissueStaffQuery" x-on:input="reissueStaffId = ''; reissueStaffSelected = null; queueReissueStaffLookup()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Name, email, office, or location" autocomplete="off">
+                    <input type="text" x-ref="reissueStaffSearch" x-model="reissueStaffQuery" x-on:input="reissueStaffId = ''; reissueStaffSelected = null; queueReissueStaffLookup()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Search name, email, or office" autocomplete="off">
                     <input type="hidden" name="staff_id" x-model="reissueStaffId">
                     <div class="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700" x-show="!reissueStaffId">
                         <template x-if="reissueStaffLoading">
                             <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Searching end users...</div>
                         </template>
                         <template x-if="!reissueStaffLoading && !reissueStaffHasSearched && reissueStaffResults.length === 0">
-                            <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Type a name, email, office, or location.</div>
+                            <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Type a registered end user's name, email, or office.</div>
                         </template>
                         <template x-for="staff in reissueStaffResults" :key="staff.id">
                             <button type="button" x-on:click="selectReissueStaff(staff)" class="block w-full px-3 py-2 text-left text-sm hover:bg-cyan-50 dark:hover:bg-gray-700">
                                 <span class="font-medium text-gray-900 dark:text-white" x-text="staff.name"></span>
-                                <span class="block text-xs text-gray-500" x-text="staff.label"></span>
+                                <span class="block text-xs text-gray-500" x-text="[staff.position, staff.office].filter(Boolean).join(' - ')"></span>
                                 <span class="block text-xs text-gray-400" x-show="staff.email" x-text="staff.email"></span>
                             </button>
                         </template>
@@ -776,6 +871,7 @@
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Edit Equipment</h2>
                 <button
                     type="button"
+                    data-native-modal-close="edit-device-modal"
                     x-on:click="editOpen = false"
                     class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                 >
@@ -783,14 +879,53 @@
                 </button>
             </div>
 
-            <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
+            <form
+                method="POST"
+                action="{{ route('admin.devices.update', $device) }}"
+                enctype="multipart/form-data"
+                class="space-y-4"
+                x-ref="editEquipmentForm"
+                x-on:submit="cleanUnitPrices($event.target)"
+            >
+                @csrf
+                @method('PUT')
+
+                <input type="hidden" name="status" x-model="editDevice.status">
+
+                <div class="max-h-[75vh] overflow-y-auto px-6 py-5">
+                    @include('admin.devices._add-equipment-fields', [
+                        'lockEquipmentType' => true,
+                    ])
+                </div>
+
+                <div class="flex justify-end gap-2 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+                    <button
+                        type="button"
+                        data-native-modal-close="edit-device-modal"
+                        x-on:click="editOpen = false"
+                        class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                    >
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+
+            @if(false)
+            <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="edit-equipment-form space-y-4" x-on:submit="cleanUnitPrices($event.target)">
                 @csrf
                 @method('PUT')
 
                 <input type="hidden" name="status" value="{{ $device->status ?? 'available' }}">
 
                 <div class="max-h-[75vh] overflow-y-auto px-6 py-5">
-                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div>
                             <label class="text-sm font-medium dark:text-gray-300">Equipment Type</label>
                             <select
@@ -817,6 +952,7 @@
                                 maxlength="50"
                                 pattern="[A-Za-z0-9][A-Za-z0-9\-\/]*"
                                 title="Letters, numbers, hyphens, and slashes only"
+                                placeholder="e.g. PN-2026-0001"
                             >
                         </div>
 
@@ -853,6 +989,7 @@
                                 value="{{ old('brand', $device->brand) }}"
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 maxlength="100"
+                                placeholder="Example: ACER, EPSON"
                                 pattern="[A-Za-zÑñ0-9][A-Za-zÑñ0-9.\-\s]*"
                                 title="Letters and numbers only"
                             >
@@ -865,6 +1002,7 @@
                                 value="{{ old('model', $device->model) }}"
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 maxlength="100"
+                                placeholder="Example: L3210, 2199"
                                 pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*"
                                 title="Letters and numbers only"
                             >
@@ -891,6 +1029,7 @@
                                 value="{{ old('specs.memory', data_get($device->specs, 'memory')) }}"
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 maxlength="50"
+                                placeholder="Example: 8GB RAM"
                                 :disabled="!isComputerType()"
                             >
                         </div>
@@ -902,6 +1041,7 @@
                                 value="{{ old('specs.storage', data_get($device->specs, 'storage')) }}"
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 maxlength="50"
+                                placeholder="Example: 256GB SSD"
                                 :disabled="!isComputerType()"
                             >
                         </div>
@@ -923,9 +1063,9 @@
                         </div>
 
                         {{-- OS Version --}}
-                        <div id="show_os_version_wrapper" style="display:none;">
+                        <div id="show_os_version_wrapper" x-show="isComputerType()" x-cloak>
                             <label class="text-sm font-medium dark:text-gray-300">OS Version</label>
-                            <select name="os_version" id="show_os_version_select" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                            <select name="os_version" id="show_os_version_select" x-model="selectedOsVersion" :disabled="!isComputerType()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
                                 <option value="">-- Select OS --</option>
                                 <option value="Windows 7" {{ old('os_version', $device->os_version) === 'Windows 7' ? 'selected' : '' }}>Windows 7</option>
                                 <option value="Windows 8" {{ old('os_version', $device->os_version) === 'Windows 8' ? 'selected' : '' }}>Windows 8</option>
@@ -935,9 +1075,9 @@
                         </div>
 
                         {{-- OS License --}}
-                        <div id="show_os_license_wrapper" style="display:none;">
+                        <div id="show_os_license_wrapper" x-show="isComputerType() && selectedOsVersion" x-cloak>
                             <label class="text-sm font-medium dark:text-gray-300">OS License</label>
-                            <select name="os_license" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                            <select name="os_license" :disabled="!isComputerType() || !selectedOsVersion" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
                                 <option value="">-- Select License --</option>
                                 <option value="Cracked" {{ old('os_license', $device->os_license) === 'Cracked' ? 'selected' : '' }}>Cracked</option>
                                 <option value="OEM Licensed" {{ old('os_license', $device->os_license) === 'OEM Licensed' ? 'selected' : '' }}>OEM Licensed</option>
@@ -945,9 +1085,9 @@
                         </div>
 
                         {{-- MS Office Version --}}
-                        <div id="show_ms_version_wrapper" style="display:none;">
+                        <div id="show_ms_version_wrapper" x-show="isComputerType()" x-cloak>
                             <label class="text-sm font-medium dark:text-gray-300">MS Office Version</label>
-                            <select name="ms_office_version" id="show_ms_version_select" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                            <select name="ms_office_version" id="show_ms_version_select" x-model="selectedMsOfficeVersion" :disabled="!isComputerType()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
                                 <option value="">-- Select MS Office --</option>
                                 <option value="Office 2007" {{ old('ms_office_version', $device->ms_office_version) === 'Office 2007' ? 'selected' : '' }}>Office 2007</option>
                                 <option value="Office 2010" {{ old('ms_office_version', $device->ms_office_version) === 'Office 2010' ? 'selected' : '' }}>Office 2010</option>
@@ -960,9 +1100,9 @@
                         </div>
 
                         {{-- MS Office License --}}
-                        <div id="show_ms_license_wrapper" style="display:none;">
+                        <div id="show_ms_license_wrapper" x-show="isComputerType() && selectedMsOfficeVersion" x-cloak>
                             <label class="text-sm font-medium dark:text-gray-300">MS Office License</label>
-                            <select name="ms_office_license" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                            <select name="ms_office_license" :disabled="!isComputerType() || !selectedMsOfficeVersion" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
                                 <option value="">-- Select License --</option>
                                 <option value="Cracked" {{ old('ms_office_license', $device->ms_office_license) === 'Cracked' ? 'selected' : '' }}>Cracked</option>
                                 <option value="OEM Licensed" {{ old('ms_office_license', $device->ms_office_license) === 'OEM Licensed' ? 'selected' : '' }}>OEM Licensed</option>
@@ -1036,6 +1176,7 @@
                             rows="3"
                             maxlength="1000"
                             class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            placeholder="Example: Initial check, cleaned, inspected"
                         >{{ old('maintenance_remarks', $device->maintenance_remarks) }}</textarea>
                     </div>
 
@@ -1044,6 +1185,7 @@
                 <div class="flex justify-end gap-2 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
                     <button
                         type="button"
+                        data-native-modal-close="edit-device-modal"
                         x-on:click="editOpen = false"
                         class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                     >
@@ -1058,6 +1200,7 @@
                     </button>
                 </div>
             </form>
+            @endif
         </div>
     </div>
 </div>
@@ -1119,48 +1262,4 @@
     </div>
 </div>
 
-@push('scripts')
-<script>
-(function () {
-    var typeName = @json(strtolower($device->type?->name ?? ''));
-    var isComputer = typeName === 'desktop' || typeName === 'laptop';
-
-    var osVerSel  = document.getElementById('show_os_version_select');
-    var msVerSel  = document.getElementById('show_ms_version_select');
-    var osVerWrap = document.getElementById('show_os_version_wrapper');
-    var osLicWrap = document.getElementById('show_os_license_wrapper');
-    var msVerWrap = document.getElementById('show_ms_version_wrapper');
-    var msLicWrap = document.getElementById('show_ms_license_wrapper');
-
-    function show(el) { if (el) el.style.display = ''; }
-    function hide(el) { if (el) el.style.display = 'none'; }
-
-    function init() {
-        if (!isComputer) return;
-        show(osVerWrap);
-        show(msVerWrap);
-        if (osVerSel && osVerSel.value) show(osLicWrap); else hide(osLicWrap);
-        if (msVerSel && msVerSel.value) show(msLicWrap); else hide(msLicWrap);
-    }
-
-    if (osVerSel) {
-        osVerSel.addEventListener('change', function () {
-            this.value ? show(osLicWrap) : hide(osLicWrap);
-        });
-    }
-    if (msVerSel) {
-        msVerSel.addEventListener('change', function () {
-            this.value ? show(msLicWrap) : hide(msLicWrap);
-        });
-    }
-
-    // Re-init when quick edit panel opens
-    document.addEventListener('click', function () {
-        setTimeout(init, 150);
-    });
-
-    init();
-})();
-</script>
-@endpush
 @endsection

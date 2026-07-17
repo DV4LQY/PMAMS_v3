@@ -296,7 +296,9 @@ class DeviceController extends Controller
     {
         $data = $request->validate([
             'location_id' => ['required', 'exists:locations,id'],
-            'remarks' => ['nullable', 'string', 'max:1000'],
+            'remarks' => ['required', 'string', 'max:1000'],
+        ], [
+            'remarks.required' => 'Please enter relocation remarks.',
         ]);
 
         $location = Location::findOrFail($data['location_id']);
