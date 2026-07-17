@@ -12,13 +12,14 @@
 @section('content')
 <div
     x-data="{
-        addOpen: false,
+        addOpen: {{ old('form_context') === 'add_equipment' ? 'true' : 'false' }},
         editOpen: false,
         issueOpen: false,
         deleteOpen: false,
         bulkDeleteOpen: false,
         importOpen: false,
         selectedDeviceIds: [],
+        filterTimer: null,
 
         addTypeId: '{{ old('device_type_id', $types->first()?->id) }}',
         addComputerName: @js(old('computer_name', old('specs.computer_name', ''))),
@@ -26,7 +27,13 @@
         addMsVersion: @js(old('ms_office_version', '')),
 
         typeNames: @js($types->pluck('name', 'id')),
-        staffOptions: @js($staffOptions ?? []),
+        staffLookupUrl: @js(route('admin.devices.lookup.staff')),
+        issueStaffResults: [],
+        issueStaffSelected: null,
+        issueStaffLoading: false,
+        issueStaffHasSearched: false,
+        issueStaffTimer: null,
+        issueStaffAbort: null,
 
         issueDevice: {
             id: null,
@@ -69,8 +76,41 @@
 
         pageDeviceIds: @js($devices->pluck('id')->values()),
 
+        init() {
+            this.$nextTick(() => {
+                this.$el.querySelectorAll('.unit-price-input').forEach((input) => {
+                    input.value = this.formatUnitPriceValue(input.value);
+                });
+
+                this.syncAddEquipmentType();
+            });
+        },
+
+        syncAddEquipmentType() {
+            const select = this.$el.querySelector('[data-equipment-type-select]');
+
+            if (select) {
+                this.addTypeId = String(select.value || '');
+            }
+        },
+
+        openAddEquipment() {
+            this.addOpen = true;
+            this.$nextTick(() => this.syncAddEquipmentType());
+        },
+
         getTypeName(typeId) {
-            return (this.typeNames[typeId] || '').toLowerCase();
+            const key = String(typeId ?? '');
+            const mappedName = this.typeNames?.[key];
+
+            if (mappedName) {
+                return String(mappedName).trim().toLowerCase();
+            }
+
+            const select = this.$el.querySelector('[data-equipment-type-select]');
+            return String(select?.options[select.selectedIndex]?.textContent || '')
+                .trim()
+                .toLowerCase();
         },
 
         isComputerType(typeId) {
@@ -82,21 +122,55 @@
             return this.getTypeName(typeId) === 'desktop';
         },
 
-        filteredStaffOptions() {
-            const query = this.issueStaffQuery.trim().toLowerCase();
-
-            return this.staffOptions
-                .filter((staff) => !query || staff.search.includes(query))
-                .slice(0, 10);
-        },
-
         selectedIssueStaff() {
-            return this.staffOptions.find((staff) => String(staff.id) === String(this.issueStaffId));
+            return this.issueStaffSelected;
         },
 
         selectIssueStaff(staff) {
             this.issueStaffId = staff.id;
             this.issueStaffQuery = staff.label;
+            this.issueStaffSelected = staff;
+            this.issueStaffResults = [];
+        },
+
+        queueIssueStaffLookup() {
+            clearTimeout(this.issueStaffTimer);
+            this.issueStaffTimer = setTimeout(() => this.fetchIssueStaff(), 250);
+        },
+
+        async fetchIssueStaff() {
+            const query = this.issueStaffQuery.trim();
+
+            if (this.issueStaffAbort) {
+                this.issueStaffAbort.abort();
+            }
+
+            this.issueStaffAbort = new AbortController();
+            this.issueStaffLoading = true;
+            this.issueStaffHasSearched = query !== '';
+
+            try {
+                const url = new URL(this.staffLookupUrl, window.location.origin);
+                url.searchParams.set('q', query);
+
+                const response = await fetch(url, {
+                    headers: { 'Accept': 'application/json' },
+                    signal: this.issueStaffAbort.signal,
+                });
+
+                if (!response.ok) {
+                    throw new Error('Unable to search staff.');
+                }
+
+                const data = await response.json();
+                this.issueStaffResults = Array.isArray(data.results) ? data.results : [];
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    this.issueStaffResults = [];
+                }
+            } finally {
+                this.issueStaffLoading = false;
+            }
         },
 
         formatUnitPriceValue(value) {
@@ -147,9 +221,15 @@
             this.issueDevice = device;
             this.issueStaffQuery = '';
             this.issueStaffId = '';
+            this.issueStaffSelected = null;
+            this.issueStaffResults = [];
+            this.issueStaffHasSearched = false;
             this.issueRemarks = '';
             this.issueOpen = true;
-            this.$nextTick(() => this.$refs.issueStaffSearch?.focus());
+            this.$nextTick(() => {
+                this.$refs.issueStaffSearch?.focus();
+                this.fetchIssueStaff();
+            });
         },
 
         openDelete(id) {
@@ -167,9 +247,14 @@
         clearSelection() {
             this.selectedDeviceIds = [];
             this.bulkDeleteOpen = false;
+        },
+
+        submitEquipmentFilters() {
+            clearTimeout(this.filterTimer);
+            this.filterTimer = setTimeout(() => this.$refs.equipmentFilterForm?.requestSubmit(), 450);
         }
     }"
-    x-init="$nextTick(() => $el.querySelectorAll('.unit-price-input').forEach((input) => input.value = formatUnitPriceValue(input.value)))"
+    x-on:open-equipment-add.window="openAddEquipment()"
     class="space-y-5"
 >
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -182,7 +267,8 @@
                 <button
                     type="button"
                     class="inline-flex shrink-0 items-center rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
-                    x-on:click="importOpen = true"
+                    x-on:click="importOpen = true; window.dispatchEvent(new CustomEvent('open-equipment-import'))"
+                    onclick="window.dispatchEvent(new CustomEvent('open-equipment-import'))"
                 >
                     Import Equipment
                 </button>
@@ -206,8 +292,10 @@
 
             <button
                 type="button"
+                data-open-add-equipment-modal
+                data-open-modal="add-equipment-modal"
                 class="inline-flex shrink-0 items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                x-on:click="addOpen = true"
+                x-on:click="openAddEquipment()"
             >
                 + Add Equipment
             </button>
@@ -227,7 +315,7 @@
 
     {{-- Filters --}}
     <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <form method="GET" class="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <form x-ref="equipmentFilterForm" method="GET" class="flex flex-col gap-3 lg:flex-row lg:items-center">
             <div class="w-full lg:w-44">
                 <select
                     name="type"
@@ -290,17 +378,20 @@
             <input
                 name="q"
                 value="{{ $q ?? '' }}"
+                x-on:input="submitEquipmentFilters()"
+                x-on:keydown.enter.prevent="$refs.equipmentFilterForm.requestSubmit()"
                 placeholder="Search property #, serial #..."
+                autocomplete="off"
                 class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
             >
-
+<!--
             <div class="flex gap-2">
                 <button
                     type="submit"
                     class="inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                 >
                     Search
-                </button>
+                </button> -->
 
                 <a
                     href="{{ route('admin.devices.index') }}"
@@ -507,7 +598,7 @@
                             }
                         })"
                     >
-                        Edit
+                        Edit Specs
                     </button>
 
                     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
@@ -664,7 +755,7 @@
                                             }
                                         })"
                                     >
-                                        Edit
+                                        Edit Specs
                                     </button>
 
                                     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
@@ -711,277 +802,21 @@
     </datalist>
 
     {{-- Add modal --}}
-    <x-modal show="addOpen" title="Add Equipment" max-width="max-w-4xl">
+    <x-modal id="add-equipment-modal" show="addOpen" title="Add Equipment" max-width="max-w-4xl">
         <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
             @csrf
+            <input type="hidden" name="form_context" value="add_equipment">
             <input type="hidden" name="status" value="available">
 
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Equipment Type</label>
-                    <select
-                        name="device_type_id"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        required
-                        x-model="addTypeId"
-                    >
-                        @foreach($types as $type)
-                            <option value="{{ $type->id }}">{{ $type->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Property Number</label>
-                    <input
-                        name="property_number"
-                        value="{{ old('property_number') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        required
-                        maxlength="50"
-                        pattern="[A-Za-z0-9][A-Za-z0-9\-\/]*"
-                        title="Letters, numbers, hyphens, and slashes only"
-                        placeholder="e.g. PN-2026-0001"
-                    >
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Serial Number</label>
-                    <input
-                        name="serial_number"
-                        value="{{ old('serial_number') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        maxlength="100"
-                        pattern="[A-Za-z0-9\-]*"
-                        title="Letters, numbers, and hyphens only"
-                        placeholder="Enter serial number"
-                    >
-                </div>
-
-                <div x-show="isComputerType(addTypeId)" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">Computer Name</label>
-                    <input
-                        list="computer_name_options"
-                        name="computer_name"
-                        x-model="addComputerName"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        maxlength="100"
-                        placeholder="Select or type computer name"
-                        :disabled="!isComputerType(addTypeId)"
-                    >
-                    <input
-                        type="hidden"
-                        name="specs[computer_name]"
-                        x-model="addComputerName"
-                        :disabled="!isComputerType(addTypeId)"
-                    >
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Brand</label>
-                    <input
-                        name="brand"
-                        value="{{ old('brand') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        maxlength="100"
-                        pattern="[A-Za-zÑñ0-9][A-Za-zÑñ0-9.\-\s]*"
-                        title="Letters and numbers only"
-                        placeholder="e.g. HP, Dell, ASUS"
-                    >
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Model</label>
-                    <input
-                        name="model"
-                        value="{{ old('model') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        maxlength="100"
-                        pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*"
-                        title="Letters and numbers only"
-                        placeholder="Example: Epson L3110, Acer Aspire"
-                    >
-                </div>
-
-                <div x-show="isComputerType(addTypeId)" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">MAC Address</label>
-                    <input
-                        name="mac_address"
-                        value="{{ old('mac_address') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        maxlength="17"
-                        pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}"
-                        title="Format: 00:1A:2B:3C:4D:5E"
-                        placeholder="00:1A:2B:3C:4D:5E"
-                        :disabled="!isComputerType(addTypeId)"
-                    >
-                </div>
-
-                <div x-show="isComputerType(addTypeId)" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">Memory</label>
-                    <input
-                        name="specs[memory]"
-                        value="{{ old('specs.memory') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        maxlength="50"
-                        placeholder="Example: 8GB RAM"
-                        :disabled="!isComputerType(addTypeId)"
-                    >
-                </div>
-
-                <div x-show="isComputerType(addTypeId)" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">Storage</label>
-                    <input
-                        name="specs[storage]"
-                        value="{{ old('specs.storage') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        maxlength="50"
-                        placeholder="Example: 256GB SSD / 1TB HDD"
-                        :disabled="!isComputerType(addTypeId)"
-                    >
-                </div>
-
-                <div x-show="isDesktopType(addTypeId)" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">Form Factor</label>
-                    <select
-                        name="specs[form_factor]"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        :disabled="!isDesktopType(addTypeId)"
-                    >
-                        <option value="">-- Select Form Factor --</option>
-                        <option value="Tower Desktops" @selected(old('specs.form_factor') === 'Tower Desktops')>Tower Desktops</option>
-                        <option value="Small Form Factor (SFF) Desktops" @selected(old('specs.form_factor') === 'Small Form Factor (SFF) Desktops')>Small Form Factor (SFF) Desktops</option>
-                        <option value="All-in-One (AIO) Desktops" @selected(old('specs.form_factor') === 'All-in-One (AIO) Desktops')>All-in-One (AIO) Desktops</option>
-                        <option value="Mini PCs" @selected(old('specs.form_factor') === 'Mini PCs')>Mini PCs</option>
-                        <option value="Workstations" @selected(old('specs.form_factor') === 'Workstations')>Workstations</option>
-                    </select>
-                </div>
-
-                <div x-show="isComputerType(addTypeId)" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">OS Version</label>
-                    <select
-                        name="os_version"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        x-model="addOsVersion"
-                        :disabled="!isComputerType(addTypeId)"
-                    >
-                        <option value="">-- Select OS --</option>
-                        <option value="Windows 7">Windows 7</option>
-                        <option value="Windows 8">Windows 8</option>
-                        <option value="Windows 10">Windows 10</option>
-                        <option value="Windows 11">Windows 11</option>
-                    </select>
-                </div>
-
-                <div x-show="isComputerType(addTypeId) && addOsVersion" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">OS License</label>
-                    <select
-                        name="os_license"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        :disabled="!isComputerType(addTypeId) || !addOsVersion"
-                    >
-                        <option value="">-- Select License --</option>
-                        <option value="Cracked" @selected(old('os_license') === 'Cracked')>Cracked</option>
-                        <option value="OEM Licensed" @selected(old('os_license') === 'OEM Licensed')>OEM Licensed</option>
-                    </select>
-                </div>
-
-                <div x-show="isComputerType(addTypeId)" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">MS Office Version</label>
-                    <select
-                        name="ms_office_version"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        x-model="addMsVersion"
-                        :disabled="!isComputerType(addTypeId)"
-                    >
-                        <option value="">-- Select MS Office --</option>
-                        <option value="Office 2007">Office 2007</option>
-                        <option value="Office 2010">Office 2010</option>
-                        <option value="Office 2013">Office 2013</option>
-                        <option value="Office 2016">Office 2016</option>
-                        <option value="Office 2019">Office 2019</option>
-                        <option value="Office 2021">Office 2021</option>
-                        <option value="Microsoft 365">Microsoft 365</option>
-                    </select>
-                </div>
-
-                <div x-show="isComputerType(addTypeId) && addMsVersion" x-cloak>
-                    <label class="text-sm font-medium dark:text-gray-300">MS Office License</label>
-                    <select
-                        name="ms_office_license"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        :disabled="!isComputerType(addTypeId) || !addMsVersion"
-                    >
-                        <option value="">-- Select License --</option>
-                        <option value="Cracked" @selected(old('ms_office_license') === 'Cracked')>Cracked</option>
-                        <option value="OEM Licensed" @selected(old('ms_office_license') === 'OEM Licensed')>OEM Licensed</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Unit Price</label>
-                    <input
-                        name="unit_price"
-                        value="{{ old('unit_price') }}"
-                        type="text"
-                        inputmode="decimal"
-                        placeholder="e.g. 25,000.00"
-                        class="unit-price-input mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        x-on:input="formatUnitPriceInput($event)"
-                    >
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Date Acquired</label>
-                    <input
-                        name="date_acquired"
-                        value="{{ old('date_acquired') }}"
-                        type="date"
-                        max="{{ now()->format('Y-m-d') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    >
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Condition</label>
-                    <select name="condition" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                        <option value="serviceable" @selected(old('condition', 'serviceable') === 'serviceable')>Serviceable</option>
-                <option value="unserviceable" @selected(old('condition') === 'unserviceable')>Unserviceable</option>
-                <option value="condemned" @selected(old('condition') === 'condemned')>Condemned</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="text-sm font-medium dark:text-gray-300">Last Maintenance Date</label>
-                    <input
-                        name="last_maintenance_date"
-                        value="{{ old('last_maintenance_date') }}"
-                        type="date"
-                        max="{{ now()->format('Y-m-d') }}"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    >
-                </div>
-
-                @include('admin.devices._photo-input', ['photoInputId' => 'add_equipment_photo'])
-            </div>
-
-            <div>
-                <label class="text-sm font-medium dark:text-gray-300">Maintenance Remarks</label>
-                <textarea
-                    name="maintenance_remarks"
-                    rows="3"
-                    maxlength="1000"
-                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    placeholder="Example: Initial check, cleaned, inspected"
-                >{{ old('maintenance_remarks') }}</textarea>
-            </div>
+            @include('admin.devices._add-equipment-fields', ['photoInputId' => 'add_equipment_photo'])
 
             <div class="flex gap-2 pt-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
-                    Save
+                    Save Equipment
                 </button>
                 <button
                     type="button"
+                    data-native-modal-close="add-equipment-modal"
                     class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                     x-on:click="addOpen = false"
                 >
@@ -1288,7 +1123,7 @@
                     type="text"
                     x-ref="issueStaffSearch"
                     x-model="issueStaffQuery"
-                    x-on:input="issueStaffId = ''"
+                    x-on:input="issueStaffId = ''; issueStaffSelected = null; queueIssueStaffLookup()"
                     placeholder="Type staff name, email, office, or location..."
                     class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
                     autocomplete="off"
@@ -1299,13 +1134,25 @@
                     x-show="!issueStaffId"
                     class="mt-2 max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
                 >
-                    <template x-if="!issueStaffId && filteredStaffOptions().length === 0">
+                    <template x-if="issueStaffLoading">
+                        <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                            Searching staff...
+                        </div>
+                    </template>
+
+                    <template x-if="!issueStaffLoading && !issueStaffHasSearched && issueStaffResults.length === 0">
+                        <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                            Type a name, email, office, or location.
+                        </div>
+                    </template>
+
+                    <template x-if="!issueStaffLoading && issueStaffHasSearched && issueStaffResults.length === 0">
                         <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
                             No staff found.
                         </div>
                     </template>
 
-                    <template x-for="staff in filteredStaffOptions()" :key="staff.id">
+                    <template x-for="staff in issueStaffResults" :key="staff.id">
                         <button
                             type="button"
                             x-on:click="selectIssueStaff(staff)"
@@ -1357,40 +1204,42 @@
 
     {{-- Import modal --}}
     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
-        <x-modal show="importOpen" title="Import Complete Equipment Records">
-            <form method="POST" action="{{ route('admin.devices.import') }}" enctype="multipart/form-data" class="space-y-4">
-                @csrf
+        <div x-data="{ importOpen: false }" x-on:open-equipment-import.window="importOpen = true">
+            <x-modal show="importOpen" title="Import Complete Equipment Records">
+                <form method="POST" action="{{ route('admin.devices.import') }}" enctype="multipart/form-data" class="space-y-4">
+                    @csrf
 
-                <div>
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">CSV or Excel file</label>
-                    <input
-                        type="file"
-                        name="file"
-                        accept=".csv,.txt,.xlsx,.xls"
-                        required
-                        class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    >
-                </div>
-
-                <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                    One file covers the complete equipment specifications and optional issuance. End users are matched by staff email first, then by name, with optional office and location_code filters. Leave the staff fields blank when equipment is not yet issued.
-                </div>
-
-                <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
-                    <a
-                        href="{{ route('admin.devices.importTemplate') }}"
-                        data-no-spa="true"
-                        class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-                    >
-                        Download import template
-                    </a>
-                    <div class="flex gap-2">
-                        <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600" x-on:click="importOpen = false">Cancel</button>
-                        <button type="submit" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600">Import equipment</button>
+                    <div>
+                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">CSV or Excel file</label>
+                        <input
+                            type="file"
+                            name="file"
+                            accept=".csv,.txt,.xlsx,.xls"
+                            required
+                            class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        >
                     </div>
-                </div>
-            </form>
-        </x-modal>
+
+                    <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+                        One file covers the complete equipment specifications and optional issuance. End users are matched by staff email first, then by name, with optional office and location_code filters. Leave the staff fields blank when equipment is not yet issued.
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
+                        <a
+                            href="{{ route('admin.devices.importTemplate') }}"
+                            data-no-spa="true"
+                            class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                        >
+                            Download import template
+                        </a>
+                        <div class="flex gap-2">
+                            <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600" x-on:click="importOpen = false">Cancel</button>
+                            <button type="submit" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600">Import equipment</button>
+                        </div>
+                    </div>
+                </form>
+            </x-modal>
+        </div>
     @endif
 
     {{-- Bulk delete confirmation --}}

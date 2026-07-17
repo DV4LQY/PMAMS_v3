@@ -34,14 +34,12 @@ class StaffDeviceController extends Controller
         | 1. Have status = available
         | 2. Do not have an active assignment
         */
-        $availableDevices = Device::query()
-            ->with('type')
+        $availableDevicesCount = Device::query()
             ->where('status', 'available')
             ->whereDoesntHave('currentAssignment')
-            ->orderBy('property_number')
-            ->get();
+            ->count();
 
-        return view('admin.staff.devices', compact('staff', 'assignments', 'availableDevices'));
+        return view('admin.staff.devices', compact('staff', 'assignments', 'availableDevicesCount'));
     }
 
     public function issue(Request $request, Staff $staff)

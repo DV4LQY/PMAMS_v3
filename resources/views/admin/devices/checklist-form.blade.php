@@ -48,6 +48,16 @@
         x-data="{
             remarks: @js(old('remarks', '')),
             correctiveAction: @js(old('corrective_action', '')),
+            checklistVersion: 0,
+            checklistItemCount: {{ count($checklistItems) }},
+            softwareItemCount: {{ count($softwareItems) }},
+            allChecklistAnswered() {
+                this.checklistVersion;
+                const checked = Array.from(this.$el.querySelectorAll('input[type=radio]:checked'));
+                const hardwareAnswered = checked.filter((input) => input.name.startsWith(`hardware[`)).length === this.checklistItemCount;
+                const softwareAnswered = checked.filter((input) => input.name.startsWith(`software[`)).length === this.softwareItemCount;
+                return hardwareAnswered && softwareAnswered;
+            },
             applyAvailabilityDefaults() {
                 const avrUnavailable = this.$el.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
                 const printerUnavailable = this.$el.elements['hardware[printer_printout]']?.value === 'Not Available';
@@ -77,6 +87,13 @@
                         <li>{{ $error }}</li>
                     @endforeach
                 </ul>
+            </div>
+        @endif
+
+        @if(session('duplicate_warning'))
+            <div class="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                The equipment was already checked on date <strong>{{ session('duplicate_warning.date') }}</strong>, do you want to verify the checklist?
+                <input type="hidden" name="confirm_duplicate" value="1">
             </div>
         @endif
 
@@ -162,7 +179,8 @@
                                         name="hardware[{{ $key }}]"
                                         value="OK"
                                         class="peer sr-only"
-                                        x-on:change="applyAvailabilityDefaults()"
+                                        @if($loop->first) required @endif
+                                        x-on:change="applyAvailabilityDefaults(); checklistVersion++"
                                         @checked(old("hardware.$key") === 'OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-green-600 peer-checked:bg-green-50 peer-checked:text-green-700 dark:peer-checked:bg-green-900/30 dark:peer-checked:text-green-400">
@@ -178,7 +196,7 @@
                                         name="hardware[{{ $key }}]"
                                         value="Not OK"
                                         class="peer sr-only"
-                                        x-on:change="applyAvailabilityDefaults()"
+                                        x-on:change="applyAvailabilityDefaults(); checklistVersion++"
                                         @checked(old("hardware.$key") === 'Not OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-red-600 peer-checked:bg-red-50 peer-checked:text-red-700 dark:peer-checked:bg-red-900/30 dark:peer-checked:text-red-400">
@@ -195,7 +213,7 @@
                                             name="hardware[{{ $key }}]"
                                             value="Not Available"
                                             class="peer sr-only"
-                                            x-on:change="applyAvailabilityDefaults()"
+                                            x-on:change="applyAvailabilityDefaults(); checklistVersion++"
                                             @checked(old("hardware.$key") === 'Not Available')
                                         >
                                         <span class="flex min-h-8 min-w-8 items-center justify-center rounded border-2 border-gray-400 px-2 text-xs font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
@@ -221,6 +239,8 @@
                                         name="software[{{ $key }}]"
                                         value="check"
                                         class="peer sr-only"
+                                        @if($loop->first) required @endif
+                                        x-on:change="checklistVersion++"
                                         @checked(old("software.$key") === 'check')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-green-600 peer-checked:bg-green-50 peer-checked:text-green-700 dark:peer-checked:bg-green-900/30 dark:peer-checked:text-green-400">
@@ -236,6 +256,7 @@
                                         name="software[{{ $key }}]"
                                         value="dash"
                                         class="peer sr-only"
+                                        x-on:change="checklistVersion++"
                                         @checked(old("software.$key") === 'dash')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-600 peer-checked:bg-gray-50 peer-checked:text-gray-700 dark:peer-checked:bg-gray-700 dark:peer-checked:text-gray-300">
@@ -274,6 +295,21 @@
             </div>
         </div>
 
+        <div class="mt-5">
+            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Reason for Activity Log <span class="text-red-600">*</span>
+            </label>
+            <textarea
+                name="verification_reason"
+                rows="3"
+                required
+                maxlength="1000"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                placeholder="Enter the reason for marking this equipment as checked"
+            >{{ old('verification_reason') }}</textarea>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Used for the activity log only.</p>
+        </div>
+
         <div class="mt-6 flex justify-end gap-2">
             <a
                 href="{{ route('admin.devices.show', $device) }}"
@@ -284,9 +320,11 @@
 
             <button
                 type="submit"
+                x-show="allChecklistAnswered()"
+                x-bind:disabled="!allChecklistAnswered()"
                 class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
-                Save Checklist
+                {{ session('duplicate_warning') ? 'Verify & Save Checklist' : 'Save Checklist' }}
             </button>
         </div>
     </form>

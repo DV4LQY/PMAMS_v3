@@ -51,6 +51,7 @@ class IssuanceController extends Controller
         $input = $request instanceof Request ? $request->query() : $request;
 
         $q = trim((string) ($input['q'] ?? ''));
+        $tokens = self::searchTokens($q);
         $typeId = (int) ($input['type_id'] ?? 0) ?: null;
         $locationId = (int) (($input['location_id'] ?? null) ?: ($input['college_id'] ?? null)) ?: null;
         $officeId = (int) ($input['office_id'] ?? 0) ?: null;
@@ -73,30 +74,45 @@ class IssuanceController extends Controller
             ->when($officeId, function ($query) use ($officeId) {
                 $query->whereHas('staff', fn ($staff) => $staff->where('office_id', $officeId));
             })
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($sub) use ($q) {
-                    $sub->where('remarks', 'like', "%{$q}%")
-                        ->orWhereHas('device', function ($device) use ($q) {
-                            $device->where('property_number', 'like', "%{$q}%")
-                                ->orWhere('serial_number', 'like', "%{$q}%")
-                                ->orWhere('computer_name', 'like', "%{$q}%")
-                                ->orWhere('brand', 'like', "%{$q}%")
-                                ->orWhere('model', 'like', "%{$q}%");
-                        })
-                        ->orWhereHas('staff', function ($staff) use ($q) {
-                            $staff->where('first_name', 'like', "%{$q}%")
-                                ->orWhere('last_name', 'like', "%{$q}%")
-                                ->orWhere('position', 'like', "%{$q}%")
-                                ->orWhere('email', 'like', "%{$q}%")
-                                ->orWhereHas('office', function ($office) use ($q) {
-                                    $office->where('name', 'like', "%{$q}%")
-                                        ->orWhereHas('location', function ($location) use ($q) {
-                                            $location->where('name', 'like', "%{$q}%")
-                                                ->orWhere('code', 'like', "%{$q}%");
-                                        });
-                                });
-                        });
-                });
+            ->when($tokens !== [], function ($query) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $query->where(function ($sub) use ($token) {
+                        $like = "%{$token}%";
+
+                        $sub->where('remarks', 'like', $like)
+                            ->orWhereHas('device', function ($device) use ($like) {
+                                $device->where('property_number', 'like', $like)
+                                    ->orWhere('serial_number', 'like', $like)
+                                    ->orWhere('computer_name', 'like', $like)
+                                    ->orWhere('brand', 'like', $like)
+                                    ->orWhere('model', 'like', $like)
+                                    ->orWhereHas('type', fn ($type) => $type->where('name', 'like', $like));
+                            })
+                            ->orWhereHas('staff', function ($staff) use ($like) {
+                                $staff->where('first_name', 'like', $like)
+                                    ->orWhere('last_name', 'like', $like)
+                                    ->orWhere('position', 'like', $like)
+                                    ->orWhere('email', 'like', $like)
+                                    ->orWhereHas('office', function ($office) use ($like) {
+                                        $office->where('name', 'like', $like)
+                                            ->orWhereHas('location', function ($location) use ($like) {
+                                                $location->where('name', 'like', $like)
+                                                    ->orWhere('code', 'like', $like);
+                                            });
+                                    });
+                            });
+                    });
+                }
             });
+    }
+
+    private static function searchTokens(string $value): array
+    {
+        return collect(preg_split('/\s+/', strtolower(trim($value)), -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $token) => trim($token))
+            ->filter(fn (string $token) => $token !== '')
+            ->take(5)
+            ->values()
+            ->all();
     }
 }

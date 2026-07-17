@@ -102,23 +102,25 @@
                 class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">
 
 
-            <select name="checker_id"
-                    class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">
+            @if($canViewAllCheckedReports ?? true)
+                <select name="checker_id"
+                        class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">
 
-                <option value="">
-                    All checked by
-                </option>
+                    <option value="">All checked by</option>
 
-                @foreach(($checkerUsers ?? $adminUsers) as $checker)
-
-                    <option value="{{ $checker->id }}"
-                    @selected((int)($checkerId ?? $adminId ?? 0)===$checker->id)>
-                        {{ $checker->name }}
-                    </option>
-
-                @endforeach
-
-            </select>
+                    @foreach(($checkerUsers ?? $adminUsers) as $checker)
+                        <option value="{{ $checker->id }}"
+                        @selected((int)($checkerId ?? $adminId ?? 0)===$checker->id)>
+                            {{ $checker->name }}
+                        </option>
+                    @endforeach
+                </select>
+            @else
+                <div class="flex items-center rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                    My marked checked records
+                </div>
+                <input type="hidden" name="checker_id" value="{{ auth()->id() }}">
+            @endif
 
 
             <select name="location_id"

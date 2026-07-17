@@ -46,26 +46,62 @@ class Device extends Model
         $locationId = (int) ($filters['location_id'] ?? 0);
         $status = $filters['status'] ?? null;
         $condition = $filters['condition'] ?? null;
+        $tokens = $this->searchTokens($q);
 
         return $query
-            ->when($q !== '', function (Builder $query) use ($q) {
-                $query->where(function (Builder $sub) use ($q) {
-                    $sub->where('property_number', 'like', "%{$q}%")
-                        ->orWhere('serial_number', 'like', "%{$q}%")
-                        ->orWhere('computer_name', 'like', "%{$q}%")
-                        ->orWhere('brand', 'like', "%{$q}%")
-                        ->orWhere('model', 'like', "%{$q}%")
-                        ->orWhere('mac_address', 'like', "%{$q}%");
-                });
+            ->when($tokens !== [], function (Builder $query) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $query->where(function (Builder $sub) use ($token) {
+                        $like = "%{$token}%";
+
+                        $sub->where('property_number', 'like', $like)
+                            ->orWhere('serial_number', 'like', $like)
+                            ->orWhere('computer_name', 'like', $like)
+                            ->orWhere('brand', 'like', $like)
+                            ->orWhere('model', 'like', $like)
+                            ->orWhere('mac_address', 'like', $like)
+                            ->orWhereHas('type', fn (Builder $type) => $type->where('name', 'like', $like))
+                            ->orWhereHas('currentAssignment.location', function (Builder $location) use ($like) {
+                                $location->where('name', 'like', $like)
+                                    ->orWhere('code', 'like', $like);
+                            })
+                            ->orWhereHas('currentAssignment.staff', function (Builder $staff) use ($like) {
+                                $staff->where('first_name', 'like', $like)
+                                    ->orWhere('last_name', 'like', $like)
+                                    ->orWhere('email', 'like', $like)
+                                    ->orWhere('position', 'like', $like)
+                                    ->orWhereHas('office', function (Builder $office) use ($like) {
+                                        $office->where('name', 'like', $like)
+                                            ->orWhereHas('location', function (Builder $location) use ($like) {
+                                                $location->where('name', 'like', $like)
+                                                    ->orWhere('code', 'like', $like);
+                                            });
+                                    });
+                            });
+                    });
+                }
             })
             ->when($typeId, fn (Builder $query) => $query->where('device_type_id', $typeId))
             ->when($locationId, function (Builder $query) use ($locationId) {
-                $query->whereHas('currentAssignment.staff.office', function (Builder $office) use ($locationId) {
-                    $office->where('location_id', $locationId);
+                $query->whereHas('currentAssignment', function (Builder $assignment) use ($locationId) {
+                    $assignment->where('location_id', $locationId)
+                        ->orWhereHas('staff.office', function (Builder $office) use ($locationId) {
+                            $office->where('location_id', $locationId);
+                        });
                 });
             })
             ->when($status, fn (Builder $query) => $query->where('status', $status))
             ->when($condition, fn (Builder $query) => $query->where('condition', $condition));
+    }
+
+    private function searchTokens(string $value): array
+    {
+        return collect(preg_split('/\s+/', strtolower(trim($value)), -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $token) => trim($token))
+            ->filter(fn (string $token) => $token !== '')
+            ->take(5)
+            ->values()
+            ->all();
     }
 
     public function type(): BelongsTo

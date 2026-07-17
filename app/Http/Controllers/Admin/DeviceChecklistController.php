@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Device;
 use App\Models\DeviceMaintenanceRecord;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -17,6 +18,7 @@ class DeviceChecklistController extends Controller
         $device->load([
             'type',
             'currentAssignment.staff.office.location',
+            'currentAssignment.location',
         ]);
 
         return view('admin.devices.checklist-form', [
@@ -35,27 +37,32 @@ class DeviceChecklistController extends Controller
     public function store(Request $request, Device $device)
     {
         $hardwareRules = [];
+        $softwareRules = [];
         foreach ($this->checklistItems() as $key => $item) {
             $allowedValues = ['OK', 'Not OK'];
             if ($item['not_available'] ?? false) {
                 $allowedValues[] = 'Not Available';
             }
 
-            $hardwareRules["hardware.{$key}"] = ['nullable', 'string', Rule::in($allowedValues)];
+            $hardwareRules["hardware.{$key}"] = ['required', 'string', Rule::in($allowedValues)];
+        }
+
+        foreach ($this->softwareItems() as $key => $label) {
+            $softwareRules["software.{$key}"] = ['required', 'string', Rule::in(['check', 'dash'])];
         }
 
         $data = $request->validate(array_merge([
             'date_checked' => ['nullable', 'date', 'before_or_equal:today'],
             'maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
 
-            'hardware' => ['nullable', 'array'],
+            'hardware' => ['required', 'array'],
 
-            'software' => ['nullable', 'array'],
-            'software.*' => ['nullable', 'string', 'in:check,dash'],
-
+            'software' => ['required', 'array'],
             'remarks' => ['nullable', 'string', 'max:1000'],
             'corrective_action' => ['nullable', 'string', 'max:1000'],
-        ], $hardwareRules));
+            'confirm_duplicate' => ['nullable', 'boolean'],
+            'verification_reason' => ['required', 'string', 'max:1000'],
+        ], $hardwareRules, $softwareRules));
 
         $dateChecked = $data['date_checked']
             ?? $data['maintenance_date']
@@ -71,6 +78,30 @@ class DeviceChecklistController extends Controller
         );
         $remarks = trim((string) ($data['remarks'] ?? ''));
         $correctiveAction = trim((string) ($data['corrective_action'] ?? ''));
+        $verificationReason = trim((string) $data['verification_reason']);
+
+        // A checklist can be submitted again, but only after the user has
+        // explicitly confirmed that it is a verification within the same
+        // three-month maintenance window. Every submission remains a new
+        // maintenance record; this query is only used for the warning.
+        $date = Carbon::parse($dateChecked);
+        $duplicateRecords = $device->maintenanceRecords()
+            ->whereDate('maintenance_date', '>=', $date->copy()->subMonthsNoOverflow(3)->toDateString())
+            ->whereDate('maintenance_date', '<=', $date->toDateString())
+            ->orderByDesc('maintenance_date')
+            ->orderByDesc('id')
+            ->get();
+        $duplicateRecord = $duplicateRecords->first();
+
+        if ($duplicateRecord && ! $request->boolean('confirm_duplicate')) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('duplicate_warning', [
+                    'date' => $duplicateRecord->maintenance_date?->format('F j, Y'),
+                    'record_id' => $duplicateRecord->id,
+                ]);
+        }
 
         $avrUpsUnavailable = ($hardwareResponses['avr_ups_power_recovery'] ?? null) === 'Not Available';
         $printerUnavailable = ($hardwareResponses['printer_printout'] ?? null) === 'Not Available';
@@ -88,11 +119,11 @@ class DeviceChecklistController extends Controller
         }
 
         $assignment = $device->currentAssignment()
-            ->with('staff.office.location')
+            ->with(['staff.office.location', 'location'])
             ->first();
         $staff = $assignment?->staff;
         $office = $staff?->office;
-        $location = $office?->location;
+        $location = $assignment?->location ?? $office?->location;
 
         $snapshot = [
             'property_number' => $device->property_number,
@@ -123,6 +154,11 @@ class DeviceChecklistController extends Controller
                 'hardware' => $hardwareResponses,
                 'software' => $softwareResponses,
                 'snapshot' => $snapshot,
+                'duplicate_check' => [
+                    'matched_record_id' => $duplicateRecord?->id,
+                    'matches_in_three_months' => $duplicateRecords->count(),
+                    'window_months' => 3,
+                ],
             ],
             'checked_by' => Auth::id(),
         ]);
@@ -139,7 +175,7 @@ class DeviceChecklistController extends Controller
 
         ActivityLog::record(
             'updated',
-            "Marked device \"{$device->property_number}\" as checked with checklist",
+            "Marked device \"{$device->property_number}\" as checked with checklist. Reason: {$verificationReason}",
             $device
         );
 

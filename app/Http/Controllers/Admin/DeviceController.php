@@ -49,6 +49,7 @@ class DeviceController extends Controller
             ->with([
                 'type',
                 'currentAssignment.staff.office.location',
+                'currentAssignment.location',
                 'latestMaintenanceRecord',
             ])
             ->filterInventory([
@@ -74,38 +75,6 @@ class DeviceController extends Controller
 
         $colleges = $locations; // backward-compatible variable for existing device views
 
-        $staffOptions = Staff::query()
-            ->with('office.location')
-            ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->get()
-            ->map(function (Staff $staff) {
-                $name = trim($staff->first_name . ' ' . $staff->last_name);
-                $office = $staff->office?->name;
-                $location = $staff->office?->location?->code ?: $staff->office?->location?->name;
-
-                return [
-                    'id' => $staff->id,
-                    'name' => $name,
-                    'position' => $staff->position,
-                    'email' => $staff->email,
-                    'office' => $office,
-                    'location' => $location,
-                    'label' => collect([$name, $staff->position, $office, $location])
-                        ->filter()
-                        ->join(' • '),
-                    'search' => strtolower(collect([
-                        $name,
-                        $staff->position,
-                        $staff->email,
-                        $staff->phone,
-                        $office,
-                        $location,
-                    ])->filter()->join(' ')),
-                ];
-            })
-            ->values();
-
         return view('admin.devices.index', compact(
             'devices',
             'q',
@@ -116,9 +85,110 @@ class DeviceController extends Controller
             'condition',
             'types',
             'locations',
-            'colleges',
-            'staffOptions'
+            'colleges'
         ));
+    }
+
+    public function staffLookup(Request $request)
+    {
+        $tokens = $this->searchTokens($request->string('q')->toString());
+
+        $staff = Staff::query()
+            ->select(['id', 'office_id', 'first_name', 'last_name', 'position', 'email', 'phone', 'is_active'])
+            ->with([
+                'office:id,location_id,name',
+                'office.location:id,name,code',
+            ])
+            ->where('is_active', true)
+            ->when($tokens !== [], function ($query) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $query->where(function ($sub) use ($token) {
+                        $like = "%{$token}%";
+
+                        $sub->where('first_name', 'like', $like)
+                            ->orWhere('last_name', 'like', $like)
+                            ->orWhere('position', 'like', $like)
+                            ->orWhere('email', 'like', $like)
+                            ->orWhere('phone', 'like', $like)
+                            ->orWhereHas('office', function ($office) use ($like) {
+                                $office->where('name', 'like', $like)
+                                    ->orWhereHas('location', function ($location) use ($like) {
+                                        $location->where('name', 'like', $like)
+                                            ->orWhere('code', 'like', $like);
+                                    });
+                            });
+                    });
+                }
+            })
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->limit(10)
+            ->get()
+            ->map(fn (Staff $staff) => $this->staffLookupResult($staff))
+            ->values();
+
+        return response()->json(['results' => $staff]);
+    }
+
+    public function availableLookup(Request $request)
+    {
+        $tokens = $this->searchTokens($request->string('q')->toString());
+
+        $devices = Device::query()
+            ->select([
+                'id',
+                'device_type_id',
+                'property_number',
+                'serial_number',
+                'computer_name',
+                'brand',
+                'model',
+                'status',
+                'condition',
+            ])
+            ->with('type:id,name')
+            ->where('status', 'available')
+            ->whereDoesntHave('currentAssignment')
+            ->when($tokens !== [], function ($query) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $query->where(function ($sub) use ($token) {
+                        $like = "%{$token}%";
+
+                        $sub->where('property_number', 'like', $like)
+                            ->orWhere('serial_number', 'like', $like)
+                            ->orWhere('computer_name', 'like', $like)
+                            ->orWhere('brand', 'like', $like)
+                            ->orWhere('model', 'like', $like)
+                            ->orWhereHas('type', fn ($type) => $type->where('name', 'like', $like));
+                    });
+                }
+            })
+            ->orderBy('property_number')
+            ->limit(10)
+            ->get()
+            ->map(function (Device $device) {
+                $brandModel = trim(($device->brand ?? '') . ' ' . ($device->model ?? ''));
+                $name = $device->type?->name ?? 'Equipment';
+
+                return [
+                    'id' => $device->id,
+                    'name' => $name,
+                    'property_number' => $device->property_number,
+                    'serial_number' => $device->serial_number,
+                    'computer_name' => $device->computer_name,
+                    'brand_model' => $brandModel,
+                    'condition' => $device->condition,
+                    'label' => collect([
+                        $name,
+                        $device->property_number ? 'Property #: ' . $device->property_number : null,
+                        $device->serial_number ? 'Serial #: ' . $device->serial_number : null,
+                        $brandModel ?: null,
+                    ])->filter()->join(' | '),
+                ];
+            })
+            ->values();
+
+        return response()->json(['results' => $devices]);
     }
 
     public function create()
@@ -212,65 +282,52 @@ class DeviceController extends Controller
         $device->load([
             'type',
             'currentAssignment.staff.office.location',
+            'currentAssignment.location',
             'latestMaintenanceRecord',
         ]);
 
         $types = $this->allowedDeviceTypes();
+        $locations = Location::orderBy('name')->get();
 
-        $staffOptions = Staff::query()
-            ->with('office.location')
-            ->where('is_active', true)
-            ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->get()
-            ->map(function (Staff $staff) {
-                $name = trim($staff->first_name . ' ' . $staff->last_name);
-                $office = $staff->office?->name;
-                $location = $staff->office?->location?->code ?: $staff->office?->location?->name;
-
-                return [
-                    'id' => $staff->id,
-                    'name' => $name,
-                    'position' => $staff->position,
-                    'email' => $staff->email,
-                    'office' => $office,
-                    'location' => $location,
-                    'label' => collect([$name, $staff->position, $office, $location])->filter()->join(' • '),
-                    'search' => strtolower(collect([$name, $staff->position, $staff->email, $office, $location])->filter()->join(' ')),
-                ];
-            })->values();
-
-        return view('admin.devices.show', compact('device', 'types', 'staffOptions'));
+        return view('admin.devices.show', compact('device', 'types', 'locations'));
     }
 
     public function relocate(Request $request, Device $device)
     {
         $data = $request->validate([
-            'staff_id' => ['required', 'exists:staff,id'],
+            'location_id' => ['required', 'exists:locations,id'],
             'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $assignment = $device->currentAssignment()->with('staff.office.location')->first();
-        if (!$assignment || !$assignment->staff) {
-            return back()->withErrors(['staff_id' => 'This equipment is not currently issued.'])->withInput();
+        $location = Location::findOrFail($data['location_id']);
+        $locationLabel = $location->code
+            ? "{$location->code} - {$location->name}"
+            : $location->name;
+
+        $assignment = $device->currentAssignment()
+            ->with(['staff.office.location', 'location'])
+            ->first();
+        $from = $this->assignmentContext($assignment);
+
+        if ($assignment) {
+            $assignment->update([
+                'returned_at' => now(),
+                'remarks' => trim(($assignment->remarks ? $assignment->remarks . ' ' : '') . 'Relocated to ' . $locationLabel . ' on ' . now()->format('M d, Y h:i A') . '.'),
+            ]);
         }
 
-        $fromStaff = $assignment->staff;
-        $toStaff = Staff::with('office.location')->findOrFail($data['staff_id']);
-        if ((int) $fromStaff->id === (int) $toStaff->id) {
-            return back()->withErrors(['staff_id' => 'Please select a different end user for relocation.'])->withInput();
-        }
-
-        $relocationRemarks = trim($data['remarks'] ?? '') ?: 'Equipment relocated to a new end user/location.';
-        $assignment->update(['returned_at' => now(), 'remarks' => trim(($assignment->remarks ? $assignment->remarks . ' ' : '') . 'Relocated on ' . now()->format('M d, Y h:i A') . '.')]);
+        $relocationRemarks = trim($data['remarks'] ?? '') ?: "Equipment relocated to {$locationLabel}.";
 
         DeviceAssignment::create([
             'device_id' => $device->id,
-            'staff_id' => $toStaff->id,
+            'staff_id' => null,
+            'location_id' => $location->id,
             'issued_by' => Auth::id(),
             'issued_at' => now(),
             'remarks' => $relocationRemarks,
         ]);
+
+        $device->update(['status' => 'issued']);
 
         ActivityLog::record(
             'relocated',
@@ -278,12 +335,12 @@ class DeviceController extends Controller
             $device,
             ActivityLog::makePayload([
                 'property_number' => $device->property_number,
-                'from_end_user' => trim($fromStaff->first_name . ' ' . $fromStaff->last_name),
-                'from_office' => $fromStaff->office?->name,
-                'from_location' => $fromStaff->office?->location?->name,
-                'to_end_user' => trim($toStaff->first_name . ' ' . $toStaff->last_name),
-                'to_office' => $toStaff->office?->name,
-                'to_location' => $toStaff->office?->location?->name,
+                'from_end_user' => $from['staff_name'],
+                'from_office' => $from['office_name'],
+                'from_location' => $from['location_name'],
+                'to_end_user' => null,
+                'to_office' => null,
+                'to_location' => $locationLabel,
                 'remarks' => $relocationRemarks,
                 'relocated_by' => Auth::user()?->name,
                 'relocated_at' => now()->format('M d, Y h:i A'),
@@ -291,6 +348,70 @@ class DeviceController extends Controller
         );
 
         return back()->with('success', 'Equipment relocated successfully.');
+    }
+
+    public function reissue(Request $request, Device $device)
+    {
+        $data = $request->validate([
+            'staff_id' => ['required', 'exists:staff,id'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'staff_id.required' => 'Please select a registered end user.',
+            'staff_id.exists' => 'The selected end user could not be found.',
+        ]);
+
+        $staff = Staff::query()
+            ->with('office.location')
+            ->findOrFail($data['staff_id']);
+
+        $assignment = $device->currentAssignment()
+            ->with(['staff.office.location', 'location'])
+            ->first();
+        $from = $this->assignmentContext($assignment);
+
+        if ($assignment && (int) $assignment->staff_id === (int) $staff->id) {
+            return back()->withErrors(['staff_id' => 'This equipment is already assigned to the selected end user.'])->withInput();
+        }
+
+        $reissueRemarks = trim($data['remarks'] ?? '') ?: 'Equipment reissued to registered end user.';
+
+        if ($assignment) {
+            $assignment->update([
+                'returned_at' => now(),
+                'remarks' => trim(($assignment->remarks ? $assignment->remarks . ' ' : '') . 'Reissued on ' . now()->format('M d, Y h:i A') . '.'),
+            ]);
+        }
+
+        DeviceAssignment::create([
+            'device_id' => $device->id,
+            'staff_id' => $staff->id,
+            'location_id' => null,
+            'issued_by' => Auth::id(),
+            'issued_at' => now(),
+            'remarks' => $reissueRemarks,
+        ]);
+
+        $device->update(['status' => 'issued']);
+
+        ActivityLog::record(
+            'reissued',
+            "Reissued equipment \"{$device->property_number}\"",
+            $device,
+            ActivityLog::makePayload([
+                'property_number' => $device->property_number,
+                'from_end_user' => $from['staff_name'],
+                'from_office' => $from['office_name'],
+                'from_location' => $from['location_name'],
+                'to_end_user' => trim($staff->first_name . ' ' . $staff->last_name),
+                'to_office' => $staff->office?->name,
+                'to_location' => $staff->office?->location?->name,
+                'remarks' => $reissueRemarks,
+                'reissued_by' => Auth::user()?->name,
+                'reissued_at' => now()->format('M d, Y h:i A'),
+            ])
+        );
+
+        return back()->with('success', 'Equipment reissued successfully.');
     }
 
     public function issue(Request $request, Device $device)
@@ -890,14 +1011,17 @@ class DeviceController extends Controller
             $device->condition = 'serviceable';
         }
 
-        if (array_key_exists('status', $row) && filled($row['status'])) {
-            $status = strtolower(trim((string) $row['status']));
+        $importedStatus = null;
+        $statusValue = $this->importValue($row, ['status', 'availability']);
+        if (filled($statusValue)) {
+            $status = strtolower(trim((string) $statusValue));
             if (!in_array($status, ['available', 'repair', 'retired', 'issued'], true)) {
                 throw new \RuntimeException('status must be available, issued, repair, or retired.');
             }
-            if ($status === 'issued' && !$this->importStaffDetailsPresent($row)) {
-                throw new \RuntimeException('An issued status requires staff_email or staff_name in the same row.');
+            if ($status === 'issued' && !$this->importStaffDetailsPresent($row) && !$this->importLocationDetailsPresent($row)) {
+                throw new \RuntimeException('An issued status requires an end user or location in the same row.');
             }
+            $importedStatus = $status;
             $device->status = $status === 'issued' ? 'available' : $status;
         } elseif ($wasCreated) {
             $device->status = 'available';
@@ -919,6 +1043,8 @@ class DeviceController extends Controller
         $wasIssued = false;
         if ($this->importStaffDetailsPresent($row)) {
             $wasIssued = $this->issueImportedDevice($device->fresh(), $row);
+        } elseif ($importedStatus === 'issued' && $this->importLocationDetailsPresent($row)) {
+            $wasIssued = $this->assignImportedDeviceToLocation($device->fresh(), $row);
         } elseif ($device->currentAssignment()->exists() && $device->status !== 'issued') {
             $device->update(['status' => 'issued']);
         }
@@ -929,7 +1055,7 @@ class DeviceController extends Controller
     private function issueImportedDevice(Device $device, array $row): bool
     {
         $staff = $this->resolveImportedStaff($row);
-        $currentAssignment = $device->currentAssignment()->first();
+        $currentAssignment = $device->currentAssignment()->with(['staff.office.location', 'location'])->first();
 
         if ($currentAssignment) {
             if ((int) $currentAssignment->staff_id === (int) $staff->id) {
@@ -938,7 +1064,10 @@ class DeviceController extends Controller
                 return false;
             }
 
-            throw new \RuntimeException('This equipment already has an active issuance to another end user.');
+            $currentAssignment->update([
+                'returned_at' => now(),
+                'remarks' => trim(($currentAssignment->remarks ? $currentAssignment->remarks . ' ' : '') . 'Reissued through equipment import on ' . now()->format('M d, Y h:i A') . '.'),
+            ]);
         }
 
         $issuedAt = filled($this->importValue($row, ['issued_at', 'issue_date']))
@@ -948,6 +1077,7 @@ class DeviceController extends Controller
         DeviceAssignment::create([
             'device_id' => $device->id,
             'staff_id' => $staff->id,
+            'location_id' => null,
             'issued_by' => Auth::id(),
             'issued_at' => $issuedAt,
             'remarks' => $this->importValue($row, ['issuance_remarks', 'remarks']),
@@ -958,17 +1088,60 @@ class DeviceController extends Controller
         return true;
     }
 
+    private function assignImportedDeviceToLocation(Device $device, array $row): bool
+    {
+        $location = $this->resolveImportedLocation($row);
+        $currentAssignment = $device->currentAssignment()->with(['staff.office.location', 'location'])->first();
+
+        if ($currentAssignment) {
+            if (!$currentAssignment->staff_id && (int) $currentAssignment->location_id === (int) $location->id) {
+                $device->update(['status' => 'issued']);
+
+                return false;
+            }
+
+            $currentAssignment->update([
+                'returned_at' => now(),
+                'remarks' => trim(($currentAssignment->remarks ? $currentAssignment->remarks . ' ' : '') . 'Relocated through equipment import on ' . now()->format('M d, Y h:i A') . '.'),
+            ]);
+        }
+
+        $issuedAt = filled($this->importValue($row, ['issued_at', 'issue_date']))
+            ? $this->importDate($this->importValue($row, ['issued_at', 'issue_date']), 'issued_at')
+            : now();
+
+        DeviceAssignment::create([
+            'device_id' => $device->id,
+            'staff_id' => null,
+            'location_id' => $location->id,
+            'issued_by' => Auth::id(),
+            'issued_at' => $issuedAt,
+            'remarks' => $this->importValue($row, ['issuance_remarks', 'remarks'])
+                ?: 'Imported as location assignment.',
+        ]);
+
+        $device->update(['status' => 'issued']);
+
+        return true;
+    }
+
     private function resolveImportedStaff(array $row): Staff
     {
-        $email = strtolower(trim((string) $this->importValue($row, ['staff_email', 'email', 'user_email'])));
+        $email = strtolower(trim((string) $this->importValue($row, [
+            'staff_email', 'end_user_email', 'issued_to_email', 'assigned_to_email', 'email', 'user_email',
+        ])));
         $staffName = trim((string) $this->importValue($row, ['staff_name', 'issued_to', 'end_user', 'user_name']));
         $firstName = trim((string) $this->importValue($row, ['first_name', 'staff_first_name']));
         $lastName = trim((string) $this->importValue($row, ['last_name', 'staff_last_name']));
 
         if (blank($firstName) && blank($lastName) && filled($staffName)) {
-            $parts = preg_split('/\s+/', $staffName);
-            $firstName = array_shift($parts) ?: '';
-            $lastName = implode(' ', $parts);
+            if (str_contains($staffName, ',')) {
+                [$lastName, $firstName] = array_map('trim', explode(',', $staffName, 2));
+            } else {
+                $parts = preg_split('/\s+/', $staffName);
+                $firstName = array_shift($parts) ?: '';
+                $lastName = implode(' ', $parts);
+            }
         }
 
         if (blank($email) && blank($firstName) && blank($lastName)) {
@@ -978,9 +1151,36 @@ class DeviceController extends Controller
         $officeName = strtolower(trim((string) $this->importValue($row, ['office', 'office_name'])));
         $locationName = strtolower(trim((string) $this->importValue($row, ['location_code', 'location', 'location_name'])));
 
-        $query = Staff::query()->with('office.location');
         if (filled($email)) {
-            $query->whereRaw('LOWER(email) = ?', [$email]);
+            $staff = Staff::query()
+                ->with('office.location')
+                ->whereRaw('LOWER(email) = ?', [$email])
+                ->first();
+
+            if ($staff) {
+                return $staff;
+            }
+
+            if (blank($firstName) && blank($lastName)) {
+                throw new \RuntimeException('No matching staff found for the supplied email.');
+            }
+        }
+
+        $query = Staff::query()->with('office.location');
+
+        if (filled($firstName) && filled($lastName)) {
+            $firstNameLower = strtolower($firstName);
+            $lastNameLower = strtolower($lastName);
+
+            $query->where(function ($staff) use ($firstNameLower, $lastNameLower) {
+                $staff->where(function ($exact) use ($firstNameLower, $lastNameLower) {
+                    $exact->whereRaw('LOWER(first_name) = ?', [$firstNameLower])
+                        ->whereRaw('LOWER(last_name) = ?', [$lastNameLower]);
+                })->orWhere(function ($reversed) use ($firstNameLower, $lastNameLower) {
+                    $reversed->whereRaw('LOWER(first_name) = ?', [$lastNameLower])
+                        ->whereRaw('LOWER(last_name) = ?', [$firstNameLower]);
+                });
+            });
         } else {
             if (filled($firstName)) {
                 $query->whereRaw('LOWER(first_name) = ?', [strtolower($firstName)]);
@@ -990,33 +1190,69 @@ class DeviceController extends Controller
             }
         }
 
+        $candidates = $query->limit(25)->get();
+
+        if ($candidates->isEmpty()) {
+            throw new \RuntimeException('No matching staff found for the supplied name/email.');
+        }
+
+        $scoped = $candidates->filter(function (Staff $staff) use ($officeName, $locationName) {
+            $officeMatches = blank($officeName) || $this->importTextMatches($staff->office?->name, $officeName);
+            $locationMatches = blank($locationName)
+                || $this->importTextMatches($staff->office?->location?->code, $locationName)
+                || $this->importTextMatches($staff->office?->location?->name, $locationName);
+
+            return $officeMatches && $locationMatches;
+        });
+
+        if ($scoped->isNotEmpty()) {
+            return $scoped->first();
+        }
+
+        if ($candidates->count() === 1) {
+            return $candidates->first();
+        }
+
+        throw new \RuntimeException('Multiple matching staff records were found. Add staff_email, office, or location_code.');
+    }
+
+    private function resolveImportedLocation(array $row): Location
+    {
+        $locationName = trim((string) $this->importValue($row, ['location_code', 'location', 'location_name']));
+        $officeName = trim((string) $this->importValue($row, ['office', 'office_name']));
+
+        if (filled($locationName)) {
+            $location = Location::query()
+                ->whereRaw('LOWER(code) = ?', [strtolower($locationName)])
+                ->orWhereRaw('LOWER(name) = ?', [strtolower($locationName)])
+                ->first();
+
+            if ($location) {
+                return $location;
+            }
+
+            $location = Location::query()
+                ->get()
+                ->first(fn (Location $location) => $this->importTextMatches($location->code, $locationName)
+                    || $this->importTextMatches($location->name, $locationName));
+
+            if ($location) {
+                return $location;
+            }
+        }
+
         if (filled($officeName)) {
-            $query->whereHas('office', function ($office) use ($officeName, $locationName) {
-                $office->whereRaw('LOWER(name) = ?', [$officeName]);
-                if (filled($locationName)) {
-                    $office->whereHas('location', function ($location) use ($locationName) {
-                        $location->where(function ($nested) use ($locationName) {
-                            $nested->whereRaw('LOWER(code) = ?', [$locationName])
-                                ->orWhereRaw('LOWER(name) = ?', [$locationName]);
-                        });
-                    });
-                }
-            });
-        } elseif (filled($locationName)) {
-            $query->whereHas('office.location', function ($location) use ($locationName) {
-                $location->where(function ($nested) use ($locationName) {
-                    $nested->whereRaw('LOWER(code) = ?', [$locationName])
-                        ->orWhereRaw('LOWER(name) = ?', [$locationName]);
-                });
-            });
+            $office = Office::query()
+                ->with('location')
+                ->get()
+                ->first(fn (Office $office) => $this->importTextMatches($office->name, $officeName));
+
+            if ($office?->location) {
+                return $office->location;
+            }
         }
 
-        $staff = $query->first();
-        if (!$staff) {
-            throw new \RuntimeException('No matching staff found for the supplied name/email and location/office.');
-        }
-
-        return $staff;
+        throw new \RuntimeException('No matching location found for the supplied location_code/location.');
     }
 
     private function normalizeImportRow(array $row): array
@@ -1030,7 +1266,10 @@ class DeviceController extends Controller
             'property_no' => 'property_number', 'asset_number' => 'property_number', 'asset_no' => 'property_number',
             'equipment' => 'equipment_type', 'device' => 'equipment_type', 'type_name' => 'equipment_type',
             'serial_no' => 'serial_number', 'office_name' => 'office', 'location_name' => 'location',
-            'user_email' => 'staff_email', 'issued_to_email' => 'staff_email', 'user_name' => 'staff_name',
+            'availability' => 'status',
+            'user_email' => 'staff_email', 'end_user_email' => 'staff_email', 'issued_to_email' => 'staff_email',
+            'assigned_to_email' => 'staff_email',
+            'user_name' => 'staff_name', 'staff' => 'staff_name', 'assigned_to' => 'staff_name',
             'issued_to' => 'staff_name', 'issue_date' => 'issued_at', 'issue_remarks' => 'issuance_remarks',
         ];
         foreach ($aliases as $from => $to) {
@@ -1067,9 +1306,51 @@ class DeviceController extends Controller
     private function importStaffDetailsPresent(array $row): bool
     {
         return filled($this->importValue($row, [
-            'staff_email', 'staff_name', 'issued_to', 'end_user', 'user_name',
+            'staff_email', 'end_user_email', 'issued_to_email', 'assigned_to_email', 'email', 'user_email',
+            'staff_name', 'issued_to', 'end_user', 'user_name', 'assigned_to',
             'first_name', 'last_name', 'staff_first_name', 'staff_last_name',
         ]));
+    }
+
+    private function importLocationDetailsPresent(array $row): bool
+    {
+        return filled($this->importValue($row, ['location_code', 'location', 'location_name', 'office', 'office_name']));
+    }
+
+    private function importTextMatches(?string $candidate, ?string $needle): bool
+    {
+        if (blank($candidate) || blank($needle)) {
+            return false;
+        }
+
+        $candidateNormalized = $this->normalizeImportSearchText($candidate);
+        $needleNormalized = $this->normalizeImportSearchText($needle);
+
+        if ($candidateNormalized === '' || $needleNormalized === '') {
+            return false;
+        }
+
+        if ($candidateNormalized === $needleNormalized) {
+            return true;
+        }
+
+        if (str_contains($candidateNormalized, $needleNormalized) || str_contains($needleNormalized, $candidateNormalized)) {
+            return true;
+        }
+
+        return $this->importAcronym($candidate) === $needleNormalized;
+    }
+
+    private function normalizeImportSearchText(?string $value): string
+    {
+        return trim(preg_replace('/\s+/', ' ', preg_replace('/[^a-z0-9]+/i', ' ', strtolower((string) $value))));
+    }
+
+    private function importAcronym(?string $value): string
+    {
+        return collect(preg_split('/[^a-z0-9]+/i', strtolower((string) $value), -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $word) => $word[0] ?? '')
+            ->join('');
     }
 
     private function importDate(mixed $value, string $field): string
@@ -1286,10 +1567,10 @@ class DeviceController extends Controller
         $maintenanceType = $data['maintenance_type'] ?? 'Checked';
         $remarks = $data['remarks'] ?? 'Checked/Maintained today';
 
-        $device->loadMissing(['type', 'currentAssignment.staff.office.location']);
+        $device->loadMissing(['type', 'currentAssignment.staff.office.location', 'currentAssignment.location']);
         $staff = $device->currentAssignment?->staff;
         $office = $staff?->office;
-        $location = $office?->location;
+        $location = $device->currentAssignment?->location ?? $office?->location;
 
         DeviceMaintenanceRecord::create([
             'device_id' => $device->id,
@@ -1362,14 +1643,14 @@ class DeviceController extends Controller
             ->get();
 
         $assignments = $device->assignments()
-            ->with(['staff.office.location', 'issuer'])
+            ->with(['staff.office.location', 'location', 'issuer'])
             ->orderByDesc('issued_at')
             ->get();
 
         $activityLogs = ActivityLog::query()
             ->where('subject_type', 'Device')
             ->where('subject_id', $device->id)
-            ->whereIn('action', ['relocated', 'updated'])
+            ->whereIn('action', ['relocated', 'reissued', 'updated'])
             ->latest()
             ->get();
 
@@ -1515,6 +1796,50 @@ class DeviceController extends Controller
             ['desktop', 'laptop'],
             true
         );
+    }
+
+    private function staffLookupResult(Staff $staff): array
+    {
+        $name = trim(($staff->first_name ?? '') . ' ' . ($staff->last_name ?? ''));
+        $office = $staff->office?->name;
+        $location = $staff->office?->location?->code ?: $staff->office?->location?->name;
+
+        return [
+            'id' => $staff->id,
+            'name' => $name,
+            'position' => $staff->position,
+            'email' => $staff->email,
+            'office' => $office,
+            'location' => $location,
+            'label' => collect([$name, $staff->position, $office, $location])
+                ->filter()
+                ->join(' - '),
+        ];
+    }
+
+    private function assignmentContext(?DeviceAssignment $assignment): array
+    {
+        $staff = $assignment?->staff;
+        $office = $staff?->office;
+        $location = $assignment?->location ?? $office?->location;
+
+        return [
+            'staff_name' => $staff ? trim(($staff->first_name ?? '') . ' ' . ($staff->last_name ?? '')) : null,
+            'office_name' => $office?->name,
+            'location_name' => $location
+                ? (($location->code ? $location->code . ' - ' : '') . $location->name)
+                : null,
+        ];
+    }
+
+    private function searchTokens(string $value): array
+    {
+        return collect(preg_split('/\s+/', strtolower(trim($value)), -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $token) => trim($token))
+            ->filter(fn (string $token) => $token !== '')
+            ->take(5)
+            ->values()
+            ->all();
     }
 
     private function allowedDeviceTypes()

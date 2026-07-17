@@ -364,6 +364,21 @@ import './bootstrap';
                 plugins: { legend: { display: false } },
                 scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
             });
+
+            create('maintenanceChart', 'bar', {
+                labels: data.maintenance?.labels || [],
+                datasets: [{
+                    label: 'Maintained Equipment',
+                    data: data.maintenance?.values || [],
+                    backgroundColor: '#0ea5e9',
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }],
+            }, {
+                ...common,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            });
         }).catch(() => {
             // The dashboard remains usable if the optional chart CDN is offline.
         });

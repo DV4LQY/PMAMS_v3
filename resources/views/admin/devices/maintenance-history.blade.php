@@ -67,13 +67,17 @@
                         @php
                             $staff = $assignment->staff;
                             $office = $staff?->office;
-                            $location = $office?->location;
+                            $location = $assignment->location ?? $office?->location;
+                            $staffName = $staff ? trim($staff->first_name . ' ' . $staff->last_name) : 'Location assignment';
+                            $locationLabel = $location
+                                ? trim(($location->code ? $location->code . ' - ' : '') . $location->name)
+                                : null;
                         @endphp
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                             <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{{ $assignment->issued_at?->format('M d, Y h:i A') ?? '-' }}</td>
                             <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{{ $assignment->returned_at?->format('M d, Y h:i A') ?? 'Current' }}</td>
-                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $staff ? trim($staff->first_name . ' ' . $staff->last_name) : 'Staff deleted' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office?->name ?? '-' }}@if($location) / {{ $location->name }}@endif</td>
+                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $staffName }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office?->name ?? '-' }}@if($locationLabel) / {{ $locationLabel }}@endif</td>
                             <td class="max-w-md px-4 py-3 text-gray-700 dark:text-gray-300">{{ $assignment->remarks ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $assignment->issuer?->name ?? '-' }}</td>
                         </tr>
@@ -98,12 +102,14 @@
                             <span class="text-xs text-gray-500 dark:text-gray-400">{{ $log->created_at?->format('M d, Y h:i A') }}</span>
                         </div>
                         <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ $log->description }}</p>
-                        @if($log->action === 'relocated' && is_array($log->changes))
+                        @if(in_array($log->action, ['relocated', 'reissued'], true) && is_array($log->changes))
                             @php $summary = $log->summary; @endphp
                             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                {{ data_get($summary, 'from_end_user.value') }} ({{ data_get($summary, 'from_office.value') ?: 'No office' }} / {{ data_get($summary, 'from_location.value') ?: 'No location' }})
-                                →
-                                {{ data_get($summary, 'to_end_user.value') }} ({{ data_get($summary, 'to_office.value') ?: 'No office' }} / {{ data_get($summary, 'to_location.value') ?: 'No location' }})
+                                {{ data_get($summary, 'from_end_user.value') ?: 'Location assignment' }}
+                                ({{ data_get($summary, 'from_office.value') ?: 'No office' }} / {{ data_get($summary, 'from_location.value') ?: 'No location' }})
+                                &rarr;
+                                {{ data_get($summary, 'to_end_user.value') ?: 'Location assignment' }}
+                                ({{ data_get($summary, 'to_office.value') ?: 'No office' }} / {{ data_get($summary, 'to_location.value') ?: 'No location' }})
                             </p>
                             <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">Remarks: {{ data_get($summary, 'remarks.value') ?: '-' }}</p>
                         @endif

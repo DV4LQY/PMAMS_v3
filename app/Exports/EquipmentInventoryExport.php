@@ -28,6 +28,7 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
             ->with([
                 'type',
                 'currentAssignment.staff.office.location',
+                'currentAssignment.location',
             ])
             ->filterInventory($this->filters)
             ->orderBy('property_number');
@@ -70,7 +71,7 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
         $assignment = $device->currentAssignment;
         $staff = $assignment?->staff;
         $office = $staff?->office;
-        $location = $office?->location;
+        $location = $assignment?->location ?? $office?->location;
 
         return [
             $device->property_number,

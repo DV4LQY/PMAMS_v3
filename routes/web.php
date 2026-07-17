@@ -85,8 +85,10 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::view('/org-browser', 'admin.org-browser')->name('admin.org-browser');
         Route::view('/scanner', 'admin.scanner')->name('admin.scanner');
         Route::view('/support', 'admin.support')->name('admin.support');
-        Route::get('/issuance', [IssuanceController::class, 'index'])->name('admin.issuance.index');
-        Route::get('/issuance/export', [IssuanceController::class, 'export'])->name('admin.issuance.export');
+        Route::get('/issuance', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance', $request->query()))
+            ->name('admin.issuance.index');
+        Route::get('/issuance/export', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance.export', $request->query()))
+            ->name('admin.issuance.export');
         Route::get('/change-password', [ChangePasswordController::class, 'edit'])
             ->name('admin.change-password');
 
@@ -101,6 +103,8 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::prefix('reports')->name('admin.reports.')->group(function () {
             Route::get('/', [ReportController::class, 'index'])->name('index');
             Route::get('/assets', [ReportController::class, 'assets'])->name('assets');
+            Route::get('/issuance', [IssuanceController::class, 'index'])->name('issuance');
+            Route::get('/issuance/export', [IssuanceController::class, 'export'])->name('issuance.export');
             Route::get('/accounts', [ReportController::class, 'accounts'])
                 ->middleware('role:admin')
                 ->name('accounts');
@@ -141,11 +145,20 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::get('/devices/generate-qr', [DeviceController::class, 'generateQr'])
             ->name('admin.devices.qr.index');
 
+        Route::get('/devices/lookup/staff', [DeviceController::class, 'staffLookup'])
+            ->name('admin.devices.lookup.staff');
+
+        Route::get('/devices/lookup/available', [DeviceController::class, 'availableLookup'])
+            ->name('admin.devices.lookup.available');
+
         Route::post('/devices/{device}/issue', [DeviceController::class, 'issue'])
             ->name('admin.devices.issue');
 
         Route::post('/devices/{device}/relocate', [DeviceController::class, 'relocate'])
             ->name('admin.devices.relocate');
+
+        Route::post('/devices/{device}/reissue', [DeviceController::class, 'reissue'])
+            ->name('admin.devices.reissue');
 
         Route::patch('/devices/{device}/photo', [DeviceController::class, 'updatePhoto'])
             ->name('admin.devices.photo');

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DeviceAssignment extends Model
 {
     protected $fillable = [
-        'device_id', 'staff_id', 'issued_by', 'issued_at', 'returned_at', 'remarks'
+        'device_id', 'staff_id', 'location_id', 'issued_by', 'issued_at', 'returned_at', 'remarks'
     ];
 
     protected $casts = [
@@ -24,6 +24,11 @@ class DeviceAssignment extends Model
     public function staff(): BelongsTo
     {
         return $this->belongsTo(Staff::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function issuer(): BelongsTo

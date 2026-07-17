@@ -74,7 +74,11 @@ class ReportController extends Controller
 
     public function checkedEquipment(Request $request)
     {
+        $canViewAllCheckedReports = $this->canViewAllCheckedReports();
         $checkerId = $request->integer('checker_id') ?: $request->integer('admin_id') ?: null;
+        if (! $canViewAllCheckedReports) {
+            $checkerId = (int) auth()->id();
+        }
         $typeId = $request->integer('type_id') ?: null;
         $locationId = $request->integer('location_id') ?: null;
         $dateFrom = $request->query('date_from');
@@ -90,6 +94,7 @@ class ReportController extends Controller
         $checkerSummary = DeviceMaintenanceRecord::query()
             ->selectRaw('checked_by, COUNT(*) as total')
             ->whereNotNull('checked_by')
+            ->when(! $canViewAllCheckedReports, fn ($query) => $query->where('checked_by', auth()->id()))
             ->with('checkedBy')
             ->groupBy('checked_by')
             ->orderByDesc('total')
@@ -99,8 +104,9 @@ class ReportController extends Controller
             'records' => $records,
             'adminSummary' => $checkerSummary,
             'checkerSummary' => $checkerSummary,
-            'adminUsers' => User::orderBy('name')->get(),
-            'checkerUsers' => User::orderBy('name')->get(),
+            'adminUsers' => $canViewAllCheckedReports ? User::orderBy('name')->get() : User::whereKey(auth()->id())->get(),
+            'checkerUsers' => $canViewAllCheckedReports ? User::orderBy('name')->get() : User::whereKey(auth()->id())->get(),
+            'canViewAllCheckedReports' => $canViewAllCheckedReports,
             'types' => DeviceType::orderBy('name')->get(),
             'adminId' => $checkerId,
             'checkerId' => $checkerId,
@@ -115,9 +121,12 @@ class ReportController extends Controller
 
     public function checkedEquipmentPdf(DeviceMaintenanceRecord $record)
     {
+        abort_unless($this->canViewCheckedRecord($record), 403);
+
         $record->load([
             'device.type',
             'device.currentAssignment.staff.office.location',
+            'device.currentAssignment.location',
             'staff',
             'office',
             'location',
@@ -185,12 +194,14 @@ class ReportController extends Controller
             ->with([
                 'device.type',
                 'device.currentAssignment.staff.office.location',
+                'device.currentAssignment.location',
                 'staff',
                 'office',
                 'location',
                 'checkedBy',
             ])
             ->whereNotNull('checked_by')
+            ->when(! $this->canViewAllCheckedReports(), fn ($query) => $query->where('checked_by', auth()->id()))
             ->whereIn('id', $data['record_ids'])
             ->orderBy('maintenance_date')
             ->orderBy('id')
@@ -240,12 +251,14 @@ class ReportController extends Controller
             ->with([
                 'device.type',
                 'device.currentAssignment.staff.office.location',
+                'device.currentAssignment.location',
                 'staff',
                 'office',
                 'location',
                 'checkedBy',
             ])
             ->whereNotNull('checked_by')
+            ->when(! $this->canViewAllCheckedReports(), fn ($query) => $query->where('checked_by', auth()->id()))
             ->when($checkerId, fn ($query) => $query->where('checked_by', $checkerId))
             ->when($typeId, function ($query) use ($typeId) {
                 $query->whereHas('device', fn ($deviceQuery) => $deviceQuery->where('device_type_id', $typeId));
@@ -255,8 +268,11 @@ class ReportController extends Controller
                     $locationQuery->where('location_id', $locationId)
                         ->orWhere(function ($legacyQuery) use ($locationId) {
                             $legacyQuery->whereNull('location_id')
-                                ->whereHas('device.currentAssignment.staff.office', function ($officeQuery) use ($locationId) {
-                                    $officeQuery->where('location_id', $locationId);
+                                ->whereHas('device.currentAssignment', function ($assignmentQuery) use ($locationId) {
+                                    $assignmentQuery->where('location_id', $locationId)
+                                        ->orWhereHas('staff.office', function ($officeQuery) use ($locationId) {
+                                            $officeQuery->where('location_id', $locationId);
+                                        });
                                 });
                         });
                 });
@@ -278,6 +294,23 @@ class ReportController extends Controller
             });
     }
 
+    /**
+     * Unit heads and custodians can review every checklist. Regular admin
+     * accounts are restricted to the checklists they personally submitted.
+     */
+    private function canViewAllCheckedReports(): bool
+    {
+        $user = auth()->user();
+
+        return $user && ($user->isUnitHead() || $user->isCustodian());
+    }
+
+    private function canViewCheckedRecord(DeviceMaintenanceRecord $record): bool
+    {
+        return $this->canViewAllCheckedReports()
+            || (int) $record->checked_by === (int) auth()->id();
+    }
+
     private function filteredAssetsQuery(Request $request)
     {
         $typeId = $request->integer('type_id') ?: null;
@@ -289,12 +322,16 @@ class ReportController extends Controller
             ->with([
                 'type',
                 'currentAssignment.staff.office.location',
+                'currentAssignment.location',
                 'latestMaintenanceRecord.checkedBy',
             ])
             ->when($typeId, fn ($query) => $query->where('device_type_id', $typeId))
             ->when($locationId, function ($query) use ($locationId) {
-                $query->whereHas('currentAssignment.staff.office', function ($officeQuery) use ($locationId) {
-                    $officeQuery->where('location_id', $locationId);
+                $query->whereHas('currentAssignment', function ($assignmentQuery) use ($locationId) {
+                    $assignmentQuery->where('location_id', $locationId)
+                        ->orWhereHas('staff.office', function ($officeQuery) use ($locationId) {
+                            $officeQuery->where('location_id', $locationId);
+                        });
                 });
             })
             ->when($officeId, function ($query) use ($officeId) {

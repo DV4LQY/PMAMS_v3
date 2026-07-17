@@ -6,7 +6,7 @@
 @section('content')
 @php
     $assignments = $assignments ?? ($issued ?? collect());
-    $availableDevices = $availableDevices ?? collect();
+    $availableDevicesCount = (int) ($availableDevicesCount ?? 0);
 
     $staffName = trim(($staff->first_name ?? '') . ' ' . ($staff->last_name ?? ''));
     $staffName = $staffName !== '' ? $staffName : ($staff->name ?? 'Staff');
@@ -30,7 +30,68 @@
     };
 @endphp
 
-<div class="space-y-5">
+<div
+    x-data="{
+        deviceLookupUrl: @js(route('admin.devices.lookup.available')),
+        deviceQuery: '',
+        deviceId: '',
+        deviceResults: [],
+        deviceSelected: null,
+        deviceLoading: false,
+        deviceHasSearched: false,
+        deviceTimer: null,
+        deviceAbort: null,
+
+        queueDeviceLookup() {
+            clearTimeout(this.deviceTimer);
+            this.deviceTimer = setTimeout(() => this.fetchAvailableDevices(), 250);
+        },
+
+        async fetchAvailableDevices() {
+            const query = this.deviceQuery.trim();
+
+            if (this.deviceAbort) {
+                this.deviceAbort.abort();
+            }
+
+            this.deviceAbort = new AbortController();
+            this.deviceLoading = true;
+            this.deviceHasSearched = query !== '';
+
+            try {
+                const url = new URL(this.deviceLookupUrl, window.location.origin);
+                url.searchParams.set('q', query);
+
+                const response = await fetch(url, {
+                    headers: { 'Accept': 'application/json' },
+                    signal: this.deviceAbort.signal,
+                });
+
+                if (!response.ok) {
+                    throw new Error('Unable to search available equipment.');
+                }
+
+                const data = await response.json();
+                this.deviceResults = Array.isArray(data.results) ? data.results : [];
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    this.deviceResults = [];
+                }
+            } finally {
+                this.deviceLoading = false;
+            }
+        },
+
+        selectDevice(device) {
+            this.deviceId = device.id;
+            this.deviceSelected = device;
+            this.deviceQuery = device.label;
+            this.deviceResults = [];
+        }
+    }"
+    x-init="fetchAvailableDevices()"
+    class="space-y-5"
+>
     {{-- Page Header --}}
     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
@@ -126,24 +187,64 @@
                 @csrf
 
                 <div>
-                    <label for="device_id" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label for="device_search" class="text-sm font-medium text-gray-700 dark:text-gray-300">
                         Available Equipment
                     </label>
 
-                    <select
-                        id="device_id"
-                        name="device_id"
+                    <input
+                        id="device_search"
+                        type="text"
+                        x-model="deviceQuery"
+                        x-on:input="deviceId = ''; deviceSelected = null; queueDeviceLookup()"
+                        x-on:focus="fetchAvailableDevices()"
+                        placeholder="Search property #, serial #, equipment type, brand, or model..."
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/30"
-                        required
+                        autocomplete="off"
                     >
-                        <option value="">-- Select equipment --</option>
+                    <input type="hidden" name="device_id" :value="deviceId">
 
-                        @foreach($availableDevices as $device)
-                            <option value="{{ $device->id }}" @selected(old('device_id') == $device->id)>
-                                {{ $deviceLabel($device) }}
-                            </option>
-                        @endforeach
-                    </select>
+                    <div
+                        x-show="!deviceId"
+                        class="mt-2 max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                    >
+                        <template x-if="deviceLoading">
+                            <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                                Searching available equipment...
+                            </div>
+                        </template>
+
+                        <template x-if="!deviceLoading && !deviceHasSearched && deviceResults.length === 0">
+                            <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                                Type to search available equipment.
+                            </div>
+                        </template>
+
+                        <template x-for="device in deviceResults" :key="device.id">
+                            <button
+                                type="button"
+                                x-on:click="selectDevice(device)"
+                                class="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm transition last:border-b-0 hover:bg-blue-50 dark:border-gray-700 dark:hover:bg-gray-700"
+                            >
+                                <span class="font-semibold text-gray-900 dark:text-white" x-text="device.property_number"></span>
+                                <span class="ml-1 text-xs text-gray-500 dark:text-gray-400" x-text="device.name"></span>
+                                <span class="block text-xs text-gray-500 dark:text-gray-400" x-text="device.label"></span>
+                            </button>
+                        </template>
+
+                        <div
+                            x-show="!deviceLoading && deviceHasSearched && deviceResults.length === 0"
+                            class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400"
+                        >
+                            No available equipment found.
+                        </div>
+                    </div>
+
+                    <div
+                        x-show="deviceSelected"
+                        class="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:bg-blue-900/20 dark:text-blue-100"
+                    >
+                        Selected: <span class="font-medium" x-text="deviceSelected?.label"></span>
+                    </div>
                 </div>
 
                 <div>
@@ -165,14 +266,14 @@
                     <button
                         type="submit"
                         class="inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
-                        @disabled($availableDevices->isEmpty())
+                        :disabled="!deviceId || {{ $availableDevicesCount }} === 0"
                     >
                         Issue Equipment
                     </button>
                 </div>
             </form>
 
-            @if($availableDevices->isEmpty())
+            @if($availableDevicesCount === 0)
                 <div class="mt-4 rounded-xl bg-yellow-50 px-4 py-3 text-sm text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
                     No available equipment can be issued right now.
                 </div>

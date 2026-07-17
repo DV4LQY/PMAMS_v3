@@ -5,6 +5,7 @@ use App\Models\Device;
 use App\Models\DeviceAssignment;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\DeviceType;
+use Carbon\Carbon;
 class DashboardController extends Controller
 {
     public function index()
@@ -81,6 +82,19 @@ class DashboardController extends Controller
             ->groupBy(fn($a) => $a->staff?->office?->name ?? 'No Office')
             ->map->count();
 
+        $maintenanceSemiannually = DeviceMaintenanceRecord::query()
+            ->whereNotNull('maintenance_date')
+            ->get(['maintenance_date'])
+            ->groupBy(function ($record) {
+                $date = $record->maintenance_date instanceof Carbon
+                    ? $record->maintenance_date
+                    : Carbon::parse($record->maintenance_date);
+
+                return $date->format('Y') . ' ' . ($date->month <= 6 ? 'Jan-Jun' : 'Jul-Dec');
+            })
+            ->sortKeys()
+            ->map->count();
+
         return view('admin.dashboard', compact(
             'totalDevices',
             'availableDevices',
@@ -95,6 +109,7 @@ class DashboardController extends Controller
             'devicesByAvailability',
             'devicesByType',
             'devicesByOffice',
+            'maintenanceSemiannually',
         ));
     }
 }

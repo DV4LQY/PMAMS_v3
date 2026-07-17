@@ -139,8 +139,10 @@
                             $assignment = $device->currentAssignment;
                             $staff = $assignment?->staff;
                             $office = $staff?->office;
-                            $college = $office?->college;
-                            $staffName = $staff ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? '')) : '-';
+                            $college = $assignment?->location ?? $office?->college;
+                            $staffName = $staff
+                                ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? ''))
+                                : ($assignment?->location ? 'Location assignment' : '-');
                         @endphp
 
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-800">

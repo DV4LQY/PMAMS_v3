@@ -6,10 +6,48 @@
 @section('breadcrumbs')
     <a href="{{ route('admin.dashboard') }}" class="hover:text-blue-600 dark:hover:text-blue-400">Dashboard</a>
     <span class="dark:text-gray-500">/</span>
+    <a href="{{ route('admin.reports.index') }}" class="hover:text-blue-600 dark:hover:text-blue-400">Reports</a>
+    <span class="dark:text-gray-500">/</span>
     <span class="font-medium text-gray-800 dark:text-gray-100">Issuance</span>
 @endsection
 
 @section('content')
+<style>
+    .issuance-filter-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .issuance-filter-form > input,
+    .issuance-filter-form > select {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .issuance-filter-reset {
+        width: 100%;
+    }
+
+    @media (min-width: 1280px) {
+        .issuance-filter-form {
+            grid-template-columns: minmax(18rem, 1.35fr) minmax(13rem, 1fr) minmax(13rem, 1fr) minmax(13rem, 1fr) auto;
+        }
+
+        .issuance-filter-reset {
+            width: auto;
+            white-space: nowrap;
+        }
+    }
+
+    @media (max-width: 639px) {
+        .issuance-filter-form {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
 <div
     x-data="{
         submitTimer: null,
@@ -29,7 +67,7 @@
         </div>
 
         <a
-            href="{{ route('admin.issuance.export', request()->query()) }}"
+            href="{{ route('admin.reports.issuance.export', request()->query()) }}"
             data-no-spa="true"
             class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
         >
@@ -41,7 +79,7 @@
         <form
             x-ref="filterForm"
             method="GET"
-            class="grid grid-cols-1 gap-3 lg:grid-cols-5"
+            class="issuance-filter-form"
         >
             <input
                 name="q"
@@ -50,13 +88,13 @@
                 x-on:keydown.enter.prevent="$refs.filterForm.requestSubmit()"
                 placeholder="Auto search staff, office, property #..."
                 autocomplete="off"
-                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
+                class="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
             >
 
             <select
                 name="type_id"
                 x-on:change="$refs.filterForm.requestSubmit()"
-                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
+                class="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
             >
                 <option value="">All Equipment Types</option>
                 @foreach($types as $type)
@@ -69,7 +107,7 @@
             <select
                 name="location_id"
                 x-on:change="$refs.filterForm.requestSubmit()"
-                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
+                class="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
             >
                 <option value="">All Locations</option>
                 @foreach($locations as $location)
@@ -82,7 +120,7 @@
             <select
                 name="office_id"
                 x-on:change="$refs.filterForm.requestSubmit()"
-                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
+                class="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
             >
                 <option value="">All Offices</option>
                 @foreach($offices as $office)
@@ -92,17 +130,17 @@
                 @endforeach
             </select>
 
-            <div class="flex gap-2">
-                <button
+             <div class="flex">
+           <!--    <button
                     type="submit"
                     class="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                 >
                     Search
-                </button>
+                </button> -->
 
                 <a
-                    href="{{ route('admin.issuance.index') }}"
-                    class="inline-flex items-center justify-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    href="{{ route('admin.reports.issuance') }}"
+                    class="issuance-filter-reset inline-flex items-center justify-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 >
                     Reset
                 </a>

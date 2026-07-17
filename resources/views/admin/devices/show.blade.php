@@ -28,10 +28,19 @@
         return {
             editOpen: false,
             relocateOpen: false,
-            relocateStaffQuery: '',
-            relocateStaffId: '',
+            reissueOpen: false,
+            relocateLocationId: '',
             relocateRemarks: '',
-            staffOptions: @js($staffOptions ?? []),
+            staffLookupUrl: @js(route('admin.devices.lookup.staff')),
+            reissueStaffQuery: '',
+            reissueStaffId: '',
+            reissueRemarks: '',
+            reissueStaffResults: [],
+            reissueStaffSelected: null,
+            reissueStaffLoading: false,
+            reissueStaffHasSearched: false,
+            reissueStaffTimer: null,
+            reissueStaffAbort: null,
             selectedTypeId: window.__deviceShowData.selectedTypeId,
             typeNames: window.__deviceShowData.typeNames,
 
@@ -73,22 +82,72 @@
                 });
             },
 
-            filteredRelocationStaff() {
-                const query = this.relocateStaffQuery.trim().toLowerCase();
-                return this.staffOptions.filter((staff) => !query || staff.search.includes(query)).slice(0, 10);
+            selectReissueStaff(staff) {
+                this.reissueStaffId = staff.id;
+                this.reissueStaffQuery = staff.label;
+                this.reissueStaffSelected = staff;
+                this.reissueStaffResults = [];
             },
 
-            selectRelocationStaff(staff) {
-                this.relocateStaffId = staff.id;
-                this.relocateStaffQuery = staff.label;
+            queueReissueStaffLookup() {
+                clearTimeout(this.reissueStaffTimer);
+                this.reissueStaffTimer = setTimeout(() => this.fetchReissueStaff(), 250);
+            },
+
+            async fetchReissueStaff() {
+                const query = this.reissueStaffQuery.trim();
+
+                if (this.reissueStaffAbort) {
+                    this.reissueStaffAbort.abort();
+                }
+
+                this.reissueStaffAbort = new AbortController();
+                this.reissueStaffLoading = true;
+                this.reissueStaffHasSearched = query !== '';
+
+                try {
+                    const url = new URL(this.staffLookupUrl, window.location.origin);
+                    url.searchParams.set('q', query);
+
+                    const response = await fetch(url, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: this.reissueStaffAbort.signal,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Unable to search staff.');
+                    }
+
+                    const data = await response.json();
+                    this.reissueStaffResults = Array.isArray(data.results) ? data.results : [];
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        this.reissueStaffResults = [];
+                    }
+                } finally {
+                    this.reissueStaffLoading = false;
+                }
             },
 
             openRelocation() {
-                this.relocateStaffQuery = '';
-                this.relocateStaffId = '';
+                this.relocateLocationId = '';
                 this.relocateRemarks = '';
                 this.relocateOpen = true;
-                this.$nextTick(() => this.$refs.relocateStaffSearch?.focus());
+                this.$nextTick(() => this.$refs.relocateLocationSelect?.focus());
+            },
+
+            openReissue() {
+                this.reissueStaffQuery = '';
+                this.reissueStaffId = '';
+                this.reissueStaffSelected = null;
+                this.reissueStaffResults = [];
+                this.reissueStaffHasSearched = false;
+                this.reissueRemarks = '';
+                this.reissueOpen = true;
+                this.$nextTick(() => {
+                    this.$refs.reissueStaffSearch?.focus();
+                    this.fetchReissueStaff();
+                });
             }
         };
     }
@@ -297,11 +356,13 @@
                         History
                     </a>
 
-                    @if($device->currentAssignment && $device->currentAssignment->staff)
-                        <button type="button" x-on:click="openRelocation()" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">
-                            Relocate
-                        </button>
-                    @endif
+                    <button type="button" x-on:click="openRelocation()" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">
+                        Relocate
+                    </button>
+
+                    <button type="button" x-on:click="openReissue()" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
+                        Reissue
+                    </button>
 
                     <a
                         href="{{ route('admin.devices.checklist.form', $device) }}"
@@ -316,7 +377,7 @@
                         x-on:click="editOpen = true"
                         class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                     >
-                        Edit
+                        Edit Specs
                     </button>
 
                     @if(auth()->user()->isAdmin())
@@ -551,35 +612,47 @@
                     Current Assignment
                 </h2>
 
-                @if($device->currentAssignment && $device->currentAssignment->staff)
+                @if($device->currentAssignment)
+                    @php
+                        $currentAssignment = $device->currentAssignment;
+                        $currentStaff = $currentAssignment->staff;
+                        $currentOffice = $currentStaff?->office;
+                        $assignmentLocation = $currentAssignment->location
+                            ?? $currentOffice?->location
+                            ?? $currentOffice?->college;
+                    @endphp
                     <div class="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
-                        <div class="font-medium text-gray-900">
-                            {{ $device->currentAssignment->staff->last_name }},
-                            {{ $device->currentAssignment->staff->first_name }}
-                        </div>
+                        @if($currentStaff)
+                            <div class="font-medium text-gray-900">
+                                {{ $currentStaff->last_name }},
+                                {{ $currentStaff->first_name }}
+                            </div>
+
+                            <div class="mt-1 text-sm text-gray-500">
+                                {{ $currentOffice?->name ?? 'No office' }}
+                                @if($assignmentLocation)
+                                    /
+                                    {{ $assignmentLocation->code ? $assignmentLocation->code . ' - ' : '' }}{{ $assignmentLocation->name }}
+                                @endif
+                            </div>
+                        @else
+                            <div class="font-medium text-gray-900">
+                                Location Assignment
+                            </div>
+
+                            <div class="mt-1 text-sm text-gray-500">
+                                {{ $assignmentLocation ? (($assignmentLocation->code ? $assignmentLocation->code . ' - ' : '') . $assignmentLocation->name) : 'No location selected' }}
+                            </div>
+                        @endif
 
                         <div class="mt-1 text-sm text-gray-500">
-                            {{ $device->currentAssignment->staff->office?->name ?? 'No office' }}
-
-                            @php
-                                $assignmentLocation = $device->currentAssignment->staff->office?->location
-                                    ?? $device->currentAssignment->staff->office?->college;
-                            @endphp
-
-                            @if($assignmentLocation)
-                                /
-                                {{ $assignmentLocation->name }}
-                            @endif
-                        </div>
-
-                        <div class="mt-1 text-sm text-gray-500">
-                            Issued:
-                            {{ $device->currentAssignment->issued_at ? $device->currentAssignment->issued_at->format('M d, Y h:i A') : '-' }}
+                            Assigned:
+                            {{ $currentAssignment->issued_at ? $currentAssignment->issued_at->format('M d, Y h:i A') : '-' }}
                         </div>
                     </div>
                 @else
                     <p class="mt-3 text-gray-700">
-                        This equipment is not currently issued.
+                        This equipment is not currently assigned.
                     </p>
                 @endif
             </div>
@@ -604,34 +677,82 @@
             <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Relocate Equipment</h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select the new end user. Their office and location will be recorded automatically.</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select one of the created locations for this equipment.</p>
                 </div>
                 <button type="button" x-on:click="relocateOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100">&times;</button>
             </div>
             <form method="POST" action="{{ route('admin.devices.relocate', $device) }}" class="space-y-4 px-6 py-5">
                 @csrf
                 <div>
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search end user</label>
-                    <input type="text" x-ref="relocateStaffSearch" x-model="relocateStaffQuery" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Name, position, office, or location">
-                    <input type="hidden" name="staff_id" x-model="relocateStaffId">
-                    <div class="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700" x-show="!relocateStaffId">
-                        <template x-for="staff in filteredRelocationStaff()" :key="staff.id">
-                            <button type="button" x-on:click="selectRelocationStaff(staff)" class="block w-full px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-gray-700">
-                                <span class="font-medium text-gray-900 dark:text-white" x-text="staff.name"></span>
-                                <span class="block text-xs text-gray-500" x-text="staff.label"></span>
-                            </button>
-                        </template>
-                        <div x-show="filteredRelocationStaff().length === 0" class="px-3 py-3 text-sm text-gray-500">No end user found.</div>
-                    </div>
-                    <div x-show="relocateStaffId" class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-100">Selected: <span class="font-medium" x-text="relocateStaffQuery"></span></div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Location</label>
+                    <select
+                        x-ref="relocateLocationSelect"
+                        x-model="relocateLocationId"
+                        name="location_id"
+                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        required
+                    >
+                        <option value="">-- Select created location --</option>
+                        @foreach($locations as $location)
+                            <option value="{{ $location->id }}">
+                                {{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}
+                            </option>
+                        @endforeach
+                    </select>
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Relocation remarks</label>
-                    <textarea name="remarks" x-model="relocateRemarks" rows="3" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or details of the relocation"></textarea>
+                    <textarea name="remarks" x-model="relocateRemarks" rows="3" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or location transfer details"></textarea>
                 </div>
                 <div class="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
                     <button type="button" x-on:click="relocateOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
-                    <button type="submit" :disabled="!relocateStaffId" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50">Save Relocation</button>
+                    <button type="submit" :disabled="!relocateLocationId" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50">Save Relocation</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- REISSUE MODAL --}}
+    <div x-show="reissueOpen" x-cloak @keydown.escape.window="reissueOpen = false" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div x-show="reissueOpen" @click.away="reissueOpen = false" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-800">
+            <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Reissue Equipment</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Assign this equipment to a registered end user.</p>
+                </div>
+                <button type="button" x-on:click="reissueOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100">&times;</button>
+            </div>
+            <form method="POST" action="{{ route('admin.devices.reissue', $device) }}" class="space-y-4 px-6 py-5">
+                @csrf
+                <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search registered end user</label>
+                    <input type="text" x-ref="reissueStaffSearch" x-model="reissueStaffQuery" x-on:input="reissueStaffId = ''; reissueStaffSelected = null; queueReissueStaffLookup()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Name, email, office, or location" autocomplete="off">
+                    <input type="hidden" name="staff_id" x-model="reissueStaffId">
+                    <div class="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700" x-show="!reissueStaffId">
+                        <template x-if="reissueStaffLoading">
+                            <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Searching end users...</div>
+                        </template>
+                        <template x-if="!reissueStaffLoading && !reissueStaffHasSearched && reissueStaffResults.length === 0">
+                            <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Type a name, email, office, or location.</div>
+                        </template>
+                        <template x-for="staff in reissueStaffResults" :key="staff.id">
+                            <button type="button" x-on:click="selectReissueStaff(staff)" class="block w-full px-3 py-2 text-left text-sm hover:bg-cyan-50 dark:hover:bg-gray-700">
+                                <span class="font-medium text-gray-900 dark:text-white" x-text="staff.name"></span>
+                                <span class="block text-xs text-gray-500" x-text="staff.label"></span>
+                                <span class="block text-xs text-gray-400" x-show="staff.email" x-text="staff.email"></span>
+                            </button>
+                        </template>
+                        <div x-show="!reissueStaffLoading && reissueStaffHasSearched && reissueStaffResults.length === 0" class="px-3 py-3 text-sm text-gray-500">No registered end user found.</div>
+                    </div>
+                    <div x-show="reissueStaffId" class="mt-2 rounded-lg bg-cyan-50 px-3 py-2 text-sm text-cyan-900 dark:bg-cyan-900/20 dark:text-cyan-100">Selected: <span class="font-medium" x-text="reissueStaffQuery"></span></div>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Reissue remarks</label>
+                    <textarea name="remarks" x-model="reissueRemarks" rows="3" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or activity log remarks"></textarea>
+                </div>
+                <div class="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
+                    <button type="button" x-on:click="reissueOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
+                    <button type="submit" :disabled="!reissueStaffId" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">Save Reissue</button>
                 </div>
             </form>
         </div>

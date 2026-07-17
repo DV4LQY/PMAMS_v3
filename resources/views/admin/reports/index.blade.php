@@ -6,9 +6,7 @@
 @section('breadcrumbs')
     <a href="{{ route('admin.dashboard') }}" class="hover:text-blue-600 dark:hover:text-blue-400">Dashboard</a>
     <span>/</span>
-    <a href="{{ route('admin.reports.index') }}" class="hover:text-blue-600 dark:hover:text-blue-400">Reports</a>
-    <span>/</span>
-    <span class="font-medium text-gray-800 dark:text-gray-200">Registered Accounts</span>
+    <span class="font-medium text-gray-800 dark:text-gray-200">Reports</span>
 @endsection
 
 @section('content')
@@ -40,6 +38,23 @@
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 Filter all equipment by equipment type, location, office, or keyword.
+            </p>
+        </a>
+
+        {{-- Issuance --}}
+        <a href="{{ route('admin.reports.issuance') }}"
+           class="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-amber-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:hover:border-amber-500">
+
+            <div class="text-sm font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                Issuance
+            </div>
+
+            <h2 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">
+                Issued Equipment / End Users
+            </h2>
+
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Review active equipment issued to registered end users and export issuance reports.
             </p>
         </a>
 

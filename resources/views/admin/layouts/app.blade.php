@@ -212,7 +212,7 @@
         request()->routeIs('admin.staff.*'),
         request()->routeIs('admin.org-browser') => 'locations',
         request()->routeIs('admin.devices.*') => 'devices',
-        request()->routeIs('admin.issuance.*') => 'issuance',
+        request()->routeIs('admin.issuance.*') => 'reports',
         request()->routeIs('admin.reports.*') => 'reports',
         request()->routeIs('admin.scanner') => 'scanner',
         request()->routeIs('admin.support') => 'support',
@@ -340,21 +340,6 @@
                     </svg>
                     <span>Equipment</span>
                 </a>
-
-                <a
-                    href="{{ route('admin.issuance.index') }}"
-                    data-nav-group="issuance"
-                    data-active="{{ $currentNavGroup === 'issuance' ? 'true' : 'false' }}"
-                    @if($currentNavGroup === 'issuance') aria-current="page" @endif
-                    class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition
-                    {{ request()->routeIs('admin.issuance.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
-                >
-                    <svg class="w-5 h-5 {{ request()->routeIs('admin.issuance.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7h8M8 11h8M8 15h5M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/>
-                    </svg>
-                    <span>Issuance</span>
-                </a>
-
                 <a
                     href="{{ route('admin.reports.index') }}"
                     data-nav-group="reports"
@@ -652,6 +637,155 @@
         </footer>
     </div>
 </div>
+
+<script>
+    (function () {
+        if (window.__pmamsNativeModalFallbackReady) {
+            return;
+        }
+
+        window.__pmamsNativeModalFallbackReady = true;
+
+        function unlockPageIfNoNativeModal() {
+            if (!document.querySelector('[data-native-open="true"]')) {
+                document.documentElement.classList.remove('overflow-hidden');
+                document.body.classList.remove('overflow-hidden');
+            }
+        }
+
+        // Keep the shared Add Equipment form usable even when Alpine has not
+        // initialized yet (for example while the Vite/Livewire bundle is still
+        // loading). The normal Alpine x-show bindings take over as soon as
+        // they are available; this is only the native modal fallback.
+        function syncEquipmentFields(modal) {
+            if (!modal || (window.Alpine && modal._x_dataStack?.length)) {
+                return;
+            }
+
+            const typeSelect = modal.querySelector('[data-equipment-type-select]');
+
+            if (!typeSelect) {
+                return;
+            }
+
+            const typeName = (typeSelect.options[typeSelect.selectedIndex]?.textContent || '')
+                .trim()
+                .toLowerCase();
+            const isComputer = typeName === 'desktop' || typeName === 'laptop';
+            const isDesktop = typeName === 'desktop';
+            const hasOsVersion = Boolean(modal.querySelector('[name="os_version"]')?.value);
+            const hasMsVersion = Boolean(modal.querySelector('[name="ms_office_version"]')?.value);
+            const visibleFields = {
+                computer: isComputer,
+                desktop: isDesktop,
+                'os-license': isComputer && hasOsVersion,
+                'office-license': isComputer && hasMsVersion,
+            };
+
+            modal.querySelectorAll('[data-equipment-field]').forEach((field) => {
+                const visible = Boolean(visibleFields[field.dataset.equipmentField]);
+                field.style.display = visible ? '' : 'none';
+
+                if (visible) {
+                    field.removeAttribute('x-cloak');
+                } else {
+                    field.setAttribute('x-cloak', '');
+                }
+
+                field.querySelectorAll('input, select, textarea').forEach((input) => {
+                    input.disabled = !visible;
+                });
+            });
+        }
+
+        window.pmamsSyncEquipmentFields = syncEquipmentFields;
+
+        window.pmamsOpenModal = function (id) {
+            const modal = id ? document.getElementById(id) : null;
+
+            if (!modal) {
+                return;
+            }
+
+            modal.removeAttribute('x-cloak');
+            modal.style.display = 'block';
+            modal.dataset.nativeOpen = 'true';
+            document.documentElement.classList.add('overflow-hidden');
+            document.body.classList.add('overflow-hidden');
+
+            window.setTimeout(function () {
+                modal.querySelector('input:not([type="hidden"]), select, textarea, button')?.focus();
+            }, 0);
+        };
+
+        window.pmamsCloseModal = function (id) {
+            const modal = id ? document.getElementById(id) : null;
+
+            if (!modal) {
+                return;
+            }
+
+            modal.style.display = 'none';
+            delete modal.dataset.nativeOpen;
+            unlockPageIfNoNativeModal();
+        };
+
+        document.addEventListener('click', function (event) {
+            const openButton = event.target.closest('[data-open-modal], [data-open-add-equipment-modal]');
+
+            if (openButton) {
+                const modalId = openButton.dataset.openModal || 'add-equipment-modal';
+
+                if (openButton.tagName === 'A') {
+                    event.preventDefault();
+                }
+
+                if (openButton.hasAttribute('data-open-add-equipment-modal')) {
+                    window.dispatchEvent(new CustomEvent('open-equipment-add'));
+                }
+
+                window.setTimeout(function () {
+                    const modal = document.getElementById(modalId);
+
+                    if (modal && window.getComputedStyle(modal).display === 'none') {
+                        window.pmamsOpenModal(modalId);
+                    }
+
+                    syncEquipmentFields(modal);
+                }, 0);
+            }
+
+            const closeButton = event.target.closest('[data-native-modal-close]');
+            const modalId = closeButton?.dataset.nativeModalClose;
+
+            if (modalId) {
+                window.pmamsCloseModal(modalId);
+            }
+        });
+
+        document.addEventListener('change', function (event) {
+            if (!event.target.closest('[data-equipment-type-select], [name="os_version"], [name="ms_office_version"]')) {
+                return;
+            }
+
+            syncEquipmentFields(event.target.closest('[role="dialog"], [id$="-modal"]'));
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                document.querySelectorAll('[data-native-open="true"]').forEach(function (modal) {
+                    window.pmamsCloseModal(modal.id);
+                });
+            }
+        });
+
+        document.addEventListener('livewire:navigating', function () {
+            document.querySelectorAll('[data-native-open="true"]').forEach(function (modal) {
+                window.pmamsCloseModal(modal.id);
+            });
+        });
+    })();
+</script>
 
 @stack('scripts')
 @livewireScripts
