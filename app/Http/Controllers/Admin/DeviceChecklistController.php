@@ -61,7 +61,7 @@ class DeviceChecklistController extends Controller
             'remarks' => ['nullable', 'string', 'max:1000'],
             'corrective_action' => ['nullable', 'string', 'max:1000'],
             'confirm_duplicate' => ['nullable', 'boolean'],
-            'verification_reason' => ['required', 'string', 'max:1000'],
+            'verification_reason' => ['nullable', 'string', 'max:1000'],
         ], $hardwareRules, $softwareRules));
 
         $dateChecked = $data['date_checked']
@@ -78,7 +78,7 @@ class DeviceChecklistController extends Controller
         );
         $remarks = trim((string) ($data['remarks'] ?? ''));
         $correctiveAction = trim((string) ($data['corrective_action'] ?? ''));
-        $verificationReason = trim((string) $data['verification_reason']);
+        $verificationReason = trim((string) ($data['verification_reason'] ?? ''));
 
         // A checklist can be submitted again, but only after the user has
         // explicitly confirmed that it is a verification within the same
@@ -97,6 +97,17 @@ class DeviceChecklistController extends Controller
             return redirect()
                 ->back()
                 ->withInput()
+                ->with('duplicate_warning', [
+                    'date' => $duplicateRecord->maintenance_date?->format('F j, Y'),
+                    'record_id' => $duplicateRecord->id,
+                ]);
+        }
+
+        if ($duplicateRecord && $verificationReason === '') {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors(['verification_reason' => 'Please provide a reason before verifying this duplicate checklist.'])
                 ->with('duplicate_warning', [
                     'date' => $duplicateRecord->maintenance_date?->format('F j, Y'),
                     'record_id' => $duplicateRecord->id,
@@ -173,11 +184,12 @@ class DeviceChecklistController extends Controller
             'maintenance_remarks' => $latestRecord?->remarks,
         ]);
 
-        ActivityLog::record(
-            'updated',
-            "Marked device \"{$device->property_number}\" as checked with checklist. Reason: {$verificationReason}",
-            $device
-        );
+        $activityDescription = "Marked device \"{$device->property_number}\" as checked with checklist";
+        if ($duplicateRecord) {
+            $activityDescription .= ". Verification reason: {$verificationReason}";
+        }
+
+        ActivityLog::record('updated', $activityDescription, $device);
 
         return redirect()
             ->route('admin.devices.show', $device)

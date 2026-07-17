@@ -48,19 +48,27 @@
         x-data="{
             remarks: @js(old('remarks', '')),
             correctiveAction: @js(old('corrective_action', '')),
+            checklistReady: false,
             checklistVersion: 0,
-            checklistItemCount: {{ count($checklistItems) }},
-            softwareItemCount: {{ count($softwareItems) }},
+            checklistRowCount: {{ count($checklistItems) + count($softwareItems) }},
+            duplicateReasonOpen: {{ session('duplicate_warning') ? 'true' : 'false' }},
+            verificationReason: @js(old('verification_reason', '')),
             allChecklistAnswered() {
-                this.checklistVersion;
-                const checked = Array.from(this.$el.querySelectorAll('input[type=radio]:checked'));
-                const hardwareAnswered = checked.filter((input) => input.name.startsWith(`hardware[`)).length === this.checklistItemCount;
-                const softwareAnswered = checked.filter((input) => input.name.startsWith(`software[`)).length === this.softwareItemCount;
-                return hardwareAnswered && softwareAnswered;
+                const selectedRows = new Set(
+                    Array.from(this.$root.querySelectorAll('input[type=radio]:checked'))
+                        .map((input) => input.name)
+                );
+
+                return selectedRows.size === this.checklistRowCount;
+            },
+            refreshChecklistState() {
+                this.checklistVersion++;
+                this.checklistReady = this.allChecklistAnswered();
             },
             applyAvailabilityDefaults() {
-                const avrUnavailable = this.$el.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
-                const printerUnavailable = this.$el.elements['hardware[printer_printout]']?.value === 'Not Available';
+                const form = this.$root;
+                const avrUnavailable = form.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
+                const printerUnavailable = form.elements['hardware[printer_printout]']?.value === 'Not Available';
 
                 if (avrUnavailable && !this.remarks.trim()) {
                     this.remarks = 'not available UPS/AVR';
@@ -75,6 +83,7 @@
                 }
             }
         }"
+        x-init="$nextTick(() => $data.refreshChecklistState())"
         class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
     >
         @csrf
@@ -91,10 +100,8 @@
         @endif
 
         @if(session('duplicate_warning'))
-            <div class="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
-                The equipment was already checked on date <strong>{{ session('duplicate_warning.date') }}</strong>, do you want to verify the checklist?
-                <input type="hidden" name="confirm_duplicate" value="1">
-            </div>
+            <input type="hidden" name="confirm_duplicate" value="1">
+            <input type="hidden" name="verification_reason" x-model="verificationReason">
         @endif
 
         <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
@@ -180,7 +187,7 @@
                                         value="OK"
                                         class="peer sr-only"
                                         @if($loop->first) required @endif
-                                        x-on:change="applyAvailabilityDefaults(); checklistVersion++"
+                                        x-on:change="applyAvailabilityDefaults(); refreshChecklistState()"
                                         @checked(old("hardware.$key") === 'OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-green-600 peer-checked:bg-green-50 peer-checked:text-green-700 dark:peer-checked:bg-green-900/30 dark:peer-checked:text-green-400">
@@ -196,7 +203,7 @@
                                         name="hardware[{{ $key }}]"
                                         value="Not OK"
                                         class="peer sr-only"
-                                        x-on:change="applyAvailabilityDefaults(); checklistVersion++"
+                                        x-on:change="applyAvailabilityDefaults(); refreshChecklistState()"
                                         @checked(old("hardware.$key") === 'Not OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-red-600 peer-checked:bg-red-50 peer-checked:text-red-700 dark:peer-checked:bg-red-900/30 dark:peer-checked:text-red-400">
@@ -213,7 +220,7 @@
                                             name="hardware[{{ $key }}]"
                                             value="Not Available"
                                             class="peer sr-only"
-                                            x-on:change="applyAvailabilityDefaults(); checklistVersion++"
+                                            x-on:change="applyAvailabilityDefaults(); refreshChecklistState()"
                                             @checked(old("hardware.$key") === 'Not Available')
                                         >
                                         <span class="flex min-h-8 min-w-8 items-center justify-center rounded border-2 border-gray-400 px-2 text-xs font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
@@ -240,7 +247,7 @@
                                         value="check"
                                         class="peer sr-only"
                                         @if($loop->first) required @endif
-                                        x-on:change="checklistVersion++"
+                                        x-on:change="refreshChecklistState()"
                                         @checked(old("software.$key") === 'check')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-green-600 peer-checked:bg-green-50 peer-checked:text-green-700 dark:peer-checked:bg-green-900/30 dark:peer-checked:text-green-400">
@@ -256,7 +263,7 @@
                                         name="software[{{ $key }}]"
                                         value="dash"
                                         class="peer sr-only"
-                                        x-on:change="checklistVersion++"
+                                        x-on:change="refreshChecklistState()"
                                         @checked(old("software.$key") === 'dash')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-600 peer-checked:bg-gray-50 peer-checked:text-gray-700 dark:peer-checked:bg-gray-700 dark:peer-checked:text-gray-300">
@@ -295,21 +302,6 @@
             </div>
         </div>
 
-        <div class="mt-5">
-            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Reason for Activity Log <span class="text-red-600">*</span>
-            </label>
-            <textarea
-                name="verification_reason"
-                rows="3"
-                required
-                maxlength="1000"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                placeholder="Enter the reason for marking this equipment as checked"
-            >{{ old('verification_reason') }}</textarea>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Used for the activity log only.</p>
-        </div>
-
         <div class="mt-6 flex justify-end gap-2">
             <a
                 href="{{ route('admin.devices.show', $device) }}"
@@ -318,15 +310,86 @@
                 Cancel
             </a>
 
-            <button
-                type="submit"
-                x-show="allChecklistAnswered()"
-                x-bind:disabled="!allChecklistAnswered()"
-                class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-                {{ session('duplicate_warning') ? 'Verify & Save Checklist' : 'Save Checklist' }}
-            </button>
+            @if(session('duplicate_warning'))
+                <button
+                    type="button"
+                    x-show="checklistReady"
+                    x-bind:disabled="!checklistReady"
+                    x-on:click="duplicateReasonOpen = true; $nextTick(() => $refs.verificationReason?.focus())"
+                    class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                >
+                    Verify Checklist
+                </button>
+            @else
+                <button
+                    type="submit"
+                    x-show="checklistReady"
+                    x-bind:disabled="!checklistReady"
+                    class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                >
+                    Save Checklist
+                </button>
+            @endif
         </div>
+
+        @if(session('duplicate_warning'))
+            <div
+                x-show="duplicateReasonOpen"
+                x-cloak
+                x-on:keydown.escape.window="duplicateReasonOpen = false"
+                class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="duplicate-checklist-title"
+            >
+                <div
+                    x-on:click.outside="duplicateReasonOpen = false"
+                    class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-800"
+                >
+                    <h2 id="duplicate-checklist-title" class="text-lg font-semibold text-gray-900 dark:text-white">
+                        Verify Duplicate Checklist
+                    </h2>
+                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        The equipment was already checked on date
+                        <strong>{{ session('duplicate_warning.date') }}</strong>.
+                        Do you want to verify the checklist?
+                    </p>
+
+                    <div class="mt-5">
+                        
+                        <textarea
+                            x-ref="verificationReason"
+                            x-model="verificationReason"
+                            rows="4"
+                            required
+                            maxlength="1000"
+                            class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            placeholder="Explain why this checklist is being verified again"
+                        ></textarea>
+                        @error('verification_reason')
+                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                        @enderror
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Used for activity log only.</p>
+                    </div>
+
+                    <div class="mt-6 flex justify-end gap-2">
+                        <button
+                            type="button"
+                            x-on:click="duplicateReasonOpen = false"
+                            class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                        >
+                            Verify &amp; Save Checklist
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
     </form>
 </div>
 @endsection

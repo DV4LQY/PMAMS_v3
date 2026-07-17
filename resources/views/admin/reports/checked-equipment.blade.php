@@ -55,7 +55,7 @@
 
     {{-- Summary --}}
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-1">
 
         @forelse(($checkerSummary ?? $adminSummary)->take(3) as $summary)
 
@@ -92,7 +92,7 @@
     <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
 
         <form method="GET"
-              class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
+              class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
 
 
             <input
@@ -116,9 +116,7 @@
                     @endforeach
                 </select>
             @else
-                <div class="flex items-center rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                    My marked checked records
-                </div>
+              
                 <input type="hidden" name="checker_id" value="{{ auth()->id() }}">
             @endif
 
