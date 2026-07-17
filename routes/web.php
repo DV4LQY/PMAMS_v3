@@ -154,9 +154,6 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::post('/devices/{device}/issue', [DeviceController::class, 'issue'])
             ->name('admin.devices.issue');
 
-        Route::post('/devices/{device}/relocate', [DeviceController::class, 'relocate'])
-            ->name('admin.devices.relocate');
-
         Route::post('/devices/{device}/reissue', [DeviceController::class, 'reissue'])
             ->name('admin.devices.reissue');
 

@@ -287,79 +287,18 @@ class DeviceController extends Controller
         ]);
 
         $types = $this->allowedDeviceTypes();
-        $locations = Location::orderBy('name')->get();
-
-        return view('admin.devices.show', compact('device', 'types', 'locations'));
-    }
-
-    public function relocate(Request $request, Device $device)
-    {
-        $data = $request->validate([
-            'location_id' => ['required', 'exists:locations,id'],
-            'remarks' => ['required', 'string', 'max:1000'],
-        ], [
-            'remarks.required' => 'Please enter relocation remarks.',
-        ]);
-
-        $location = Location::findOrFail($data['location_id']);
-        $locationLabel = $location->code
-            ? "{$location->code} - {$location->name}"
-            : $location->name;
-
-        $assignment = $device->currentAssignment()
-            ->with(['staff.office.location', 'location'])
-            ->first();
-        $from = $this->assignmentContext($assignment);
-
-        if ($assignment) {
-            $assignment->update([
-                'returned_at' => now(),
-                'remarks' => trim(($assignment->remarks ? $assignment->remarks . ' ' : '') . 'Relocated to ' . $locationLabel . ' on ' . now()->format('M d, Y h:i A') . '.'),
-            ]);
-        }
-
-        $relocationRemarks = trim($data['remarks'] ?? '') ?: "Equipment relocated to {$locationLabel}.";
-
-        DeviceAssignment::create([
-            'device_id' => $device->id,
-            'staff_id' => null,
-            'location_id' => $location->id,
-            'issued_by' => Auth::id(),
-            'issued_at' => now(),
-            'remarks' => $relocationRemarks,
-        ]);
-
-        $device->update(['status' => 'issued']);
-
-        ActivityLog::record(
-            'relocated',
-            "Relocated equipment \"{$device->property_number}\"",
-            $device,
-            ActivityLog::makePayload([
-                'property_number' => $device->property_number,
-                'from_end_user' => $from['staff_name'],
-                'from_office' => $from['office_name'],
-                'from_location' => $from['location_name'],
-                'to_end_user' => null,
-                'to_office' => null,
-                'to_location' => $locationLabel,
-                'remarks' => $relocationRemarks,
-                'relocated_by' => Auth::user()?->name,
-                'relocated_at' => now()->format('M d, Y h:i A'),
-            ])
-        );
-
-        return back()->with('success', 'Equipment relocated successfully.');
+        return view('admin.devices.show', compact('device', 'types'));
     }
 
     public function reissue(Request $request, Device $device)
     {
         $data = $request->validate([
             'staff_id' => ['required', 'exists:staff,id'],
-            'remarks' => ['nullable', 'string', 'max:1000'],
+            'remarks' => ['required', 'string', 'max:1000'],
         ], [
             'staff_id.required' => 'Please select a registered end user.',
             'staff_id.exists' => 'The selected end user could not be found.',
+            'remarks.required' => 'Please enter reissue remarks.',
         ]);
 
         $staff = Staff::query()
@@ -370,12 +309,19 @@ class DeviceController extends Controller
             ->with(['staff.office.location', 'location'])
             ->first();
         $from = $this->assignmentContext($assignment);
+        // Reissue has no location input. The location follows the selected
+        // end user's registered office/location instead of a stale relocation.
+        $reissueLocation = $staff->office?->location;
+        $reissueLocationId = $reissueLocation?->id;
+        $reissueLocationLabel = $reissueLocation
+            ? (($reissueLocation->code ? $reissueLocation->code . ' - ' : '') . $reissueLocation->name)
+            : null;
 
         if ($assignment && (int) $assignment->staff_id === (int) $staff->id) {
             return back()->withErrors(['staff_id' => 'This equipment is already assigned to the selected end user.'])->withInput();
         }
 
-        $reissueRemarks = trim($data['remarks'] ?? '') ?: 'Equipment reissued to registered end user.';
+        $reissueRemarks = trim($data['remarks']);
 
         if ($assignment) {
             $assignment->update([
@@ -387,7 +333,7 @@ class DeviceController extends Controller
         DeviceAssignment::create([
             'device_id' => $device->id,
             'staff_id' => $staff->id,
-            'location_id' => null,
+            'location_id' => $reissueLocationId,
             'issued_by' => Auth::id(),
             'issued_at' => now(),
             'remarks' => $reissueRemarks,
@@ -406,7 +352,7 @@ class DeviceController extends Controller
                 'from_location' => $from['location_name'],
                 'to_end_user' => trim($staff->first_name . ' ' . $staff->last_name),
                 'to_office' => $staff->office?->name,
-                'to_location' => $staff->office?->location?->name,
+                'to_location' => $reissueLocationLabel,
                 'remarks' => $reissueRemarks,
                 'reissued_by' => Auth::user()?->name,
                 'reissued_at' => now()->format('M d, Y h:i A'),
@@ -1823,7 +1769,7 @@ class DeviceController extends Controller
     {
         $staff = $assignment?->staff;
         $office = $staff?->office;
-        $location = $assignment?->location ?? $office?->location;
+        $location = $assignment?->location;
 
         return [
             'staff_name' => $staff ? trim(($staff->first_name ?? '') . ' ' . ($staff->last_name ?? '')) : null,

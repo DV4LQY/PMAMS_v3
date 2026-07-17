@@ -59,10 +59,7 @@
     function deviceEditor() {
         return {
             editOpen: false,
-            relocateOpen: false,
             reissueOpen: false,
-            relocateLocationId: '',
-            relocateRemarks: '',
             staffLookupUrl: @js(route('admin.devices.lookup.staff')),
             reissueStaffQuery: '',
             reissueStaffId: '',
@@ -191,6 +188,17 @@
             async fetchReissueStaff() {
                 const query = this.reissueStaffQuery.trim();
 
+                if (query.length < 2) {
+                    if (this.reissueStaffAbort) {
+                        this.reissueStaffAbort.abort();
+                    }
+
+                    this.reissueStaffResults = [];
+                    this.reissueStaffHasSearched = false;
+                    this.reissueStaffLoading = false;
+                    return;
+                }
+
                 if (this.reissueStaffAbort) {
                     this.reissueStaffAbort.abort();
                 }
@@ -223,13 +231,6 @@
                 }
             },
 
-            openRelocation() {
-                this.relocateLocationId = '';
-                this.relocateRemarks = '';
-                this.relocateOpen = true;
-                this.$nextTick(() => this.$refs.relocateLocationSelect?.focus());
-            },
-
             openReissue() {
                 this.reissueStaffQuery = '';
                 this.reissueStaffId = '';
@@ -238,10 +239,7 @@
                 this.reissueStaffHasSearched = false;
                 this.reissueRemarks = '';
                 this.reissueOpen = true;
-                this.$nextTick(() => {
-                    this.$refs.reissueStaffSearch?.focus();
-                    this.fetchReissueStaff();
-                });
+                this.$nextTick(() => this.$refs.reissueStaffSearch?.focus());
             }
         };
     }
@@ -449,10 +447,6 @@
                     >
                         History
                     </a>
-
-                    <button type="button" x-on:click="openRelocation()" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">
-                        Relocate
-                    </button>
 
                     <button type="button" x-on:click="openReissue()" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
                         Reissue
@@ -712,9 +706,8 @@
                         $currentAssignment = $device->currentAssignment;
                         $currentStaff = $currentAssignment->staff;
                         $currentOffice = $currentStaff?->office;
-                        $assignmentLocation = $currentAssignment->location
-                            ?? $currentOffice?->location
-                            ?? $currentOffice?->college;
+                        // Reissue updates the location from the selected user's office.
+                        $assignmentLocation = $currentAssignment->location;
                     @endphp
                     <div class="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
                         @if($currentStaff)
@@ -766,54 +759,13 @@
         </div>
     </div>
 
-    {{-- RELOCATION MODAL --}}
-    <div x-show="relocateOpen" x-cloak @keydown.escape.window="relocateOpen = false" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div x-show="relocateOpen" @click.away="relocateOpen = false" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-800">
-            <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Relocate Equipment</h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select one of the created locations for this equipment.</p>
-                </div>
-                <button type="button" x-on:click="relocateOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100">&times;</button>
-            </div>
-            <form method="POST" action="{{ route('admin.devices.relocate', $device) }}" class="space-y-4 px-6 py-5">
-                @csrf
-                <div>
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Location</label>
-                    <select
-                        x-ref="relocateLocationSelect"
-                        x-model="relocateLocationId"
-                        name="location_id"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        required
-                    >
-                        <option value="">-- Select created location --</option>
-                        @foreach($locations as $location)
-                            <option value="{{ $location->id }}">
-                                {{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Relocation remarks</label>
-                    <textarea name="remarks" x-model="relocateRemarks" rows="3" maxlength="1000" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or location transfer details"></textarea>
-                </div>
-                <div class="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
-                    <button type="button" x-on:click="relocateOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
-                    <button type="submit" :disabled="!relocateLocationId || !relocateRemarks.trim()" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50">Save Relocation</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
     {{-- REISSUE MODAL --}}
     <div x-show="reissueOpen" x-cloak @keydown.escape.window="reissueOpen = false" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
         <div x-show="reissueOpen" @click.away="reissueOpen = false" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-800">
             <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Reissue Equipment</h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Assign this equipment to a registered end user.</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Assign the end user. The location updates from the selected user's registered office.</p>
                 </div>
                 <button type="button" x-on:click="reissueOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100">&times;</button>
             </div>
@@ -828,7 +780,7 @@
                             <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Searching end users...</div>
                         </template>
                         <template x-if="!reissueStaffLoading && !reissueStaffHasSearched && reissueStaffResults.length === 0">
-                            <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Type a registered end user's name, email, or office.</div>
+                            <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Type at least 2 characters of the end user's name, email, or office.</div>
                         </template>
                         <template x-for="staff in reissueStaffResults" :key="staff.id">
                             <button type="button" x-on:click="selectReissueStaff(staff)" class="block w-full px-3 py-2 text-left text-sm hover:bg-cyan-50 dark:hover:bg-gray-700">
@@ -843,11 +795,11 @@
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Reissue remarks</label>
-                    <textarea name="remarks" x-model="reissueRemarks" rows="3" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or activity log remarks"></textarea>
+                    <textarea name="remarks" x-model="reissueRemarks" rows="3" maxlength="1000" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or activity log remarks"></textarea>
                 </div>
                 <div class="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
                     <button type="button" x-on:click="reissueOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
-                    <button type="submit" :disabled="!reissueStaffId" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">Save Reissue</button>
+                    <button type="submit" :disabled="!reissueStaffId || !reissueRemarks.trim()" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">Save Reissue</button>
                 </div>
             </form>
         </div>

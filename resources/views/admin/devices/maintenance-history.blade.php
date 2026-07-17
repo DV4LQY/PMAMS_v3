@@ -67,7 +67,7 @@
                         @php
                             $staff = $assignment->staff;
                             $office = $staff?->office;
-                            $location = $assignment->location ?? $office?->location;
+                            $location = $assignment->location;
                             $staffName = $staff ? trim($staff->first_name . ' ' . $staff->last_name) : 'Location assignment';
                             $locationLabel = $location
                                 ? trim(($location->code ? $location->code . ' - ' : '') . $location->name)
