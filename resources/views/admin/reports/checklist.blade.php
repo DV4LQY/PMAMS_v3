@@ -103,7 +103,7 @@
                         @php
                             $assignment = $device->currentAssignment;
                             $staff = $assignment?->staff;
-                            $office = $staff?->office;
+                            $office = $assignment?->office ?: $staff?->office;
                             $staffName = $staff ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? '')) : '';
                         @endphp
                         <tr>

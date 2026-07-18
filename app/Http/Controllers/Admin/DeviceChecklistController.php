@@ -18,6 +18,7 @@ class DeviceChecklistController extends Controller
         $device->load([
             'type',
             'currentAssignment.staff.office.location',
+            'currentAssignment.office.location',
             'currentAssignment.location',
         ]);
 
@@ -130,11 +131,11 @@ class DeviceChecklistController extends Controller
         }
 
         $assignment = $device->currentAssignment()
-            ->with(['staff.office.location', 'location'])
+            ->with(['staff.office.location', 'office.location', 'location'])
             ->first();
         $staff = $assignment?->staff;
-        $office = $staff?->office;
-        $location = $assignment?->location ?? $office?->location;
+        $office = $assignment?->office ?: $staff?->office;
+        $location = $assignment?->location ?: $office?->location;
 
         $snapshot = [
             'property_number' => $device->property_number,

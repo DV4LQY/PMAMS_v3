@@ -80,13 +80,32 @@ function registerOfficeManager() {
             this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
         }
     }));
+    initializeOfficeManagerTree();
+}
+
+function initializeOfficeManagerTree() {
+    if (!window.Alpine) return;
+
     document.querySelectorAll('[x-data="officeManager"]').forEach((element) => {
-        if (!element._x_dataStack) Alpine.initTree(element);
+        const data = element._x_dataStack?.[0];
+
+        // Reinitialize an incomplete root after SPA navigation, but leave a
+        // working tree untouched so each office button has one handler only.
+        if (data && typeof data.openAdd === 'function') return;
+
+        if (data && typeof window.Alpine.destroyTree === 'function') {
+            window.Alpine.destroyTree(element);
+        }
+
+        window.Alpine.initTree(element);
     });
 }
 document.addEventListener('alpine:init', registerOfficeManager);
 registerOfficeManager();
-document.addEventListener('livewire:navigated', registerOfficeManager);
+document.addEventListener('livewire:navigated', () => {
+    registerOfficeManager();
+    window.setTimeout(initializeOfficeManagerTree, 0);
+});
 </script>
 <div
     x-data="officeManager"
@@ -331,7 +350,7 @@ document.addEventListener('livewire:navigated', registerOfficeManager);
     <x-modal show="editOpen" title="Edit Office">
         <form
             method="POST"
-            :action="`{{ url('/locations/' . $location->id . '/offices') }}/${editOffice.id}`"
+            :action="'{{ route('admin.offices.update', ['location' => $location->id, 'office' => '__OFFICE__']) }}'.replace('__OFFICE__', editOffice.id)"
             class="space-y-3"
         >
             @csrf
@@ -375,7 +394,7 @@ document.addEventListener('livewire:navigated', registerOfficeManager);
 
             <form
                 method="POST"
-                :action="`{{ url('/locations/' . $location->id . '/offices') }}/${deleteOfficeId}`"
+                :action="'{{ route('admin.offices.destroy', ['location' => $location->id, 'office' => '__OFFICE__']) }}'.replace('__OFFICE__', deleteOfficeId)"
                 @submit="if (!deleteOfficeId) $event.preventDefault()"
                 class="flex gap-2"
             >

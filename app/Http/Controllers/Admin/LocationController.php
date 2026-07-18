@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\DeviceAssignment;
 use App\Models\Location;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -23,8 +24,54 @@ class LocationController extends Controller
 
     public function index()
     {
-        $locations = Location::orderBy('name')->paginate(15);
-        return view('admin.locations.index', compact('locations'));
+        $locations = Location::query()
+            ->with(['offices:id,location_id,name'])
+            ->withCount('offices')
+            ->orderBy('name')
+            ->paginate(15);
+
+        $locationIds = $locations->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $locationStats = [];
+
+        if ($locationIds !== []) {
+            $assignments = DeviceAssignment::query()
+                ->select(['device_id', 'staff_id', 'office_id', 'location_id'])
+                ->whereNull('returned_at')
+                ->where(function ($query) use ($locationIds) {
+                    $query->whereIn('location_id', $locationIds)
+                        ->orWhereHas('office', fn ($office) => $office->whereIn('location_id', $locationIds))
+                        ->orWhereHas('staff.office', fn ($office) => $office->whereIn('location_id', $locationIds));
+                })
+                ->with(['office:id,location_id', 'staff:id,office_id', 'staff.office:id,location_id'])
+                ->get();
+
+            foreach ($assignments as $assignment) {
+                // Prefer the assignment snapshot. Legacy staff assignments may
+                // not have location_id, so fall back to the staff office.
+                $locationId = $assignment->location_id
+                    ?: $assignment->office?->location_id
+                    ?: $assignment->staff?->office?->location_id;
+
+                if (! $locationId || ! in_array((int) $locationId, $locationIds, true)) {
+                    continue;
+                }
+
+                $locationStats[$locationId] ??= [
+                    'assigned' => 0,
+                    'issued_to_users' => 0,
+                    'shared' => 0,
+                ];
+
+                $locationStats[$locationId]['assigned']++;
+                if ($assignment->staff_id) {
+                    $locationStats[$locationId]['issued_to_users']++;
+                } else {
+                    $locationStats[$locationId]['shared']++;
+                }
+            }
+        }
+
+        return view('admin.locations.index', compact('locations', 'locationStats'));
     }
 
     public function create()
@@ -206,6 +253,21 @@ class LocationController extends Controller
 
     public function destroy(Location $location)
     {
+        $hasOffices = $location->offices()->exists();
+        $hasAssignments = DeviceAssignment::query()
+            ->where(function ($query) use ($location) {
+                $query->where('location_id', $location->id)
+                    ->orWhereHas('office', fn ($office) => $office->where('location_id', $location->id))
+                    ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $location->id));
+            })
+            ->exists();
+
+        if ($hasOffices || $hasAssignments) {
+            return back()
+                ->withErrors(['location' => 'This location cannot be deleted while it has offices or equipment assignments.'])
+                ->with('error', 'Location deletion was blocked because this location is still in use.');
+        }
+
         $name = $location->name;
         $summary = $this->buildSummary($location);
 

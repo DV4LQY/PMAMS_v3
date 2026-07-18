@@ -194,13 +194,34 @@
                     this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
                 }
             }));
+            initializeStaffManagerTree();
+        }
+
+        function initializeStaffManagerTree() {
+            if (!window.Alpine) return;
+
             document.querySelectorAll('[x-data="staffManager"]').forEach((element) => {
-                if (!element._x_dataStack) Alpine.initTree(element);
+                const data = element._x_dataStack?.[0];
+
+                // A Livewire SPA transition can replace the page before the
+                // page-local Alpine factory has initialized the new root.
+                // Rebuild only an incomplete root so every staff button keeps
+                // its handler without duplicating an already working tree.
+                if (data && typeof data.openAdd === 'function') return;
+
+                if (data && typeof window.Alpine.destroyTree === 'function') {
+                    window.Alpine.destroyTree(element);
+                }
+
+                window.Alpine.initTree(element);
             });
         }
         document.addEventListener('alpine:init', registerStaffManager);
         registerStaffManager();
-        document.addEventListener('livewire:navigated', registerStaffManager);
+        document.addEventListener('livewire:navigated', () => {
+            registerStaffManager();
+            window.setTimeout(initializeStaffManagerTree, 0);
+        });
     </script>
     <div x-data="staffManager" class="space-y-5">
         {{-- Breadcrumb --}}
@@ -611,7 +632,7 @@
 
         {{-- Edit modal --}}
         <x-modal show="editOpen" title="Edit Staff">
-            <form method="POST" :action="`{{ url('/offices/' . $office->id . '/staff') }}/${editStaff.id}`" class="space-y-3">
+            <form method="POST" :action="'{{ route('admin.staff.update', ['office' => $office->id, 'staff' => '__STAFF__']) }}'.replace('__STAFF__', editStaff.id)" class="space-y-3">
                 @csrf
                 @method('PUT')
 
@@ -698,7 +719,7 @@
                     Are you sure you want to delete this staff member?
                 </div>
 
-                <form method="POST" :action="`{{ url('/offices/' . $office->id . '/staff') }}/${deleteStaffId}`"
+                <form method="POST" :action="'{{ route('admin.staff.destroy', ['office' => $office->id, 'staff' => '__STAFF__']) }}'.replace('__STAFF__', deleteStaffId)"
                     @submit="if (!deleteStaffId) $event.preventDefault()" class="flex gap-2">
                     @csrf
                     @method('DELETE')

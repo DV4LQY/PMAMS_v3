@@ -25,6 +25,8 @@ class PreventiveMaintenanceReportExport implements FromView, WithEvents
             ->with([
                 'device.type',
                 'staff.office.college',
+                'office.location',
+                'location',
             ])
             ->whereNull('returned_at')
             ->whereHas('device.type', function ($query) {
@@ -39,8 +41,11 @@ class PreventiveMaintenanceReportExport implements FromView, WithEvents
                 ]);
             })
             ->when($this->office, function ($query) {
-                $query->whereHas('staff', function ($staffQuery) {
-                    $staffQuery->where('office_id', $this->office->id);
+                $query->where(function ($officeQuery) {
+                    $officeQuery->where('office_id', $this->office->id)
+                        ->orWhereHas('staff', function ($staffQuery) {
+                            $staffQuery->where('office_id', $this->office->id);
+                        });
                 });
             })
             ->orderBy('staff_id')
@@ -55,7 +60,7 @@ class PreventiveMaintenanceReportExport implements FromView, WithEvents
         */
         $groupedByOffice = $assignments
             ->groupBy(function ($assignment) {
-                return $assignment->staff?->office?->name ?? 'No Office';
+                return ($assignment->office ?: $assignment->staff?->office)?->name ?? 'No Office';
             })
             ->map(function ($officeAssignments) {
                 return $officeAssignments

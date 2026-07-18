@@ -342,9 +342,14 @@ class CollegeBrowser extends Component
         $device = Device::find($this->issueDeviceId);
         if (!$device || $device->status !== 'available') return;
 
+        $staff = Staff::with('office')->find($this->selectedStaffId);
+        if (!$staff) return;
+
         DeviceAssignment::create([
             'device_id' => $device->id,
-            'staff_id' => $this->selectedStaffId,
+            'staff_id' => $staff->id,
+            'office_id' => $staff->office_id,
+            'location_id' => $staff->office?->location_id,
             'issued_by' => Auth::id(),
             'issued_at' => now(),
         ]);

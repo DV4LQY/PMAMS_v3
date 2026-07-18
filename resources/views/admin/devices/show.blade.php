@@ -705,7 +705,7 @@
                     @php
                         $currentAssignment = $device->currentAssignment;
                         $currentStaff = $currentAssignment->staff;
-                        $currentOffice = $currentStaff?->office;
+                        $currentOffice = $currentAssignment->office ?: $currentStaff?->office;
                         // Reissue updates the location from the selected user's office.
                         $assignmentLocation = $currentAssignment->location;
                     @endphp

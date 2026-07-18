@@ -25,9 +25,9 @@
             @php
                 $staff = $assignment->staff;
                 $device = $assignment->device;
-                $office = $staff?->office;
-                $location = $office?->location;
-                $staffName = $staff ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? '')) : '-';
+                $office = $assignment->office ?: $staff?->office;
+                $location = $assignment->location ?: $office?->location;
+                $staffName = $staff ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? '')) : 'Shared / Location assignment';
                 $equipmentName = trim(($device?->brand ?? '') . ' ' . ($device?->model ?? '')) ?: '-';
             @endphp
             <tr>

@@ -21,6 +21,8 @@ class DashboardController extends Controller
             ->with([
                 'device.type',
                 'staff.office.college',
+                'office.location',
+                'location',
             ])
             ->whereNull('returned_at')
             ->latest('issued_at')
@@ -75,11 +77,11 @@ class DashboardController extends Controller
             ->get()
             ->mapWithKeys(fn($d) => [$d->type?->name ?? 'Unknown' => $d->total]);
 
-        $devicesByOffice = DeviceAssignment::with('staff.office')
+        $devicesByOffice = DeviceAssignment::with(['staff.office', 'office'])
             ->whereNotNull('issued_at')
             ->whereNull('returned_at')
             ->get()
-            ->groupBy(fn($a) => $a->staff?->office?->name ?? 'No Office')
+            ->groupBy(fn($a) => ($a->office ?: $a->staff?->office)?->name ?? 'No Office')
             ->map->count();
 
         $maintenanceSemiannually = DeviceMaintenanceRecord::query()

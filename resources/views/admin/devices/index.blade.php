@@ -1347,7 +1347,7 @@
                     </div>
 
                     <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                        One file covers the complete equipment specifications and optional issuance. End users are matched by active staff email first, then by a unique name, with optional office and location_code filters. Leave the staff fields blank when equipment is not yet issued. Maximum 5,000 data rows and 10 MB per file.
+                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the registered end user. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; staff rows are checked against both. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
                     </div>
 
                     <label class="flex items-start gap-2 rounded-lg border border-blue-200 bg-white/60 px-3 py-2 text-sm text-gray-700 dark:border-blue-900/50 dark:bg-gray-800/60 dark:text-gray-200">

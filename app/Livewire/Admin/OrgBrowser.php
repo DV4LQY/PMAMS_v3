@@ -112,9 +112,17 @@ class OrgBrowser extends Component
             return;
         }
 
+        $staff = Staff::with('office')->find($this->selectedStaffId);
+        if (!$staff) {
+            $this->addError('issueDeviceId', 'The selected staff member could not be found.');
+            return;
+        }
+
         DeviceAssignment::create([
             'device_id' => $device->id,
-            'staff_id' => $this->selectedStaffId,
+            'staff_id' => $staff->id,
+            'office_id' => $staff->office_id,
+            'location_id' => $staff->office?->location_id,
             'issued_by' => Auth::id(),
             'issued_at' => now(),
         ]);

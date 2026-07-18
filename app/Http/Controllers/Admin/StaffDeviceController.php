@@ -73,6 +73,8 @@ class StaffDeviceController extends Controller
         DeviceAssignment::create([
             'device_id' => $device->id,
             'staff_id' => $staff->id,
+            'office_id' => $staff->office_id,
+            'location_id' => $staff->office?->location_id,
             'issued_by' => Auth::id(),
             'issued_at' => now(),
             'remarks' => $data['remarks'] ?? null,

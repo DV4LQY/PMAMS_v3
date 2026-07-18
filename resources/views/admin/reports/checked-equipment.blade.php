@@ -319,7 +319,7 @@
 
                         $assignment = $device?->currentAssignment;
 
-                        $office = $assignment?->staff?->office;
+                        $office = $assignment?->office ?: $assignment?->staff?->office;
 
                         $location = $record->location ?? $office?->location;
                         $locationName = data_get($snapshot, 'location') ?? $location?->name;

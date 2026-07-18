@@ -60,19 +60,34 @@ class IssuanceController extends Controller
             ->with([
                 'device.type',
                 'staff.office.location',
+                'office.location',
+                'location',
                 'issuer',
             ])
             ->whereNull('returned_at')
             ->whereHas('device')
-            ->whereHas('staff')
+            ->where(function ($query) {
+                // Staff issuance and location-only/shared equipment are both
+                // active assignments. Legacy rows may have a missing staff
+                // record, so keep the location snapshot searchable.
+                $query->whereHas('staff')
+                    ->orWhereNotNull('location_id');
+            })
             ->when($typeId, function ($query) use ($typeId) {
                 $query->whereHas('device', fn ($device) => $device->where('device_type_id', $typeId));
             })
             ->when($locationId, function ($query) use ($locationId) {
-                $query->whereHas('staff.office', fn ($office) => $office->where('location_id', $locationId));
+                $query->where(function ($location) use ($locationId) {
+                    $location->where('location_id', $locationId)
+                        ->orWhereHas('office', fn ($office) => $office->where('location_id', $locationId))
+                        ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $locationId));
+                });
             })
             ->when($officeId, function ($query) use ($officeId) {
-                $query->whereHas('staff', fn ($staff) => $staff->where('office_id', $officeId));
+                $query->where(function ($officeQuery) use ($officeId) {
+                    $officeQuery->where('office_id', $officeId)
+                        ->orWhereHas('staff', fn ($staff) => $staff->where('office_id', $officeId));
+                });
             })
             ->when($tokens !== [], function ($query) use ($tokens) {
                 foreach ($tokens as $token) {
@@ -100,6 +115,17 @@ class IssuanceController extends Controller
                                                     ->orWhere('code', 'like', $like);
                                             });
                                     });
+                            })
+                            ->orWhereHas('office', function ($office) use ($like) {
+                                $office->where('name', 'like', $like)
+                                    ->orWhereHas('location', function ($location) use ($like) {
+                                        $location->where('name', 'like', $like)
+                                            ->orWhere('code', 'like', $like);
+                                    });
+                            })
+                            ->orWhereHas('location', function ($location) use ($like) {
+                                $location->where('name', 'like', $like)
+                                    ->orWhere('code', 'like', $like);
                             });
                     });
                 }

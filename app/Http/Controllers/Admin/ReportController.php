@@ -126,6 +126,7 @@ class ReportController extends Controller
         $record->load([
             'device.type',
             'device.currentAssignment.staff.office.location',
+            'device.currentAssignment.office.location',
             'device.currentAssignment.location',
             'staff',
             'office',
@@ -194,6 +195,7 @@ class ReportController extends Controller
             ->with([
                 'device.type',
                 'device.currentAssignment.staff.office.location',
+                'device.currentAssignment.office.location',
                 'device.currentAssignment.location',
                 'staff',
                 'office',
@@ -251,6 +253,7 @@ class ReportController extends Controller
             ->with([
                 'device.type',
                 'device.currentAssignment.staff.office.location',
+                'device.currentAssignment.office.location',
                 'device.currentAssignment.location',
                 'staff',
                 'office',
@@ -322,6 +325,7 @@ class ReportController extends Controller
             ->with([
                 'type',
                 'currentAssignment.staff.office.location',
+                'currentAssignment.office.location',
                 'currentAssignment.location',
                 'latestMaintenanceRecord.checkedBy',
             ])
@@ -329,14 +333,20 @@ class ReportController extends Controller
             ->when($locationId, function ($query) use ($locationId) {
                 $query->whereHas('currentAssignment', function ($assignmentQuery) use ($locationId) {
                     $assignmentQuery->where('location_id', $locationId)
+                        ->orWhereHas('office', function ($officeQuery) use ($locationId) {
+                            $officeQuery->where('location_id', $locationId);
+                        })
                         ->orWhereHas('staff.office', function ($officeQuery) use ($locationId) {
                             $officeQuery->where('location_id', $locationId);
                         });
                 });
             })
             ->when($officeId, function ($query) use ($officeId) {
-                $query->whereHas('currentAssignment.staff', function ($staffQuery) use ($officeId) {
-                    $staffQuery->where('office_id', $officeId);
+                $query->whereHas('currentAssignment', function ($assignmentQuery) use ($officeId) {
+                    $assignmentQuery->where('office_id', $officeId)
+                        ->orWhereHas('staff', function ($staffQuery) use ($officeId) {
+                            $staffQuery->where('office_id', $officeId);
+                        });
                 });
             })
             ->when($q, function ($query) use ($q) {

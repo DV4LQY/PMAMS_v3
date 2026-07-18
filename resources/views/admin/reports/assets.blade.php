@@ -138,7 +138,7 @@
                         @php
                             $assignment = $device->currentAssignment;
                             $staff = $assignment?->staff;
-                            $office = $staff?->office;
+                            $office = $assignment?->office ?: $staff?->office;
                             $college = $assignment?->location ?? $office?->college;
                             $staffName = $staff
                                 ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? ''))
