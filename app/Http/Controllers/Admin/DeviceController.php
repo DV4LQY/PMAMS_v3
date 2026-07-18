@@ -21,13 +21,22 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class DeviceController extends Controller
 {
+    private const IMPORT_MAX_ERRORS = 50;
+    private const IMPORT_MAX_COLUMNS = 40;
+
+    /** @var array<string, array<string, mixed>> */
+    private array $importLookupCache = [
+        'types' => [],
+        'staff' => [],
+        'locations' => [],
+    ];
+
     public function index(Request $request)
     {
         $q = $request->string('q')->toString();
@@ -45,20 +54,26 @@ class DeviceController extends Controller
             $condition = null;
         }
 
-        $devices = Device::query()
+        $filters = [
+            'q' => $q,
+            'type_id' => $typeId,
+            'location_id' => $locationId,
+            'status' => $status,
+            'condition' => $condition,
+        ];
+
+        $deviceQuery = Device::query()
             ->with([
                 'type',
                 'currentAssignment.staff.office.location',
                 'currentAssignment.location',
                 'latestMaintenanceRecord',
             ])
-            ->filterInventory([
-                'q' => $q,
-                'type_id' => $typeId,
-                'location_id' => $locationId,
-                'status' => $status,
-                'condition' => $condition,
-            ])
+            ->filterInventory($filters);
+
+        $filteredEquipmentCount = (clone $deviceQuery)->count();
+
+        $devices = $deviceQuery
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString();
@@ -77,6 +92,7 @@ class DeviceController extends Controller
 
         return view('admin.devices.index', compact(
             'devices',
+            'filteredEquipmentCount',
             'q',
             'typeId',
             'locationId',
@@ -739,14 +755,37 @@ class DeviceController extends Controller
     {
         abort_unless(Auth::user()?->isAdmin() || Auth::user()?->isUnitHead(), 403);
 
-        $data = $request->validate([
-            'device_ids' => ['required', 'array', 'min:1'],
-            'device_ids.*' => ['integer', 'distinct', 'exists:devices,id'],
-        ]);
+        $selectAll = $request->boolean('select_all');
 
-        $devices = Device::with('type')
-            ->whereIn('id', $data['device_ids'])
-            ->get();
+        if ($selectAll) {
+            $data = $request->validate([
+                'select_all' => ['required', 'boolean'],
+                'filter_q' => ['nullable', 'string', 'max:255'],
+                'filter_type' => ['nullable', 'integer', 'exists:device_types,id'],
+                'filter_location' => ['nullable', 'integer', 'exists:locations,id'],
+                'filter_status' => ['nullable', 'in:available,issued,repair,retired'],
+                'filter_condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
+            ]);
+
+            $devices = Device::with('type')
+                ->filterInventory([
+                    'q' => $data['filter_q'] ?? '',
+                    'type_id' => $data['filter_type'] ?? null,
+                    'location_id' => $data['filter_location'] ?? null,
+                    'status' => $data['filter_status'] ?? null,
+                    'condition' => $data['filter_condition'] ?? null,
+                ])
+                ->get();
+        } else {
+            $data = $request->validate([
+                'device_ids' => ['required', 'array', 'min:1'],
+                'device_ids.*' => ['integer', 'distinct', 'exists:devices,id'],
+            ]);
+
+            $devices = Device::with('type')
+                ->whereIn('id', $data['device_ids'])
+                ->get();
+        }
 
         if ($devices->isEmpty()) {
             return back()->withErrors(['device_ids' => 'No equipment was selected.']);
@@ -763,7 +802,7 @@ class DeviceController extends Controller
             ];
         })->values()->all();
 
-        DB::transaction(function () use ($devices, $data, $items) {
+        DB::transaction(function () use ($devices, $items) {
             $ids = $devices->modelKeys();
             $photoPaths = $devices->pluck('photo_path')->filter()->values();
 
@@ -805,7 +844,10 @@ class DeviceController extends Controller
 
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:10240'],
+            'dry_run' => ['nullable', 'boolean'],
         ]);
+
+        $dryRun = $request->boolean('dry_run');
 
         try {
             $rows = Excel::toCollection(
@@ -813,64 +855,251 @@ class DeviceController extends Controller
                 $request->file('file')
             )->first() ?? collect();
         } catch (\Throwable $exception) {
+            report($exception);
+
+            $result = $this->importFailureResult(0, 'The file could not be read.');
+            $this->recordImportAudit($dryRun ? 'import_preview_failed' : 'import_failed', $request, $result, $dryRun);
+
             return back()->withErrors([
                 'file' => 'The file could not be read. Please upload a valid CSV or Excel workbook.',
             ]);
         }
 
         if ($rows->isEmpty()) {
+            $result = $this->importFailureResult(0, 'The file has no data rows.');
+            $this->recordImportAudit($dryRun ? 'import_preview_failed' : 'import_failed', $request, $result, $dryRun);
+
             return back()->withErrors(['file' => 'The import file has no data rows.']);
         }
 
-        $created = 0;
-        $updated = 0;
-        $issued = 0;
-        $rowErrors = [];
+        if ($rows->count() > DeviceInventoryImport::MAX_ROWS) {
+            $result = $this->importFailureResult($rows->count(), 'The file exceeds the row limit.');
+            $this->recordImportAudit($dryRun ? 'import_preview_failed' : 'import_failed', $request, $result, $dryRun);
 
-        DB::beginTransaction();
-
-        try {
-            foreach ($rows as $index => $rawRow) {
-                $row = $this->normalizeImportRow($rawRow instanceof \Illuminate\Support\Collection
-                    ? $rawRow->toArray()
-                    : (array) $rawRow);
-
-                if ($this->importRowIsEmpty($row)) {
-                    continue;
-                }
-
-                $rowNumber = $index + 2; // account for the heading row
-
-                try {
-                    [$wasCreated, $wasIssued] = $this->persistImportedInventoryRow($row);
-                    $wasCreated ? $created++ : $updated++;
-                    if ($wasIssued) {
-                        $issued++;
-                    }
-                } catch (\Throwable $exception) {
-                    $rowErrors[] = "Row {$rowNumber}: {$exception->getMessage()}";
-                }
-            }
-
-            if ($rowErrors) {
-                DB::rollBack();
-                throw ValidationException::withMessages(['file' => $rowErrors]);
-            }
-
-            DB::commit();
-        } catch (ValidationException $exception) {
-            throw $exception;
-        } catch (\Throwable $exception) {
-            DB::rollBack();
-            throw ValidationException::withMessages([
-                'file' => 'Import failed: ' . $exception->getMessage(),
+            return back()->withErrors([
+                'file' => 'The import file exceeds the 5,000-row limit. Split it into smaller files and try again.',
             ]);
         }
 
-        $message = "{$created} equipment added, {$updated} equipment updated"
-            . ($issued ? ", {$issued} issuance record(s) created." : '.');
+        $this->resetImportLookupCache();
+        DB::beginTransaction();
+
+        try {
+            $result = $this->processImportedRows($rows);
+
+            if ($result['error_count'] > 0) {
+                DB::rollBack();
+
+                $this->recordImportAudit(
+                    $dryRun ? 'import_preview_failed' : 'import_failed',
+                    $request,
+                    $result,
+                    $dryRun
+                );
+
+                return back()
+                    ->withErrors(['file' => 'Import was not applied. Review the row errors below.'])
+                    ->with('import_preview', $this->importPreviewPayload($result, $dryRun, false));
+            }
+
+            if ($dryRun) {
+                DB::rollBack();
+                $this->recordImportAudit('import_previewed', $request, $result, true);
+
+                return back()
+                    ->with('import_preview', $this->importPreviewPayload($result, true, false));
+            }
+
+            DB::commit();
+        } catch (\Throwable $exception) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
+            report($exception);
+
+            $result = $this->importFailureResult(
+                $rows->count(),
+                'The import could not be completed because of a server-side error.'
+            );
+
+            $this->recordImportAudit('import_failed', $request, $result, $dryRun);
+
+            return back()
+                ->withErrors(['file' => 'Import failed. Please verify the file and try again.'])
+                ->with('import_preview', $this->importPreviewPayload($result, $dryRun, false));
+        }
+
+        $this->recordImportAudit('imported', $request, $result, false);
+
+        $message = "{$result['created']} equipment added, {$result['updated']} equipment updated"
+            . ($result['issued'] ? ", {$result['issued']} issuance record(s) created." : '.');
 
         return back()->with('success', $message);
+    }
+
+    private function processImportedRows($rows): array
+    {
+        $result = [
+            'total_rows' => $rows->count(),
+            'processed_rows' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'issued' => 0,
+            'error_count' => 0,
+            'errors' => [],
+        ];
+        $seenPropertyNumbers = [];
+
+        foreach ($rows as $index => $rawRow) {
+            $rawRow = $rawRow instanceof \Illuminate\Support\Collection
+                ? $rawRow->toArray()
+                : (array) $rawRow;
+
+            $rowNumber = $index + 2; // account for the heading row
+
+            if (count($rawRow) > self::IMPORT_MAX_COLUMNS) {
+                $this->addImportRowError($result, $rowNumber, 'The row contains too many columns.');
+
+                if ($result['error_count'] >= self::IMPORT_MAX_ERRORS) {
+                    break;
+                }
+
+                continue;
+            }
+
+            $row = $this->normalizeImportRow($rawRow);
+
+            if ($this->importRowIsEmpty($row)) {
+                continue;
+            }
+
+            $result['processed_rows']++;
+
+            try {
+                $propertyNumber = strtolower(trim((string) $this->importValue($row, ['property_number'])));
+                if ($propertyNumber !== '') {
+                    if (array_key_exists($propertyNumber, $seenPropertyNumbers)) {
+                        throw new \RuntimeException('property_number is duplicated in this import file.');
+                    }
+
+                    $seenPropertyNumbers[$propertyNumber] = $rowNumber;
+                }
+
+                [$wasCreated, $wasIssued] = $this->persistImportedInventoryRow($row);
+                $wasCreated ? $result['created']++ : $result['updated']++;
+
+                if ($wasIssued) {
+                    $result['issued']++;
+                }
+            } catch (\Throwable $exception) {
+                if (! $exception instanceof \RuntimeException) {
+                    report($exception);
+                }
+
+                $this->addImportRowError(
+                    $result,
+                    $rowNumber,
+                    $this->safeImportExceptionMessage($exception)
+                );
+
+                if ($result['error_count'] >= self::IMPORT_MAX_ERRORS) {
+                    break;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    private function addImportRowError(array &$result, int $rowNumber, string $message): void
+    {
+        $result['error_count']++;
+
+        if (count($result['errors']) < self::IMPORT_MAX_ERRORS) {
+            $result['errors'][] = "Row {$rowNumber}: {$message}";
+        }
+
+        if ($result['error_count'] === self::IMPORT_MAX_ERRORS) {
+            $result['errors'][] = 'Additional row errors were omitted. Fix the listed errors and preview the file again.';
+        }
+    }
+
+    private function safeImportExceptionMessage(\Throwable $exception): string
+    {
+        $message = trim($exception->getMessage());
+
+        if ($exception instanceof \RuntimeException
+            && $message !== ''
+            && ! preg_match('/SQLSTATE|database|table|column|constraint|file_get_contents|storage_path|vendor[\\\/]|app[\\\/]|undefined|call to |[A-Z]:\\\\/i', $message)) {
+            $cleanMessage = preg_replace('/\s+/', ' ', $message) ?: $message;
+
+            return Str::limit($cleanMessage, 240, '...');
+        }
+
+        return 'Unable to process this row. Check the required fields and values.';
+    }
+
+    private function importFailureResult(int $totalRows, string $message): array
+    {
+        return [
+            'total_rows' => $totalRows,
+            'processed_rows' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'issued' => 0,
+            'error_count' => 1,
+            'errors' => [$message],
+        ];
+    }
+
+    private function importPreviewPayload(array $result, bool $dryRun, bool $applied): array
+    {
+        return [
+            'mode' => $dryRun ? 'preview' : 'import',
+            'applied' => $applied,
+            'total_rows' => $result['total_rows'],
+            'processed_rows' => $result['processed_rows'],
+            'created' => $result['created'],
+            'updated' => $result['updated'],
+            'issued' => $result['issued'],
+            'error_count' => $result['error_count'],
+            'errors' => $result['errors'],
+        ];
+    }
+
+    private function recordImportAudit(string $action, Request $request, array $result, bool $dryRun): void
+    {
+        try {
+            ActivityLog::record(
+                $action,
+                $dryRun ? 'Previewed equipment inventory import' : 'Imported equipment inventory',
+                null,
+                ActivityLog::makePayload([
+                    'mode' => $dryRun ? 'preview' : 'commit',
+                    'file_type' => strtolower((string) $request->file('file')?->getClientOriginalExtension()),
+                    'file_size_kb' => round(((int) $request->file('file')?->getSize()) / 1024, 1),
+                    'rows' => $result['total_rows'],
+                    'processed_rows' => $result['processed_rows'],
+                    'created' => $result['created'],
+                    'updated' => $result['updated'],
+                    'issuance_records' => $result['issued'],
+                    'errors' => $result['error_count'],
+                ])
+            );
+        } catch (\Throwable $exception) {
+            // An audit failure must not turn a completed import into an error.
+            report($exception);
+        }
+    }
+
+    private function resetImportLookupCache(): void
+    {
+        $this->importLookupCache = [
+            'types' => [],
+            'staff' => [],
+            'locations' => [],
+        ];
     }
 
     public function importTemplate()
@@ -900,6 +1129,8 @@ class DeviceController extends Controller
 
     private function persistImportedInventoryRow(array $row): array
     {
+        $this->validateImportedRow($row);
+
         $propertyNumber = $this->importValue($row, ['property_number', 'property_no', 'asset_number', 'asset_no']);
         if (blank($propertyNumber)) {
             throw new \RuntimeException('property_number is required.');
@@ -911,13 +1142,34 @@ class DeviceController extends Controller
         }
 
         $typeName = trim((string) $typeName);
-        $type = DeviceType::query()
-            ->whereRaw('LOWER(name) = ?', [strtolower($typeName)])
-            ->first();
-        $type ??= DeviceType::create([
-            'name' => $typeName,
-            'slug' => Str::slug($typeName),
-        ]);
+        $typeKey = strtolower($typeName);
+
+        if (array_key_exists($typeKey, $this->importLookupCache['types'])) {
+            $type = $this->importLookupCache['types'][$typeKey];
+        } else {
+            $type = DeviceType::query()
+                ->whereRaw('LOWER(name) = ?', [$typeKey])
+                ->first();
+
+            if (! $type) {
+                $allowedTypeNames = [
+                    'Desktop', 'Laptop', 'Printer', 'Monitor', 'UPS', 'AVR', 'Other',
+                ];
+                $canonicalTypeName = collect($allowedTypeNames)
+                    ->first(fn (string $allowedType) => strtolower($allowedType) === $typeKey);
+
+                if (! $canonicalTypeName) {
+                    throw new \RuntimeException('Equipment type is not supported. Use one of the types in the import template.');
+                }
+
+                $type = DeviceType::firstOrCreate(
+                    ['name' => $canonicalTypeName],
+                    ['slug' => strtolower(str_replace(' ', '-', $canonicalTypeName))]
+                );
+            }
+
+            $this->importLookupCache['types'][$typeKey] = $type;
+        }
 
         $device = Device::firstOrNew(['property_number' => trim((string) $propertyNumber)]);
         $wasCreated = !$device->exists;
@@ -928,8 +1180,11 @@ class DeviceController extends Controller
             'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
             'maintenance_remarks', 'notes',
         ] as $field) {
-            if (array_key_exists($field, $row)) {
-                $device->{$field} = blank($row[$field]) ? null : $row[$field];
+            // Empty cells are intentionally ignored for existing records so a
+            // partial import cannot erase specifications. Use the edit form to
+            // explicitly clear a value.
+            if (array_key_exists($field, $row) && filled($row[$field])) {
+                $device->{$field} = $row[$field];
             }
         }
 
@@ -971,18 +1226,22 @@ class DeviceController extends Controller
             }
             $importedStatus = $status;
             $device->status = $status === 'issued' ? 'available' : $status;
+
+            if ($status !== 'issued' && $this->importStaffDetailsPresent($row)) {
+                throw new \RuntimeException('An end user can only be supplied when status is issued.');
+            }
+
+            if ($status !== 'issued' && $device->currentAssignment()->exists()) {
+                throw new \RuntimeException('The imported status conflicts with an active assignment. Use issued or close the existing assignment first.');
+            }
         } elseif ($wasCreated) {
             $device->status = 'available';
         }
 
         $specs = is_array($device->specs) ? $device->specs : [];
         foreach (['memory', 'storage', 'form_factor'] as $specField) {
-            if (array_key_exists($specField, $row)) {
-                if (blank($row[$specField])) {
-                    unset($specs[$specField]);
-                } else {
-                    $specs[$specField] = $row[$specField];
-                }
+            if (array_key_exists($specField, $row) && filled($row[$specField])) {
+                $specs[$specField] = $row[$specField];
             }
         }
         $device->specs = $specs ?: null;
@@ -1003,10 +1262,28 @@ class DeviceController extends Controller
     private function issueImportedDevice(Device $device, array $row): bool
     {
         $staff = $this->resolveImportedStaff($row);
+        $assignmentLocation = $this->importLocationDetailsPresent($row)
+            ? $this->resolveImportedLocation($row)
+            : $staff->office?->location;
         $currentAssignment = $device->currentAssignment()->with(['staff.office.location', 'location'])->first();
 
         if ($currentAssignment) {
             if ((int) $currentAssignment->staff_id === (int) $staff->id) {
+                $updates = ['location_id' => $assignmentLocation?->id];
+
+                if (filled($this->importValue($row, ['issued_at', 'issue_date']))) {
+                    $updates['issued_at'] = $this->importDate(
+                        $this->importValue($row, ['issued_at', 'issue_date']),
+                        'issued_at'
+                    );
+                }
+
+                $remarks = $this->importValue($row, ['issuance_remarks', 'remarks']);
+                if (filled($remarks)) {
+                    $updates['remarks'] = $remarks;
+                }
+
+                $currentAssignment->update($updates);
                 $device->update(['status' => 'issued']);
 
                 return false;
@@ -1025,7 +1302,7 @@ class DeviceController extends Controller
         DeviceAssignment::create([
             'device_id' => $device->id,
             'staff_id' => $staff->id,
-            'location_id' => null,
+            'location_id' => $assignmentLocation?->id,
             'issued_by' => Auth::id(),
             'issued_at' => $issuedAt,
             'remarks' => $this->importValue($row, ['issuance_remarks', 'remarks']),
@@ -1098,29 +1375,55 @@ class DeviceController extends Controller
 
         $officeName = strtolower(trim((string) $this->importValue($row, ['office', 'office_name'])));
         $locationName = strtolower(trim((string) $this->importValue($row, ['location_code', 'location', 'location_name'])));
+        $cacheKey = implode('|', [$email, strtolower($firstName), strtolower($lastName), $officeName, $locationName]);
 
-        if (filled($email)) {
-            $staff = Staff::query()
-                ->with('office.location')
-                ->whereRaw('LOWER(email) = ?', [$email])
-                ->first();
-
-            if ($staff) {
-                return $staff;
-            }
-
-            if (blank($firstName) && blank($lastName)) {
-                throw new \RuntimeException('No matching staff found for the supplied email.');
-            }
+        if (array_key_exists($cacheKey, $this->importLookupCache['staff'])) {
+            return $this->importLookupCache['staff'][$cacheKey];
         }
 
-        $query = Staff::query()->with('office.location');
+        if (filled($email)) {
+            $candidates = Staff::query()
+                ->with('office.location')
+                ->where('is_active', true)
+                ->whereRaw('LOWER(email) = ?', [$email])
+                ->limit(26)
+                ->get();
 
-        if (filled($firstName) && filled($lastName)) {
-            $firstNameLower = strtolower($firstName);
-            $lastNameLower = strtolower($lastName);
+            if ($candidates->isEmpty()) {
+                throw new \RuntimeException('No active staff record found for the supplied email.');
+            }
 
-            $query->where(function ($staff) use ($firstNameLower, $lastNameLower) {
+            if ($candidates->count() !== 1) {
+                throw new \RuntimeException('Multiple active staff records match the supplied email.');
+            }
+
+            $scoped = $candidates->filter(function (Staff $staff) use ($officeName, $locationName) {
+                $officeMatches = blank($officeName) || $this->importTextMatches($staff->office?->name, $officeName);
+                $locationMatches = blank($locationName)
+                    || $this->importTextMatches($staff->office?->location?->code, $locationName)
+                    || $this->importTextMatches($staff->office?->location?->name, $locationName);
+
+                return $officeMatches && $locationMatches;
+            })->values();
+
+            if ($scoped->isEmpty() && (filled($officeName) || filled($locationName))) {
+                throw new \RuntimeException('The supplied email does not match the provided office or location.');
+            }
+
+            return $this->importLookupCache['staff'][$cacheKey] = $scoped->first();
+        }
+
+        if (blank($firstName) || blank($lastName)) {
+            throw new \RuntimeException('Provide both first_name and last_name, or use staff_email.');
+        }
+
+        $firstNameLower = strtolower($firstName);
+        $lastNameLower = strtolower($lastName);
+
+        $candidates = Staff::query()
+            ->with('office.location')
+            ->where('is_active', true)
+            ->where(function ($staff) use ($firstNameLower, $lastNameLower) {
                 $staff->where(function ($exact) use ($firstNameLower, $lastNameLower) {
                     $exact->whereRaw('LOWER(first_name) = ?', [$firstNameLower])
                         ->whereRaw('LOWER(last_name) = ?', [$lastNameLower]);
@@ -1128,20 +1431,12 @@ class DeviceController extends Controller
                     $reversed->whereRaw('LOWER(first_name) = ?', [$lastNameLower])
                         ->whereRaw('LOWER(last_name) = ?', [$firstNameLower]);
                 });
-            });
-        } else {
-            if (filled($firstName)) {
-                $query->whereRaw('LOWER(first_name) = ?', [strtolower($firstName)]);
-            }
-            if (filled($lastName)) {
-                $query->whereRaw('LOWER(last_name) = ?', [strtolower($lastName)]);
-            }
-        }
-
-        $candidates = $query->limit(25)->get();
+            })
+            ->limit(26)
+            ->get();
 
         if ($candidates->isEmpty()) {
-            throw new \RuntimeException('No matching staff found for the supplied name/email.');
+            throw new \RuntimeException('No active staff record found for the supplied name.');
         }
 
         $scoped = $candidates->filter(function (Staff $staff) use ($officeName, $locationName) {
@@ -1153,54 +1448,194 @@ class DeviceController extends Controller
             return $officeMatches && $locationMatches;
         });
 
-        if ($scoped->isNotEmpty()) {
-            return $scoped->first();
+        if ($scoped->count() === 1) {
+            return $this->importLookupCache['staff'][$cacheKey] = $scoped->first();
         }
 
-        if ($candidates->count() === 1) {
-            return $candidates->first();
+        if ($scoped->count() > 1) {
+            throw new \RuntimeException('Multiple active staff records match the supplied identity. Add a unique staff_email.');
         }
 
-        throw new \RuntimeException('Multiple matching staff records were found. Add staff_email, office, or location_code.');
+        if (filled($officeName) || filled($locationName)) {
+            throw new \RuntimeException('The supplied name does not match the provided office or location.');
+        }
+
+        throw new \RuntimeException('Multiple active staff records match the supplied name. Add a unique staff_email.');
     }
 
     private function resolveImportedLocation(array $row): Location
     {
         $locationName = trim((string) $this->importValue($row, ['location_code', 'location', 'location_name']));
         $officeName = trim((string) $this->importValue($row, ['office', 'office_name']));
+        $cacheKey = strtolower($locationName . '|' . $officeName);
+
+        if (array_key_exists($cacheKey, $this->importLookupCache['locations'])) {
+            return $this->importLookupCache['locations'][$cacheKey];
+        }
 
         if (filled($locationName)) {
-            $location = Location::query()
+            $matches = Location::query()
                 ->whereRaw('LOWER(code) = ?', [strtolower($locationName)])
                 ->orWhereRaw('LOWER(name) = ?', [strtolower($locationName)])
-                ->first();
+                ->get()
+                ->unique('id')
+                ->values();
 
-            if ($location) {
-                return $location;
+            if ($matches->count() === 1) {
+                return $this->importLookupCache['locations'][$cacheKey] = $matches->first();
             }
 
-            $location = Location::query()
-                ->get()
-                ->first(fn (Location $location) => $this->importTextMatches($location->code, $locationName)
-                    || $this->importTextMatches($location->name, $locationName));
+            if ($matches->count() > 1) {
+                throw new \RuntimeException('Multiple locations match the supplied location code or name.');
+            }
 
-            if ($location) {
-                return $location;
+            $matches = Location::query()
+                ->get()
+                ->filter(fn (Location $location) => $this->importTextMatches($location->code, $locationName)
+                    || $this->importTextMatches($location->name, $locationName))
+                ->values();
+
+            if ($matches->count() === 1) {
+                return $this->importLookupCache['locations'][$cacheKey] = $matches->first();
+            }
+
+            if ($matches->count() > 1) {
+                throw new \RuntimeException('Multiple locations match the supplied location value.');
             }
         }
 
         if (filled($officeName)) {
-            $office = Office::query()
+            $offices = Office::query()
                 ->with('location')
-                ->get()
-                ->first(fn (Office $office) => $this->importTextMatches($office->name, $officeName));
+                ->whereRaw('LOWER(name) = ?', [strtolower($officeName)])
+                ->get();
 
-            if ($office?->location) {
-                return $office->location;
+            if ($offices->isEmpty()) {
+                $offices = Office::query()
+                    ->with('location')
+                    ->get()
+                    ->filter(fn (Office $office) => $this->importTextMatches($office->name, $officeName))
+                    ->values();
+            }
+
+            if ($offices->count() > 1) {
+                throw new \RuntimeException('Multiple offices match the supplied office value.');
+            }
+
+            if ($offices->count() === 1 && $offices->first()->location) {
+                return $this->importLookupCache['locations'][$cacheKey] = $offices->first()->location;
             }
         }
 
         throw new \RuntimeException('No matching location found for the supplied location_code/location.');
+    }
+
+    private function validateImportedRow(array $row): void
+    {
+        $unknownColumns = array_values(array_diff(array_keys($row), $this->importAllowedColumns()));
+        if ($unknownColumns) {
+            throw new \RuntimeException('Unsupported column(s): ' . implode(', ', array_slice($unknownColumns, 0, 5)) . '.');
+        }
+
+        $propertyNumber = trim((string) $this->importValue($row, ['property_number']));
+        if ($propertyNumber === '') {
+            throw new \RuntimeException('property_number is required.');
+        }
+
+        $equipmentType = trim((string) $this->importValue($row, ['equipment_type']));
+        if ($equipmentType === '') {
+            throw new \RuntimeException('equipment_type is required.');
+        }
+
+        if (strlen($equipmentType) > 100) {
+            throw new \RuntimeException('equipment_type must not exceed 100 characters.');
+        }
+
+        if (strlen($propertyNumber) > 50 || ! preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $propertyNumber)) {
+            throw new \RuntimeException('property_number may only contain letters, numbers, hyphens, and slashes, with a maximum of 50 characters.');
+        }
+
+        if (filled($row['serial_number'] ?? null)
+            && (strlen((string) $row['serial_number']) > 100
+                || ! preg_match(StoreDeviceRequest::SERIAL_NUMBER_REGEX, (string) $row['serial_number']))) {
+            throw new \RuntimeException('serial_number may only contain letters, numbers, and hyphens, with a maximum of 100 characters.');
+        }
+
+        if (filled($row['mac_address'] ?? null)
+            && ! preg_match(StoreDeviceRequest::MAC_ADDRESS_REGEX, (string) $row['mac_address'])) {
+            throw new \RuntimeException('mac_address must use the format 00:1A:2B:3C:4D:5E.');
+        }
+
+        foreach ([
+            'computer_name' => 100,
+            'brand' => 100,
+            'model' => 100,
+            'os_version' => 100,
+            'os_license' => 100,
+            'ms_office_version' => 100,
+            'ms_office_license' => 100,
+            'memory' => 255,
+            'storage' => 255,
+            'form_factor' => 255,
+            'maintenance_remarks' => 1000,
+            'notes' => 2000,
+            'staff_email' => 255,
+            'staff_name' => 255,
+            'first_name' => 100,
+            'last_name' => 100,
+            'office' => 255,
+            'location' => 255,
+            'location_code' => 100,
+            'issuance_remarks' => 1000,
+        ] as $field => $maxLength) {
+            if (filled($row[$field] ?? null) && strlen((string) $row[$field]) > $maxLength) {
+                throw new \RuntimeException("{$field} must not exceed {$maxLength} characters.");
+            }
+        }
+
+        if (filled($row['staff_email'] ?? null)
+            && ! filter_var((string) $row['staff_email'], FILTER_VALIDATE_EMAIL)) {
+            throw new \RuntimeException('staff_email must be a valid email address.');
+        }
+
+        if (filled($row['unit_price'] ?? null)) {
+            $unitPrice = str_replace(',', '', (string) $row['unit_price']);
+            if (! is_numeric($unitPrice) || (float) $unitPrice < 0 || (float) $unitPrice > 9999999999.99) {
+                throw new \RuntimeException('unit_price must be between 0 and 9,999,999,999.99.');
+            }
+        }
+
+        foreach (['date_acquired', 'last_maintenance_date', 'issued_at'] as $dateField) {
+            if (filled($row[$dateField] ?? null)) {
+                $date = Carbon::parse($this->importDate($row[$dateField], $dateField));
+                if ($date->isFuture()) {
+                    throw new \RuntimeException("{$dateField} cannot be in the future.");
+                }
+            }
+        }
+
+        foreach ([
+            'os_version' => ['Windows 7', 'Windows 8', 'Windows 10', 'Windows 11'],
+            'os_license' => ['Cracked', 'OEM Licensed'],
+            'ms_office_version' => ['Office 2007', 'Office 2010', 'Office 2013', 'Office 2016', 'Office 2019', 'Office 2021', 'Microsoft 365'],
+            'ms_office_license' => ['Cracked', 'OEM Licensed'],
+        ] as $field => $allowed) {
+            if (filled($row[$field] ?? null) && ! in_array((string) $row[$field], $allowed, true)) {
+                throw new \RuntimeException("{$field} contains an unsupported value.");
+            }
+        }
+    }
+
+    private function importAllowedColumns(): array
+    {
+        return [
+            'property_number', 'equipment_type', 'serial_number', 'brand', 'model',
+            'computer_name', 'mac_address', 'unit_price', 'date_acquired', 'condition',
+            'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
+            'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks',
+            'notes', 'staff_email', 'staff_name', 'first_name', 'last_name', 'office',
+            'location', 'location_code', 'issued_at', 'issuance_remarks',
+        ];
     }
 
     private function normalizeImportRow(array $row): array
@@ -1212,17 +1647,24 @@ class DeviceController extends Controller
 
         $aliases = [
             'property_no' => 'property_number', 'asset_number' => 'property_number', 'asset_no' => 'property_number',
-            'equipment' => 'equipment_type', 'device' => 'equipment_type', 'type_name' => 'equipment_type',
+            'equipment' => 'equipment_type', 'device' => 'equipment_type', 'device_type' => 'equipment_type',
+            'type' => 'equipment_type', 'type_name' => 'equipment_type',
             'serial_no' => 'serial_number', 'office_name' => 'office', 'location_name' => 'location',
             'availability' => 'status',
             'user_email' => 'staff_email', 'end_user_email' => 'staff_email', 'issued_to_email' => 'staff_email',
-            'assigned_to_email' => 'staff_email',
+            'assigned_to_email' => 'staff_email', 'email' => 'staff_email',
             'user_name' => 'staff_name', 'staff' => 'staff_name', 'assigned_to' => 'staff_name',
+            'end_user' => 'staff_name', 'staff_first_name' => 'first_name', 'staff_last_name' => 'last_name',
             'issued_to' => 'staff_name', 'issue_date' => 'issued_at', 'issue_remarks' => 'issuance_remarks',
+            'remarks' => 'issuance_remarks',
         ];
         foreach ($aliases as $from => $to) {
-            if (array_key_exists($from, $normalized) && !array_key_exists($to, $normalized)) {
-                $normalized[$to] = $normalized[$from];
+            if (array_key_exists($from, $normalized)) {
+                if (! array_key_exists($to, $normalized)) {
+                    $normalized[$to] = $normalized[$from];
+                }
+
+                unset($normalized[$from]);
             }
         }
 

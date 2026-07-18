@@ -19,6 +19,7 @@
         bulkDeleteOpen: false,
         importOpen: false,
         selectedDeviceIds: [],
+        selectAllMatching: false,
         filterTimer: null,
 
         addTypeId: '{{ old('device_type_id', $types->first()?->id) }}',
@@ -75,6 +76,7 @@
         deleteDeviceId: null,
 
         pageDeviceIds: @js($devices->pluck('id')->values()),
+        filteredEquipmentCount: @js($filteredEquipmentCount),
 
         init() {
             this.$nextTick(() => {
@@ -289,13 +291,25 @@
         },
 
         toggleAllDevices(checked) {
+            this.selectAllMatching = checked;
             this.selectedDeviceIds = checked
                 ? this.pageDeviceIds.map((id) => String(id))
                 : [];
         },
 
+        allPageDevicesSelected() {
+            return this.selectAllMatching;
+        },
+
+        syncSelectionMode() {
+            if (this.selectAllMatching && this.selectedDeviceIds.length < this.pageDeviceIds.length) {
+                this.selectAllMatching = false;
+            }
+        },
+
         clearSelection() {
             this.selectedDeviceIds = [];
+            this.selectAllMatching = false;
             this.bulkDeleteOpen = false;
         },
 
@@ -360,6 +374,48 @@
                     <li>{{ $error }}</li>
                 @endforeach
             </ul>
+        </div>
+    @endif
+
+    @if(session('import_preview'))
+        @php
+            $importPreview = session('import_preview');
+        @endphp
+        <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-100">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 class="font-semibold">
+                    @if(($importPreview['mode'] ?? null) === 'preview')
+                        Import preview — no changes were saved
+                    @elseif(($importPreview['error_count'] ?? 0) > 0)
+                        Import was not applied
+                    @else
+                        Import summary
+                    @endif
+                </h2>
+                <span class="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                    {{ number_format((int) ($importPreview['total_rows'] ?? 0)) }} row(s) read
+                </span>
+            </div>
+
+            <div class="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+                <div><span class="font-medium">Processed:</span> {{ number_format((int) ($importPreview['processed_rows'] ?? 0)) }}</div>
+                <div><span class="font-medium">Added:</span> {{ number_format((int) ($importPreview['created'] ?? 0)) }}</div>
+                <div><span class="font-medium">Updated:</span> {{ number_format((int) ($importPreview['updated'] ?? 0)) }}</div>
+                <div><span class="font-medium">Issuances:</span> {{ number_format((int) ($importPreview['issued'] ?? 0)) }}</div>
+            </div>
+
+            @if(($importPreview['error_count'] ?? 0) > 0)
+                <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+                    <div class="font-semibold">{{ number_format((int) $importPreview['error_count']) }} row error(s)</div>
+                    <ul class="mt-1 list-inside list-disc space-y-0.5">
+                        @foreach(($importPreview['errors'] ?? []) as $importError)
+                            <li>{{ $importError }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @else
+                <p class="mt-3 text-xs">All rows passed validation. Run the import without Preview only when the summary looks correct.</p>
+            @endif
         </div>
     @endif
 
@@ -455,12 +511,31 @@
     </div>
 
     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+        <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <label class="inline-flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
+                <input
+                    type="checkbox"
+                    class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+                    x-bind:disabled="pageDeviceIds.length === 0"
+                    x-bind:checked="allPageDevicesSelected()"
+                    x-bind:indeterminate="selectedDeviceIds.length > 0 && !allPageDevicesSelected()"
+                    x-on:change="toggleAllDevices($event.target.checked)"
+                    aria-label="Select all equipment matching the current filters for deletion"
+                >
+                Select all equipment matching the current filters
+            </label>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ number_format($filteredEquipmentCount) }} matching</span>
+        </div>
+
         <div
             x-cloak
             x-show="selectedDeviceIds.length > 0"
             class="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200"
         >
-            <span><strong x-text="selectedDeviceIds.length"></strong> equipment selected on this page.</span>
+            <span>
+                <strong x-text="selectAllMatching ? filteredEquipmentCount : selectedDeviceIds.length"></strong>
+                equipment selected<span x-show="selectAllMatching"> across filtered results</span><span x-show="!selectAllMatching"> on this page</span>.
+            </span>
             <div class="flex flex-wrap gap-2">
                 <button
                     type="button"
@@ -497,6 +572,7 @@
                             class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
                             value="{{ $d->id }}"
                             x-model="selectedDeviceIds"
+                            x-on:change="$nextTick(() => syncSelectionMode())"
                             aria-label="Select equipment {{ $d->property_number }}"
                         >
                         Select for bulk deletion
@@ -662,8 +738,11 @@
                                 <input
                                     type="checkbox"
                                     class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+                                    x-bind:disabled="pageDeviceIds.length === 0"
+                                    x-bind:checked="allPageDevicesSelected()"
+                                    x-bind:indeterminate="selectedDeviceIds.length > 0 && !allPageDevicesSelected()"
                                     x-on:change="toggleAllDevices($event.target.checked)"
-                                    aria-label="Select all equipment on this page"
+                                    aria-label="Select all equipment matching the current filters for deletion"
                                 >
                             </th>
                         @endif
@@ -684,10 +763,11 @@
                                 <td class="px-4 py-3 align-top">
                                     <input
                                         type="checkbox"
-                                        class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
-                                        value="{{ $d->id }}"
-                                        x-model="selectedDeviceIds"
-                                        aria-label="Select equipment {{ $d->property_number }}"
+                                    class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+                                    value="{{ $d->id }}"
+                                    x-model="selectedDeviceIds"
+                                    x-on:change="$nextTick(() => syncSelectionMode())"
+                                    aria-label="Select equipment {{ $d->property_number }}"
                                     >
                                 </td>
                             @endif
@@ -1267,8 +1347,21 @@
                     </div>
 
                     <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                        One file covers the complete equipment specifications and optional issuance. End users are matched by staff email first, then by name, with optional office and location_code filters. Leave the staff fields blank when equipment is not yet issued.
+                        One file covers the complete equipment specifications and optional issuance. End users are matched by active staff email first, then by a unique name, with optional office and location_code filters. Leave the staff fields blank when equipment is not yet issued. Maximum 5,000 data rows and 10 MB per file.
                     </div>
+
+                    <label class="flex items-start gap-2 rounded-lg border border-blue-200 bg-white/60 px-3 py-2 text-sm text-gray-700 dark:border-blue-900/50 dark:bg-gray-800/60 dark:text-gray-200">
+                        <input
+                            type="checkbox"
+                            name="dry_run"
+                            value="1"
+                            class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                        >
+                        <span>
+                            <span class="font-medium">Preview only (dry run)</span>
+                            <span class="block text-xs text-gray-500 dark:text-gray-400">Validate every row and show the expected counts without saving changes.</span>
+                        </span>
+                    </label>
 
                     <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
                         <a
@@ -1293,14 +1386,25 @@
         <x-modal show="bulkDeleteOpen" title="Delete Selected Equipment">
             <div class="space-y-4">
                 <p class="text-sm text-gray-700 dark:text-gray-300">
-                    Are you sure you want to delete <strong x-text="selectedDeviceIds.length"></strong> selected equipment record(s)? Their issuance and maintenance history will also be deleted.
+                    Are you sure you want to delete <strong x-text="selectAllMatching ? filteredEquipmentCount : selectedDeviceIds.length"></strong> selected equipment record(s)? Their issuance and maintenance history will also be deleted.
+                </p>
+                <p x-show="selectAllMatching" class="text-sm text-gray-600 dark:text-gray-400">
+                    Filtered selection uses the current search and dropdown filters across every page.
                 </p>
 
-                <form method="POST" action="{{ route('admin.devices.bulkDestroy') }}" class="flex justify-end gap-2" x-on:submit="if (!selectedDeviceIds.length) { $event.preventDefault(); bulkDeleteOpen = false; }">
+                <form method="POST" action="{{ route('admin.devices.bulkDestroy') }}" class="flex justify-end gap-2" x-on:submit="if (!selectAllMatching && !selectedDeviceIds.length) { $event.preventDefault(); bulkDeleteOpen = false; }">
                     @csrf
                     @method('DELETE')
-                    <template x-for="id in selectedDeviceIds" :key="id">
-                        <input type="hidden" name="device_ids[]" :value="id">
+                    <input type="hidden" name="select_all" :value="selectAllMatching ? '1' : '0'">
+                    <input type="hidden" name="filter_q" value="{{ $q ?? '' }}">
+                    <input type="hidden" name="filter_type" value="{{ $typeId ?: '' }}">
+                    <input type="hidden" name="filter_location" value="{{ $locationId ?: '' }}">
+                    <input type="hidden" name="filter_status" value="{{ $status ?? '' }}">
+                    <input type="hidden" name="filter_condition" value="{{ $condition ?? '' }}">
+                    <template x-if="!selectAllMatching">
+                        <template x-for="id in selectedDeviceIds" :key="id">
+                            <input type="hidden" name="device_ids[]" :value="id">
+                        </template>
                     </template>
                     <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600" x-on:click="bulkDeleteOpen = false">Cancel</button>
                     <button type="submit" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600">Yes, delete selected</button>
