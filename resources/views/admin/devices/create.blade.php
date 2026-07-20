@@ -37,17 +37,17 @@
 
             {{-- Property Number --}}
             <div>
-                <label class="text-sm font-medium">Property Number</label>
+                <label class="text-sm font-medium">Property Number <span class="font-normal text-gray-500">(optional when linked)</span></label>
                 <input name="property_number"
                        value="{{ old('property_number') }}"
                        class="mt-1 w-full border rounded px-3 py-2"
-                       required
                        maxlength="50"
                        pattern="[A-Za-z0-9][A-Za-z0-9\-\/]*"
                        title="Letters, numbers, hyphens, and slashes only">
                 @error('property_number')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
+                <div class="text-xs text-gray-500 mt-1">Leave blank when using a parent property number below.</div>
             </div>
 
             @include('admin.devices._part-property-number-field')

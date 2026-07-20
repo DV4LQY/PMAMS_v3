@@ -18,6 +18,7 @@ use App\Models\DeviceType;
 use App\Models\Office;
 use App\Models\Staff;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -45,6 +46,7 @@ class DeviceController extends Controller
         $typeId = $request->integer('type');
         $locationId = $request->integer('location') ?: $request->integer('college');
         $collegeId = $locationId; // backward-compatible variable for existing views
+        $officeId = $request->integer('office_id') ?: null;
         $status = $request->query('status');
         $condition = $request->query('condition');
 
@@ -56,10 +58,36 @@ class DeviceController extends Controller
             $condition = null;
         }
 
+        // Only locations with a code are usable in this filter dropdown —
+        // a location with no code would render as a blank, unselectable-
+        // looking option, so it's excluded here rather than in the view.
+        $locations = Location::whereNotNull('code')
+            ->where('code', '!=', '')
+            ->orderBy('name')
+            ->get();
+
+        $colleges = $locations; // backward-compatible variable for existing device views
+        $selectedLocation = $locationId
+            ? $locations->firstWhere('id', $locationId)
+            : null;
+        $showOfficeFilter = strtoupper(trim((string) ($selectedLocation?->code ?? ''))) === 'ADMIN';
+        $offices = $showOfficeFilter
+            ? Office::where('location_id', $locationId)
+                ->with('location')
+                ->orderBy('name')
+                ->orderBy('id')
+                ->get()
+            : collect();
+
+        if (!$showOfficeFilter) {
+            $officeId = null;
+        }
+
         $filters = [
             'q' => $q,
             'type_id' => $typeId,
             'location_id' => $locationId,
+            'office_id' => $officeId,
             'status' => $status,
             'condition' => $condition,
         ];
@@ -83,16 +111,6 @@ class DeviceController extends Controller
 
         $types = $this->allowedDeviceTypes();
 
-        // Only locations with a code are usable in this filter dropdown —
-        // a location with no code would render as a blank, unselectable-
-        // looking option, so it's excluded here rather than in the view.
-        $locations = Location::whereNotNull('code')
-            ->where('code', '!=', '')
-            ->orderBy('name')
-            ->get();
-
-        $colleges = $locations; // backward-compatible variable for existing device views
-
         return view('admin.devices.index', compact(
             'devices',
             'filteredEquipmentCount',
@@ -100,11 +118,14 @@ class DeviceController extends Controller
             'typeId',
             'locationId',
             'collegeId',
+            'officeId',
             'status',
             'condition',
             'types',
             'locations',
-            'colleges'
+            'colleges',
+            'offices',
+            'showOfficeFilter'
         ));
     }
 
@@ -302,6 +323,13 @@ class DeviceController extends Controller
 
         if ($photoPath = $this->storeEquipmentPhoto($request)) {
             $data['photo_path'] = $photoPath;
+        }
+
+        if (blank($data['property_number'] ?? null) && filled($data['part_of_property_number'] ?? null)) {
+            $data['property_number'] = $this->generateLinkedPropertyNumber(
+                (string) $data['part_of_property_number'],
+                (int) $data['device_type_id']
+            );
         }
 
         $device = Device::create($data);
@@ -567,6 +595,13 @@ class DeviceController extends Controller
 
         if ($photoPath = $this->storeEquipmentPhoto($request)) {
             $data['photo_path'] = $photoPath;
+        }
+
+        if (blank($data['property_number'] ?? null) && filled($data['part_of_property_number'] ?? null)) {
+            $data['property_number'] = $device->property_number ?: $this->generateLinkedPropertyNumber(
+                (string) $data['part_of_property_number'],
+                (int) ($data['device_type_id'] ?? $device->device_type_id)
+            );
         }
 
         $before = [
@@ -841,6 +876,7 @@ class DeviceController extends Controller
                 'filter_q' => ['nullable', 'string', 'max:255'],
                 'filter_type' => ['nullable', 'integer', 'exists:device_types,id'],
                 'filter_location' => ['nullable', 'integer', 'exists:locations,id'],
+                'filter_office' => ['nullable', 'integer', 'exists:offices,id'],
                 'filter_status' => ['nullable', 'in:available,issued,repair,retired'],
                 'filter_condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
             ]);
@@ -850,6 +886,7 @@ class DeviceController extends Controller
                     'q' => $data['filter_q'] ?? '',
                     'type_id' => $data['filter_type'] ?? null,
                     'location_id' => $data['filter_location'] ?? null,
+                    'office_id' => $data['filter_office'] ?? null,
                     'status' => $data['filter_status'] ?? null,
                     'condition' => $data['filter_condition'] ?? null,
                 ])
@@ -939,7 +976,7 @@ class DeviceController extends Controller
             $this->recordImportAudit($dryRun ? 'import_preview_failed' : 'import_failed', $request, $result, $dryRun);
 
             return back()->withErrors([
-                'file' => 'The file could not be read. Please upload a valid CSV or Excel workbook.',
+                'file' => 'The file could not be read. Please upload a valid CSV, XLSX, or XLS workbook.',
             ]);
         }
 
@@ -1196,9 +1233,9 @@ class DeviceController extends Controller
         $this->validateImportedRow($row);
 
         $propertyNumber = $this->importValue($row, ['property_number', 'property_no', 'asset_number', 'asset_no']);
-        if (blank($propertyNumber)) {
-            throw new \RuntimeException('property_number is required.');
-        }
+        $propertyNumber = blank($propertyNumber) ? null : trim((string) $propertyNumber);
+        $partOfPropertyNumber = $this->importValue($row, ['part_of_property_number', 'parent_property_number', 'parent_property_no']);
+        $partOfPropertyNumber = blank($partOfPropertyNumber) ? null : trim((string) $partOfPropertyNumber);
 
         $typeName = $this->importValue($row, ['equipment_type', 'device_type', 'type']);
         if (blank($typeName)) {
@@ -1235,13 +1272,20 @@ class DeviceController extends Controller
             $this->importLookupCache['types'][$typeKey] = $type;
         }
 
-        $device = Device::firstOrNew(['property_number' => trim((string) $propertyNumber)]);
+        if (blank($propertyNumber) && filled($partOfPropertyNumber)) {
+            $propertyNumber = $this->generateLinkedPropertyNumber($partOfPropertyNumber, (int) $type->id);
+        }
+
+        if (blank($propertyNumber)) {
+            throw new \RuntimeException('property_number or part_of_property_number is required.');
+        }
+
+        $device = Device::firstOrNew(['property_number' => $propertyNumber]);
         $wasCreated = !$device->exists;
         $device->device_type_id = $type->id;
 
-        if (filled($this->importValue($row, ['part_of_property_number', 'parent_property_number', 'parent_property_no']))) {
-            $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number', 'parent_property_number', 'parent_property_no']));
-            if (strcasecmp($partOfPropertyNumber, trim((string) $propertyNumber)) === 0) {
+        if (filled($partOfPropertyNumber)) {
+            if (strcasecmp($partOfPropertyNumber, $propertyNumber) === 0) {
                 throw new \RuntimeException('part_of_property_number cannot be the same as property_number.');
             }
 
@@ -1685,8 +1729,9 @@ class DeviceController extends Controller
         }
 
         $propertyNumber = trim((string) $this->importValue($row, ['property_number']));
-        if ($propertyNumber === '') {
-            throw new \RuntimeException('property_number is required.');
+        $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number']));
+        if ($propertyNumber === '' && $partOfPropertyNumber === '') {
+            throw new \RuntimeException('property_number or part_of_property_number is required.');
         }
 
         $equipmentType = trim((string) $this->importValue($row, ['equipment_type']));
@@ -1698,11 +1743,11 @@ class DeviceController extends Controller
             throw new \RuntimeException('equipment_type must not exceed 100 characters.');
         }
 
-        if (strlen($propertyNumber) > 50 || ! preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $propertyNumber)) {
+        if ($propertyNumber !== ''
+            && (strlen($propertyNumber) > 50 || ! preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $propertyNumber))) {
             throw new \RuntimeException('property_number may only contain letters, numbers, hyphens, and slashes, with a maximum of 50 characters.');
         }
 
-        $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number']));
         if ($partOfPropertyNumber !== ''
             && (strlen($partOfPropertyNumber) > 50
                 || ! preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $partOfPropertyNumber))) {
@@ -1925,6 +1970,24 @@ class DeviceController extends Controller
     }
 
     /**
+     * Generate a unique internal record number when a linked peripheral does
+     * not have its own property number. The export uses the parent number for
+     * grouping, while the database still keeps every equipment row distinct.
+     */
+    private function generateLinkedPropertyNumber(string $parentPropertyNumber, ?int $deviceTypeId = null): string
+    {
+        $base = preg_replace('/[^A-Za-z0-9]+/', '-', strtoupper(trim($parentPropertyNumber))) ?: 'PARENT';
+        $base = trim(substr($base, 0, 28), '-');
+        $typeSegment = $deviceTypeId ? 'T' . $deviceTypeId . '-' : '';
+
+        do {
+            $candidate = $base . '-LINK-' . $typeSegment . strtoupper(Str::random(8));
+        } while (Device::where('property_number', $candidate)->exists());
+
+        return $candidate;
+    }
+
+    /**
      * Quick update endpoint used by popup edit on "Issued Devices" page.
      */
     public function quickUpdate(Request $request, Device $device)
@@ -1933,11 +1996,25 @@ class DeviceController extends Controller
             'device_type_id' => ['nullable', 'exists:device_types,id'],
 
             'property_number' => [
-                'required',
+                'nullable',
                 'string',
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
+                'required_without:part_of_property_number',
                 'unique:devices,property_number,' . $device->id,
+            ],
+
+            'part_of_property_number' => [
+                'nullable',
+                'string',
+                'max:50',
+                'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
+                'required_without:property_number',
+                Rule::exists('devices', 'property_number')->where(function ($query) use ($device) {
+                    $query
+                        ->where('id', '!=', $device->id)
+                        ->whereNull('part_of_property_number');
+                }),
             ],
 
             'serial_number' => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::SERIAL_NUMBER_REGEX],
@@ -1969,6 +2046,9 @@ class DeviceController extends Controller
             'ms_office_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
         ], [
             'property_number.regex' => 'Property number may only contain letters, numbers, hyphens, and slashes.',
+            'property_number.required_without' => 'Enter a property number, or select a parent property number for this linked equipment.',
+            'part_of_property_number.exists' => 'The selected parent property number does not exist.',
+            'part_of_property_number.required_without' => 'Select a parent property number when the equipment property number is blank.',
             'serial_number.regex' => 'Serial number may only contain letters, numbers, and hyphens.',
             'brand.regex' => 'Brand may only contain letters and numbers.',
             'model.regex' => 'Model may only contain letters and numbers.',
@@ -1988,6 +2068,13 @@ class DeviceController extends Controller
         */
         $data['device_type_id'] = $data['device_type_id'] ?? $device->device_type_id;
         $data['condition'] = $data['condition'] ?? $device->condition ?? 'serviceable';
+
+        if (blank($data['property_number'] ?? null) && filled($data['part_of_property_number'] ?? null)) {
+            $data['property_number'] = $device->property_number ?: $this->generateLinkedPropertyNumber(
+                (string) $data['part_of_property_number'],
+                (int) $data['device_type_id']
+            );
+        }
 
         if (!array_key_exists('status', $data)) {
             unset($data['status']);
@@ -2241,6 +2328,7 @@ class DeviceController extends Controller
             'q' => $request->string('q')->toString(),
             'type_id' => $request->integer('type'),
             'location_id' => $request->integer('location') ?: $request->integer('college'),
+            'office_id' => $request->integer('office_id'),
             'status' => $status,
             'condition' => $condition,
         ];

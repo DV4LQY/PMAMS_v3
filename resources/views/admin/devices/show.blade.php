@@ -571,14 +571,14 @@
                 <div>
                     <div class="text-sm text-gray-500">Property Number</div>
                     <div class="font-medium text-gray-900">
-                        {{ $device->property_number }}
+                        {{ $device->part_of_property_number ?: $device->property_number }}
                     </div>
                 </div>
 
                 <div>
-                    <div class="text-sm text-gray-500">Part of Property Number</div>
+                    <div class="text-sm text-gray-500">Child Property Number</div>
                     <div class="font-medium text-gray-900">
-                        {{ $device->part_of_property_number ?: 'Main equipment / standalone' }}
+                        {{ $device->part_of_property_number ? $device->property_number : 'Main equipment / standalone' }}
                     </div>
                 </div>
 

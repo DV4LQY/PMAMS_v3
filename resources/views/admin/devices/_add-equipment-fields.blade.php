@@ -23,18 +23,20 @@
     </div>
 
     <div>
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Property Number</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Property Number <span class="font-normal text-gray-500">(optional when linked)</span>
+        </label>
         <input
             name="property_number"
             value="{{ old('property_number') }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            required
             maxlength="50"
             pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"
             title="Letters, numbers, hyphens, and slashes only"
             placeholder="e.g. PN-2026-0001"
         >
         @error('property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank when using a parent property number below.</p>
     </div>
 
     <div x-data="{
@@ -231,11 +233,11 @@
             :disabled="!isDesktopType(addTypeId)"
         >
             <option value="">-- Select Form Factor --</option>
-            <option value="Tower Desktops" @selected(old('specs.form_factor') === 'Tower Desktops')>Tower Desktops</option>
-            <option value="Small Form Factor (SFF) Desktops" @selected(old('specs.form_factor') === 'Small Form Factor (SFF) Desktops')>Small Form Factor (SFF) Desktops</option>
-            <option value="All-in-One (AIO) Desktops" @selected(old('specs.form_factor') === 'All-in-One (AIO) Desktops')>All-in-One (AIO) Desktops</option>
-            <option value="Mini PCs" @selected(old('specs.form_factor') === 'Mini PCs')>Mini PCs</option>
-            <option value="Workstations" @selected(old('specs.form_factor') === 'Workstations')>Workstations</option>
+            <option value="Tower Desktop" @selected(old('specs.form_factor') === 'Tower Desktop')>Tower Desktop</option>
+            <option value="Small Form Factor (SFF) Desktop" @selected(old('specs.form_factor') === 'Small Form Factor (SFF) Desktop')>Small Form Factor (SFF) Desktop</option>
+            <option value="All-in-One (AIO) Desktop" @selected(old('specs.form_factor') === 'All-in-One (AIO) Desktop')>All-in-One (AIO) Desktop</option>
+            <option value="Mini PC" @selected(old('specs.form_factor') === 'Mini PCs')>Mini PC</option>
+            
         </select>
         @error('specs.form_factor')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>

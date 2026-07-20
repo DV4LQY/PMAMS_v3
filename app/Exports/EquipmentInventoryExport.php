@@ -32,6 +32,7 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
                 'currentAssignment.location',
             ])
             ->filterInventory($this->filters)
+            ->orderByRaw('COALESCE(part_of_property_number, property_number)')
             ->orderBy('property_number');
     }
 
@@ -39,7 +40,7 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
     {
         return [
             'Property Number',
-            'Part of Property Number',
+            'Child Property Number',
             'Equipment Type',
             'Serial Number',
             'Computer Name',
@@ -76,8 +77,10 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
         $location = $assignment?->location ?? $office?->location;
 
         return [
-            $device->property_number,
-            $device->part_of_property_number,
+            // Keep linked peripherals aligned with their parent group while
+            // retaining each equipment record's unique number in the child column.
+            $device->part_of_property_number ?: $device->property_number,
+            $device->part_of_property_number ? $device->property_number : null,
             $device->type?->name,
             $device->serial_number,
             $device->computer_name ?: data_get($device->specs, 'computer_name'),

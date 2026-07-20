@@ -444,13 +444,30 @@
                 <div class="w-full lg:w-44">
                     <select
                         name="college"
-                        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+                        onchange="const officeField = this.form.querySelector('[name=office_id]'); if (officeField) officeField.value = ''; this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
                         class="w-full truncate rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
                     >
                         <option value="" @selected(empty($collegeId))>All Locations</option>
                         @foreach($colleges as $college)
                             <option value="{{ $college->id }}" @selected(($collegeId ?? '') == $college->id)>
                                 {{ $college->code }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+
+            @if($showOfficeFilter)
+                <div class="w-full lg:w-56">
+                    <select
+                        name="office_id"
+                        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+                        class="w-full truncate rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
+                    >
+                        <option value="" @selected(empty($officeId ?? null))>All Offices</option>
+                        @foreach($offices as $office)
+                            <option value="{{ $office->id }}" @selected(($officeId ?? '') == $office->id)>
+                                {{ $office->name }}
                             </option>
                         @endforeach
                     </select>
@@ -590,9 +607,9 @@
 
                     <div>
                         <div class="text-gray-500 dark:text-gray-400">Property #</div>
-                        <div class="text-gray-900 dark:text-white">{{ $d->property_number }}</div>
+                        <div class="text-gray-900 dark:text-white">{{ $d->part_of_property_number ?: $d->property_number }}</div>
                         @if($d->part_of_property_number)
-                            <div class="text-xs text-indigo-600 dark:text-indigo-300">Part of: {{ $d->part_of_property_number }}</div>
+                            <div class="text-xs text-indigo-600 dark:text-indigo-300">Child: {{ $d->property_number }}</div>
                         @endif
                     </div>
 
@@ -780,9 +797,9 @@
                             @endif
                             <td class="px-4 py-3 text-gray-900 dark:text-white">{{ $d->type?->name ?? '-' }}</td>
                             <td class="px-4 py-3 text-gray-900 dark:text-white">
-                                <div>{{ $d->property_number }}</div>
+                                <div>{{ $d->part_of_property_number ?: $d->property_number }}</div>
                                 @if($d->part_of_property_number)
-                                    <div class="text-xs text-indigo-600 dark:text-indigo-300">Part of: {{ $d->part_of_property_number }}</div>
+                                    <div class="text-xs text-indigo-600 dark:text-indigo-300">Child: {{ $d->property_number }}</div>
                                 @endif
                             </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $d->serial_number ?: '-' }}</td>
@@ -991,7 +1008,6 @@
                         name="property_number"
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.property_number"
-                        required
                         maxlength="50"
                         pattern="[A-Za-z0-9][A-Za-z0-9\-\/]*"
                         title="Letters, numbers, hyphens, and slashes only"
@@ -1096,11 +1112,11 @@
                         :disabled="!isDesktopType(editDevice.device_type_id)"
                     >
                         <option value="">-- Select Form Factor --</option>
-                        <option value="Tower Desktops">Tower Desktops</option>
-                        <option value="Small Form Factor (SFF) Desktops">Small Form Factor (SFF) Desktops</option>
-                        <option value="All-in-One (AIO) Desktops">All-in-One (AIO) Desktops</option>
-                        <option value="Mini PCs">Mini PCs</option>
-                        <option value="Workstations">Workstations</option>
+                        <option value="Tower Desktop">Tower Desktop</option>
+                        <option value="Small Form Factor (SFF) Desktop">Small Form Factor (SFF) Desktop</option>
+                        <option value="All-in-One (AIO) Desktop">All-in-One (AIO) Desktop</option>
+                        <option value="Mini PC">Mini PC</option>
+                
                     </select>
                 </div>
 
@@ -1349,18 +1365,18 @@
                     @csrf
 
                     <div>
-                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">CSV or Excel file</label>
+                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">CSV, XLSX, or XLS file</label>
                         <input
                             type="file"
                             name="file"
-                            accept=".csv,.txt,.xlsx,.xls"
+                            accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                             required
                             class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         >
                     </div>
 
                     <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the registered end user. Use <code>part_of_property_number</code> to link a Monitor/UPS/AVR to the main system-unit property number. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; staff rows are checked against both. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
+                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the registered end user. Use <code>part_of_property_number</code> to link a Monitor/UPS/AVR to the main system-unit property number; the equipment <code>property_number</code> may be blank in that case and will receive an internal record number automatically. Linked equipment is grouped under the parent property number in exports. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; staff rows are checked against both. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
                     </div>
 
                     <label class="flex items-start gap-2 rounded-lg border border-blue-200 bg-white/60 px-3 py-2 text-sm text-gray-700 dark:border-blue-900/50 dark:bg-gray-800/60 dark:text-gray-200">
@@ -1412,6 +1428,7 @@
                     <input type="hidden" name="filter_q" value="{{ $q ?? '' }}">
                     <input type="hidden" name="filter_type" value="{{ $typeId ?: '' }}">
                     <input type="hidden" name="filter_location" value="{{ $locationId ?: '' }}">
+                    <input type="hidden" name="filter_office" value="{{ $officeId ?: '' }}">
                     <input type="hidden" name="filter_status" value="{{ $status ?? '' }}">
                     <input type="hidden" name="filter_condition" value="{{ $condition ?? '' }}">
                     <template x-if="!selectAllMatching">

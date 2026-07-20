@@ -45,6 +45,7 @@ class Device extends Model
         $q = trim((string) ($filters['q'] ?? ''));
         $typeId = (int) ($filters['type_id'] ?? 0);
         $locationId = (int) ($filters['location_id'] ?? 0);
+        $officeId = (int) ($filters['office_id'] ?? 0);
         $status = $filters['status'] ?? null;
         $condition = $filters['condition'] ?? null;
         $tokens = $this->searchTokens($q);
@@ -89,6 +90,14 @@ class Device extends Model
                     $assignment->where('location_id', $locationId)
                         ->orWhereHas('staff.office', function (Builder $office) use ($locationId) {
                             $office->where('location_id', $locationId);
+                        });
+                });
+            })
+            ->when($officeId, function (Builder $query) use ($officeId) {
+                $query->whereHas('currentAssignment', function (Builder $assignment) use ($officeId) {
+                    $assignment->where('office_id', $officeId)
+                        ->orWhereHas('staff', function (Builder $staff) use ($officeId) {
+                            $staff->where('office_id', $officeId);
                         });
                 });
             })
