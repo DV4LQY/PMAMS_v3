@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateDeviceRequest extends FormRequest
 {
@@ -22,6 +23,18 @@ class UpdateDeviceRequest extends FormRequest
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
                 'unique:devices,property_number,' . $this->route('device')->id,
+            ],
+
+            'part_of_property_number' => [
+                'nullable',
+                'string',
+                'max:50',
+                'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
+                Rule::exists('devices', 'property_number')->where(function ($query) {
+                    $query
+                        ->where('id', '!=', $this->route('device')->id)
+                        ->whereNull('part_of_property_number');
+                }),
             ],
 
             'serial_number' => [
@@ -80,6 +93,8 @@ class UpdateDeviceRequest extends FormRequest
     {
         return [
             'property_number.regex' => 'Property number may only contain letters, numbers, hyphens, and slashes.',
+            'part_of_property_number.exists' => 'The selected parent property number does not exist.',
+            'part_of_property_number.regex' => 'Part of property number may only contain letters, numbers, hyphens, and slashes.',
             'serial_number.regex'   => 'Serial number may only contain letters, numbers, and hyphens.',
             'brand.regex'           => 'Brand may only contain letters and numbers.',
             'model.regex'           => 'Model may only contain letters and numbers.',

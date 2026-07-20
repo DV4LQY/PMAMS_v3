@@ -148,6 +148,9 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::get('/devices/lookup/staff', [DeviceController::class, 'staffLookup'])
             ->name('admin.devices.lookup.staff');
 
+        Route::get('/devices/lookup/property', [DeviceController::class, 'propertyLookup'])
+            ->name('admin.devices.lookup.property');
+
         Route::get('/devices/lookup/available', [DeviceController::class, 'availableLookup'])
             ->name('admin.devices.lookup.available');
 

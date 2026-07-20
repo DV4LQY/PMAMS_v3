@@ -49,6 +49,7 @@
         <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-6" x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             @method('PUT')
+            <input type="hidden" name="device_id" value="{{ $device->id }}">
             <input type="hidden" name="status" value="{{ old('status', $device->status ?? 'available') }}">
 
             @include('admin.devices._add-equipment-fields', [
@@ -110,6 +111,10 @@
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
             </div>
+
+            @include('admin.devices._part-property-number-field', [
+                'value' => old('part_of_property_number', $device->part_of_property_number),
+            ])
 
             {{-- Computer Name --}}
             <div>

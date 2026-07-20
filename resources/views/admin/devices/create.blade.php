@@ -50,6 +50,8 @@
                 @enderror
             </div>
 
+            @include('admin.devices._part-property-number-field')
+
             {{-- Computer Name --}}
             <div>
                 <label class="text-sm font-medium">Computer Name</label>

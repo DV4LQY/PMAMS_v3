@@ -50,6 +50,7 @@
             id: null,
             device_type_id: '',
             property_number: '',
+            part_of_property_number: '',
             serial_number: '',
             computer_name: '',
             brand: '',
@@ -228,6 +229,7 @@
 
             setValue('device_type_id', device.device_type_id);
             setValue('property_number', device.property_number);
+            setValue('part_of_property_number', device.part_of_property_number);
             setValue('serial_number', device.serial_number);
             setValue('computer_name', this.addComputerName);
             setValue('brand', device.brand);
@@ -255,6 +257,7 @@
             device.specs.form_factor = device.specs.form_factor ?? '';
 
             device.computer_name = device.computer_name ?? device.specs.computer_name ?? '';
+            device.part_of_property_number = device.part_of_property_number ?? '';
             device.serial_number = device.serial_number ?? '';
             device.status = device.status ?? 'available';
             device.condition = device.condition ?? 'serviceable';
@@ -588,6 +591,9 @@
                     <div>
                         <div class="text-gray-500 dark:text-gray-400">Property #</div>
                         <div class="text-gray-900 dark:text-white">{{ $d->property_number }}</div>
+                        @if($d->part_of_property_number)
+                            <div class="text-xs text-indigo-600 dark:text-indigo-300">Part of: {{ $d->part_of_property_number }}</div>
+                        @endif
                     </div>
 
                     <div>
@@ -683,6 +689,7 @@
                             device_type_id: '{{ $d->device_type_id }}',
                             computer_name: @js($d->computer_name ?? data_get($d->specs, 'computer_name', '')),
                             property_number: @js($d->property_number),
+                            part_of_property_number: @js($d->part_of_property_number ?? ''),
                             serial_number: @js($d->serial_number ?? ''),
                             brand: @js($d->brand ?? ''),
                             model: @js($d->model ?? ''),
@@ -772,7 +779,12 @@
                                 </td>
                             @endif
                             <td class="px-4 py-3 text-gray-900 dark:text-white">{{ $d->type?->name ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ $d->property_number }}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">
+                                <div>{{ $d->property_number }}</div>
+                                @if($d->part_of_property_number)
+                                    <div class="text-xs text-indigo-600 dark:text-indigo-300">Part of: {{ $d->part_of_property_number }}</div>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $d->serial_number ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 {{ $d->date_acquired ? $d->date_acquired->format('M d, Y') : '-' }}
@@ -931,6 +943,7 @@
         >
             @csrf
             @method('PUT')
+            <input type="hidden" name="device_id" x-model="editDevice.id">
             <input type="hidden" name="status" x-model="editDevice.status">
 
             @include('admin.devices._add-equipment-fields', [
@@ -1347,7 +1360,7 @@
                     </div>
 
                     <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the registered end user. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; staff rows are checked against both. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
+                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the registered end user. Use <code>part_of_property_number</code> to link a Monitor/UPS/AVR to the main system-unit property number. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; staff rows are checked against both. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
                     </div>
 
                     <label class="flex items-start gap-2 rounded-lg border border-blue-200 bg-white/60 px-3 py-2 text-sm text-gray-700 dark:border-blue-900/50 dark:bg-gray-800/60 dark:text-gray-200">
@@ -1369,7 +1382,7 @@
                             data-no-spa="true"
                             class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
                         >
-                            Download import template
+                            Download Excel import template (.xls)
                         </a>
                         <div class="flex gap-2">
                             <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600" x-on:click="importOpen = false">Cancel</button>

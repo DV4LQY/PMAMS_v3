@@ -32,6 +32,7 @@
             id: @json($device->id),
             device_type_id: @json(old('device_type_id', $device->device_type_id)),
             property_number: @json(old('property_number', $device->property_number)),
+            part_of_property_number: @json(old('part_of_property_number', $device->part_of_property_number)),
             serial_number: @json(old('serial_number', $device->serial_number)),
             computer_name: @json($editComputerName),
             brand: @json(old('brand', $device->brand)),
@@ -147,6 +148,7 @@
 
                 setValue('device_type_id', device.device_type_id);
                 setValue('property_number', device.property_number);
+                setValue('part_of_property_number', device.part_of_property_number);
                 setValue('serial_number', device.serial_number);
                 setValue('computer_name', this.addComputerName);
                 setValue('brand', device.brand);
@@ -574,6 +576,13 @@
                 </div>
 
                 <div>
+                    <div class="text-sm text-gray-500">Part of Property Number</div>
+                    <div class="font-medium text-gray-900">
+                        {{ $device->part_of_property_number ?: 'Main equipment / standalone' }}
+                    </div>
+                </div>
+
+                <div>
                     <div class="text-sm text-gray-500">Serial Number</div>
                     <div class="font-medium text-gray-900">
                         {{ $device->serial_number ?: '-' }}
@@ -842,6 +851,7 @@
                 @csrf
                 @method('PUT')
 
+                <input type="hidden" name="device_id" x-model="editDevice.id">
                 <input type="hidden" name="status" x-model="editDevice.status">
 
                 <div class="max-h-[75vh] overflow-y-auto px-6 py-5">

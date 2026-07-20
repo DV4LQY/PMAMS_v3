@@ -13,6 +13,7 @@ class Device extends Model
     protected $fillable = [
         'device_type_id',
         'property_number',
+        'part_of_property_number',
         'serial_number',
         'computer_name',
         'brand',
@@ -55,6 +56,7 @@ class Device extends Model
                         $like = "%{$token}%";
 
                         $sub->where('property_number', 'like', $like)
+                            ->orWhere('part_of_property_number', 'like', $like)
                             ->orWhere('serial_number', 'like', $like)
                             ->orWhere('computer_name', 'like', $like)
                             ->orWhere('brand', 'like', $like)

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Exports\EquipmentInventoryExport;
+use App\Exports\EquipmentImportTemplateExport;
 use App\Exports\PreventiveMaintenanceReportExport;
 use App\Imports\DeviceInventoryImport;
 use App\Models\ActivityLog;
@@ -213,6 +214,59 @@ class DeviceController extends Controller
         return response()->json(['results' => $devices]);
     }
 
+    /**
+     * Fast property-number lookup used when linking a peripheral to the
+     * equipment record it belongs to (for example Monitor -> Desktop).
+     */
+    public function propertyLookup(Request $request)
+    {
+        $tokens = $this->searchTokens($request->string('q')->toString());
+        $excludeId = $request->integer('exclude_id') ?: null;
+
+        $devices = Device::query()
+            ->select(['id', 'device_type_id', 'property_number', 'part_of_property_number', 'serial_number', 'brand', 'model'])
+            ->with('type:id,name')
+            ->whereNull('part_of_property_number')
+            ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
+            ->when($tokens !== [], function ($query) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $query->where(function ($sub) use ($token) {
+                        $like = "%{$token}%";
+
+                        $sub->where('property_number', 'like', $like)
+                            ->orWhere('part_of_property_number', 'like', $like)
+                            ->orWhere('serial_number', 'like', $like)
+                            ->orWhere('brand', 'like', $like)
+                            ->orWhere('model', 'like', $like)
+                            ->orWhereHas('type', fn ($type) => $type->where('name', 'like', $like));
+                    });
+                }
+            })
+            ->orderBy('property_number')
+            ->limit(15)
+            ->get()
+            ->map(function (Device $device) {
+                $brandModel = trim(($device->brand ?? '') . ' ' . ($device->model ?? ''));
+                $typeName = $device->type?->name ?? 'Equipment';
+
+                return [
+                    'id' => $device->id,
+                    'property_number' => $device->property_number,
+                    'type' => $typeName,
+                    'serial_number' => $device->serial_number,
+                    'label' => collect([
+                        $device->property_number,
+                        $typeName,
+                        $brandModel ?: null,
+                        $device->serial_number ? 'Serial #: ' . $device->serial_number : null,
+                    ])->filter()->join(' | '),
+                ];
+            })
+            ->values();
+
+        return response()->json(['results' => $devices]);
+    }
+
     public function create()
     {
         $types = $this->allowedDeviceTypes();
@@ -277,6 +331,7 @@ class DeviceController extends Controller
             'form_factor' => data_get($device->specs, 'form_factor'),
             'unit_price' => $device->unit_price,
             'condition' => $device->condition,
+            'part_of_property_number' => $device->part_of_property_number,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
             'photo' => $device->photo_path ? 'Uploaded' : null,
@@ -535,6 +590,7 @@ class DeviceController extends Controller
             'unit_price' => $device->unit_price,
 
             'condition' => $device->condition,
+            'part_of_property_number' => $device->part_of_property_number,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
             'photo' => $device->photo_path ? 'Uploaded' : null,
@@ -571,6 +627,7 @@ class DeviceController extends Controller
             'form_factor' => data_get($device->specs, 'form_factor'),
             'unit_price' => $device->unit_price,
             'condition' => $device->condition,
+            'part_of_property_number' => $device->part_of_property_number,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
             'photo' => $device->photo_path ? 'Uploaded' : null,
@@ -1126,27 +1183,12 @@ class DeviceController extends Controller
 
     public function importTemplate()
     {
-        return response()->streamDownload(function () {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
-                'property_number', 'equipment_type', 'serial_number', 'brand', 'model',
-                'computer_name', 'mac_address', 'unit_price', 'date_acquired', 'condition',
-                'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
-                'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks', 'notes',
-                'issued_user_email', 'issued_user', 'first_name', 'last_name', 'office',
-                'location_code', 'issued_at', 'issuance_remarks',
-            ]);
-            fputcsv($handle, [
-                'PN-2026-0001', 'Laptop', 'SN-0001', 'Example', 'Model', 'PC-001', '',
-                '25000', '2026-01-15', 'serviceable', 'issued', 'Windows 11',
-                'OEM Licensed', 'Microsoft 365', 'OEM Licensed', '16 GB', '512 GB SSD',
-                '', '', '', '', 'juan@example.edu', 'Juan Dela Cruz', '', '', 'ICTU',
-                'MAIN', '2026-01-15', 'Initial issuance',
-            ]);
-            fclose($handle);
-        }, 'equipment-import-template.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        return Excel::download(
+            new EquipmentImportTemplateExport,
+            'equipment-import-template.xls',
+            \Maatwebsite\Excel\Excel::XLS,
+            ['Content-Type' => 'application/vnd.ms-excel']
+        );
     }
 
     private function persistImportedInventoryRow(array $row): array
@@ -1196,6 +1238,21 @@ class DeviceController extends Controller
         $device = Device::firstOrNew(['property_number' => trim((string) $propertyNumber)]);
         $wasCreated = !$device->exists;
         $device->device_type_id = $type->id;
+
+        if (filled($this->importValue($row, ['part_of_property_number', 'parent_property_number', 'parent_property_no']))) {
+            $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number', 'parent_property_number', 'parent_property_no']));
+            if (strcasecmp($partOfPropertyNumber, trim((string) $propertyNumber)) === 0) {
+                throw new \RuntimeException('part_of_property_number cannot be the same as property_number.');
+            }
+
+            if (! Device::where('property_number', $partOfPropertyNumber)
+                ->whereNull('part_of_property_number')
+                ->exists()) {
+                throw new \RuntimeException('part_of_property_number must match an existing equipment property number.');
+            }
+
+            $device->part_of_property_number = $partOfPropertyNumber;
+        }
 
         foreach ([
             'serial_number', 'computer_name', 'brand', 'model', 'mac_address',
@@ -1645,6 +1702,13 @@ class DeviceController extends Controller
             throw new \RuntimeException('property_number may only contain letters, numbers, hyphens, and slashes, with a maximum of 50 characters.');
         }
 
+        $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number']));
+        if ($partOfPropertyNumber !== ''
+            && (strlen($partOfPropertyNumber) > 50
+                || ! preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $partOfPropertyNumber))) {
+            throw new \RuntimeException('part_of_property_number may only contain letters, numbers, hyphens, and slashes, with a maximum of 50 characters.');
+        }
+
         if (filled($row['serial_number'] ?? null)
             && (strlen((string) $row['serial_number']) > 100
                 || ! preg_match(StoreDeviceRequest::SERIAL_NUMBER_REGEX, (string) $row['serial_number']))) {
@@ -1669,6 +1733,7 @@ class DeviceController extends Controller
             'form_factor' => 255,
             'maintenance_remarks' => 1000,
             'notes' => 2000,
+            'part_of_property_number' => 50,
             'staff_email' => 255,
             'staff_name' => 255,
             'first_name' => 100,
@@ -1721,6 +1786,7 @@ class DeviceController extends Controller
         return [
             'property_number', 'equipment_type', 'serial_number', 'brand', 'model',
             'computer_name', 'mac_address', 'unit_price', 'date_acquired', 'condition',
+            'part_of_property_number',
             'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
             'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks',
             'notes', 'staff_email', 'staff_name', 'first_name', 'last_name', 'office',
@@ -1737,6 +1803,8 @@ class DeviceController extends Controller
 
         $aliases = [
             'property_no' => 'property_number', 'asset_number' => 'property_number', 'asset_no' => 'property_number',
+            'parent_property_number' => 'part_of_property_number', 'parent_property_no' => 'part_of_property_number',
+            'part_of_property_no' => 'part_of_property_number', 'part_of' => 'part_of_property_number',
             'equipment' => 'equipment_type', 'device' => 'equipment_type', 'device_type' => 'equipment_type',
             'type' => 'equipment_type', 'type_name' => 'equipment_type',
             'serial_no' => 'serial_number', 'office_name' => 'office', 'location_name' => 'location',
@@ -1980,6 +2048,7 @@ class DeviceController extends Controller
             'form_factor' => data_get($device->specs, 'form_factor'),
             'unit_price' => $device->unit_price,
             'condition' => $device->condition,
+            'part_of_property_number' => $device->part_of_property_number,
             'status' => $device->status,
             'maintenance_remarks' => $device->maintenance_remarks,
             'notes' => $device->notes,

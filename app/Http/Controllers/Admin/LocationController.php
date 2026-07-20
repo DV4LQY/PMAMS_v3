@@ -42,7 +42,12 @@ class LocationController extends Controller
                         ->orWhereHas('office', fn ($office) => $office->whereIn('location_id', $locationIds))
                         ->orWhereHas('staff.office', fn ($office) => $office->whereIn('location_id', $locationIds));
                 })
-                ->with(['office:id,location_id', 'staff:id,office_id', 'staff.office:id,location_id'])
+                ->with([
+                    'device:id,part_of_property_number',
+                    'office:id,location_id',
+                    'staff:id,office_id',
+                    'staff.office:id,location_id',
+                ])
                 ->get();
 
             foreach ($assignments as $assignment) {
@@ -63,7 +68,13 @@ class LocationController extends Controller
                 ];
 
                 $locationStats[$locationId]['assigned']++;
-                if ($assignment->staff_id) {
+                // A peripheral linked to another property number is shared
+                // equipment within that asset group, even when it is issued
+                // alongside the same end user as the main system unit.
+                $isSharedEquipment = ! $assignment->staff_id
+                    || filled($assignment->device?->part_of_property_number);
+
+                if (! $isSharedEquipment) {
                     $locationStats[$locationId]['issued_to_users']++;
                 } else {
                     $locationStats[$locationId]['shared']++;
