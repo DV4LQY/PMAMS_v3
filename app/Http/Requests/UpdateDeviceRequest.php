@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Models\DeviceType;
 
 class UpdateDeviceRequest extends FormRequest
 {
@@ -89,6 +90,23 @@ class UpdateDeviceRequest extends FormRequest
             'ms_office_version' => ['nullable', 'string', 'in:Office 2007,Office 2010,Office 2013,Office 2016,Office 2019,Office 2021,Microsoft 365'],
             'ms_office_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if (!filled($this->input('part_of_property_number'))) {
+                return;
+            }
+
+            $typeName = strtolower((string) DeviceType::whereKey($this->input('device_type_id'))->value('name'));
+            if (!in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'other'], true)) {
+                $validator->errors()->add(
+                    'part_of_property_number',
+                    'Part of property number is available only for Printer, Monitor, AVR, UPS, or Other equipment.'
+                );
+            }
+        });
     }
 
     public function messages(): array

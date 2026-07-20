@@ -7,6 +7,19 @@
         open: false,
         timer: null,
         abort: null,
+        visible: false,
+        init() {
+            this.refreshVisibility();
+        },
+        refreshVisibility() {
+            const form = this.$refs.partPropertyInput?.closest('form');
+            const select = form?.querySelector('[data-equipment-type-select], #device_type_select');
+            const name = String(select?.options[select.selectedIndex]?.textContent || '')
+                .trim()
+                .toLowerCase();
+
+            this.visible = ['printer', 'monitor', 'avr', 'ups', 'other'].includes(name);
+        },
         searchUrl: '{{ route('admin.devices.lookup.property') }}',
         async search() {
             this.query = this.$refs.partPropertyInput.value.trim();
@@ -44,6 +57,9 @@
         }
     }"
     class="relative md:col-span-2"
+    x-show="visible"
+    x-cloak
+    @change.window="if ($event.target.matches('[data-equipment-type-select], #device_type_select')) refreshVisibility()"
 >
     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
         Part of Property Number <span class="font-normal text-gray-500">(optional)</span>
@@ -59,10 +75,11 @@
             title="Letters, numbers, hyphens, and slashes only"
             placeholder="e.g. PN-2026-0001"
             autocomplete="off"
+            :disabled="!visible"
             @input="if ($event.isTrusted) queueSearch()"
         >
     </div>
-    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Link a Monitor, UPS, or AVR to the main system-unit property number.</p>
+    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Link a Printer, Monitor, AVR, UPS, or Other item to the main system-unit property number.</p>
     @error('part_of_property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 
     <div x-show="open" x-cloak @click.outside="open = false" class="absolute inset-x-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">

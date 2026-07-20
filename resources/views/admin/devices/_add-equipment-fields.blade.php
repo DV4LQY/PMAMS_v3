@@ -46,6 +46,19 @@
             open: false,
             timer: null,
             abort: null,
+            visible: false,
+            init() {
+                this.refreshVisibility();
+            },
+            refreshVisibility() {
+                const form = this.$refs.partPropertyInput?.closest('form');
+                const select = form?.querySelector('[data-equipment-type-select], #device_type_select');
+                const name = String(select?.options[select.selectedIndex]?.textContent || '')
+                    .trim()
+                    .toLowerCase();
+
+                this.visible = ['printer', 'monitor', 'avr', 'ups', 'other'].includes(name);
+            },
             searchUrl: '{{ route('admin.devices.lookup.property') }}',
             async search() {
                 this.query = this.$refs.partPropertyInput.value.trim();
@@ -87,6 +100,9 @@
             }
         }"
         class="relative md:col-span-2"
+        x-show="visible"
+        x-cloak
+        @change.window="if ($event.target.matches('[data-equipment-type-select], #device_type_select')) refreshVisibility()"
     >
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
             Part of Property Number <span class="font-normal text-gray-500">(optional)</span>
@@ -100,13 +116,14 @@
                 maxlength="50"
                 pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"
                 title="Letters, numbers, hyphens, and slashes only"
-                placeholder="e.g. PN-2026-0001 (link Monitor/UPS/AVR to the Desktop)"
-                autocomplete="off"
+                placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Other)"
+            autocomplete="off"
+            :disabled="!visible"
                 @input="if ($event.isTrusted) queueSearch()"
                 @focus="if ($refs.partPropertyInput.value.trim()) queueSearch()"
             >
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this when the equipment is a peripheral belonging to another property-number group.</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this for Printer, Monitor, AVR, UPS, or Other equipment belonging to another property-number group.</p>
         @error('part_of_property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 
         <div

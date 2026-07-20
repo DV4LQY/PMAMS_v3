@@ -1743,6 +1743,11 @@ class DeviceController extends Controller
             throw new \RuntimeException('equipment_type must not exceed 100 characters.');
         }
 
+        if ($partOfPropertyNumber !== ''
+            && !in_array(strtolower($equipmentType), ['printer', 'monitor', 'avr', 'ups', 'other'], true)) {
+            throw new \RuntimeException('part_of_property_number is only supported for Printer, Monitor, AVR, UPS, or Other equipment.');
+        }
+
         if ($propertyNumber !== ''
             && (strlen($propertyNumber) > 50 || ! preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $propertyNumber))) {
             throw new \RuntimeException('property_number may only contain letters, numbers, hyphens, and slashes, with a maximum of 50 characters.');
@@ -2379,6 +2384,11 @@ class DeviceController extends Controller
         $typeName = strtolower($type?->name ?? '');
 
         $isComputerType = in_array($typeName, ['desktop', 'laptop']);
+        $isPartPropertyType = in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'other'], true);
+
+        if (!$isPartPropertyType) {
+            $data['part_of_property_number'] = null;
+        }
 
         if (!$isComputerType) {
             $data['mac_address'] = null;
