@@ -57,7 +57,7 @@
                     .trim()
                     .toLowerCase();
 
-                this.visible = ['printer', 'monitor', 'avr', 'ups', 'other'].includes(name);
+                this.visible = ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'].includes(name);
             },
             searchUrl: '{{ route('admin.devices.lookup.property') }}',
             async search() {
@@ -116,14 +116,14 @@
                 maxlength="50"
                 pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"
                 title="Letters, numbers, hyphens, and slashes only"
-                placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Other)"
+            placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Scanner/Other)"
             autocomplete="off"
             :disabled="!visible"
                 @input="if ($event.isTrusted) queueSearch()"
                 @focus="if ($refs.partPropertyInput.value.trim()) queueSearch()"
             >
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this for Printer, Monitor, AVR, UPS, or Other equipment belonging to another property-number group.</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this for Printer, Monitor, AVR, UPS, Scanner, or Other equipment belonging to another property-number group.</p>
         @error('part_of_property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 
         <div
@@ -161,7 +161,7 @@
         @error('serial_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
-    <div>
+    <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Computer Name</label>
         <input
             name="computer_name"
@@ -169,6 +169,7 @@
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             placeholder="Enter computer name"
+            :disabled="!isComputerType(addTypeId)"
         >
         @error('computer_name')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>

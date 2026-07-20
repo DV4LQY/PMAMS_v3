@@ -1254,7 +1254,7 @@ class DeviceController extends Controller
 
             if (! $type) {
                 $allowedTypeNames = [
-                    'Desktop', 'Laptop', 'Printer', 'Monitor', 'UPS', 'AVR', 'Other',
+                    'Desktop', 'Laptop', 'Printer', 'Monitor', 'UPS', 'AVR', 'Scanner', 'Other',
                 ];
                 $canonicalTypeName = collect($allowedTypeNames)
                     ->first(fn (string $allowedType) => strtolower($allowedType) === $typeKey);
@@ -1744,8 +1744,8 @@ class DeviceController extends Controller
         }
 
         if ($partOfPropertyNumber !== ''
-            && !in_array(strtolower($equipmentType), ['printer', 'monitor', 'avr', 'ups', 'other'], true)) {
-            throw new \RuntimeException('part_of_property_number is only supported for Printer, Monitor, AVR, UPS, or Other equipment.');
+            && !in_array(strtolower($equipmentType), ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'], true)) {
+            throw new \RuntimeException('part_of_property_number is only supported for Printer, Monitor, AVR, UPS, Scanner, or Other equipment.');
         }
 
         if ($propertyNumber !== ''
@@ -2384,13 +2384,17 @@ class DeviceController extends Controller
         $typeName = strtolower($type?->name ?? '');
 
         $isComputerType = in_array($typeName, ['desktop', 'laptop']);
-        $isPartPropertyType = in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'other'], true);
+        $isPartPropertyType = in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'], true);
 
         if (!$isPartPropertyType) {
             $data['part_of_property_number'] = null;
         }
 
         if (!$isComputerType) {
+            // Computer names are meaningful only for Desktop/Laptop records.
+            // Clear the value on create/update/import so changing an item type
+            // cannot leave stale computer metadata behind.
+            $data['computer_name'] = null;
             $data['mac_address'] = null;
             $data['os_version'] = null;
             $data['os_license'] = null;
@@ -2403,6 +2407,7 @@ class DeviceController extends Controller
                     'memory',
                     'storage',
                     'form_factor',
+                    'computer_name',
                 ])
                 ->toArray();
 
@@ -2501,6 +2506,7 @@ class DeviceController extends Controller
             'Monitor',
             'UPS',
             'AVR',
+            'Scanner',
             'Other',
         ];
 

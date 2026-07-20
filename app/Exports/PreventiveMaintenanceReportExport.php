@@ -37,6 +37,7 @@ class PreventiveMaintenanceReportExport implements FromView, WithEvents
                     'Printer',
                     'UPS',
                     'AVR',
+                    'Scanner',
                     'Other',
                 ]);
             })

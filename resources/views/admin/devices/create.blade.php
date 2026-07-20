@@ -53,9 +53,10 @@
             @include('admin.devices._part-property-number-field')
 
             {{-- Computer Name --}}
-            <div>
+            <div id="computer_name_wrapper" data-equipment-field="computer">
                 <label class="text-sm font-medium">Computer Name</label>
                 <input name="computer_name"
+                       id="computer_name_input"
                        value="{{ old('computer_name') }}"
                        class="mt-1 w-full border rounded px-3 py-2"
                        maxlength="100"
@@ -234,9 +235,12 @@
         var osLicenseWrap   = document.getElementById('os_license_wrapper');
         var msVersionWrap   = document.getElementById('ms_office_version_wrapper');
         var msLicenseWrap   = document.getElementById('ms_office_license_wrapper');
+        var computerNameWrap = document.getElementById('computer_name_wrapper');
+        var computerNameInput = document.getElementById('computer_name_input');
 
         function isComputer(name) {
-            return name === 'Desktop' || name === 'Laptop';
+            name = String(name || '').trim().toLowerCase();
+            return name === 'desktop' || name === 'laptop';
         }
 
         function show(el) { el.style.display = ''; }
@@ -246,6 +250,15 @@
             var selected = typeSelect.options[typeSelect.selectedIndex];
             var typeName = selected ? selected.dataset.name : '';
             var computer = isComputer(typeName);
+
+            if (computer) {
+                show(computerNameWrap);
+                computerNameInput.disabled = false;
+            } else {
+                hide(computerNameWrap);
+                computerNameInput.disabled = true;
+                computerNameInput.value = '';
+            }
 
             if (computer) {
                 show(osVersionWrap);

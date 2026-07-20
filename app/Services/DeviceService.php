@@ -55,6 +55,7 @@ class DeviceService
             'Monitor',
             'UPS',
             'AVR',
+            'Scanner',
             'Other',
         ];
 

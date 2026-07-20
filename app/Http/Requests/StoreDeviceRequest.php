@@ -121,10 +121,10 @@ class StoreDeviceRequest extends FormRequest
             }
 
             $typeName = strtolower((string) DeviceType::whereKey($this->input('device_type_id'))->value('name'));
-            if (!in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'other'], true)) {
+            if (!in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'], true)) {
                 $validator->errors()->add(
                     'part_of_property_number',
-                    'Part of property number is available only for Printer, Monitor, AVR, UPS, or Other equipment.'
+                    'Part of property number is available only for Printer, Monitor, AVR, UPS, Scanner, or Other equipment.'
                 );
             }
         });
