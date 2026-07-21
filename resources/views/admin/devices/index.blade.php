@@ -342,7 +342,7 @@
             @endif
 
             <a
-                href="{{ route('admin.devices.qr.index') }}"
+                href="{{ route('admin.devices.qr.index', request()->query()) }}"
                 data-no-spa="true"
                 class="inline-flex shrink-0 items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
             >
@@ -505,8 +505,6 @@
                     <option value="" @selected(empty($status))>All Statuses</option>
                     <option value="available" @selected(($status ?? '') === 'available')>Available</option>
                     <option value="issued" @selected(($status ?? '') === 'issued')>Issued</option>
-                    <option value="repair" @selected(($status ?? '') === 'repair')>Repair</option>
-                    <option value="retired" @selected(($status ?? '') === 'retired')>Retired</option>
                 </select>
             </div>
 

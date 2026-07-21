@@ -2943,9 +2943,49 @@ class DeviceController extends Controller
         return view('admin.devices.maintenance-history', compact('device', 'records', 'assignments', 'activityLogs'));
     }
 
-    public function generateQr()
+    public function generateQr(Request $request)
     {
-        $devices = Device::orderBy('property_number')->get();
+        // Keep QR generation in sync with the equipment page filters.
+        // The button forwards the current query string (type, location/college,
+        // office_id, status, condition, and q); normalize the same values used
+        // by index() before applying the shared inventory scope.
+        $q = $request->string('q')->toString();
+        $typeId = $request->integer('type');
+        $locationId = $request->integer('location') ?: $request->integer('college');
+        $officeId = $request->integer('office_id') ?: null;
+        $status = $request->query('status');
+        $condition = $request->query('condition');
+
+        if (!in_array($status, ['available', 'issued', 'repair', 'retired'], true)) {
+            $status = null;
+        }
+
+        if (!in_array($condition, ['serviceable', 'unserviceable', 'condemned'], true)) {
+            $condition = null;
+        }
+
+        // The office filter is only valid when the selected location is ADMIN,
+        // matching the equipment index behavior.
+        if ($officeId && $locationId) {
+            $locationCode = Location::whereKey($locationId)->value('code');
+            if (strtoupper(trim((string) $locationCode)) !== 'ADMIN') {
+                $officeId = null;
+            }
+        } elseif (!$locationId) {
+            $officeId = null;
+        }
+
+        $devices = Device::with('type')
+            ->filterInventory([
+                'q' => $q,
+                'type_id' => $typeId,
+                'location_id' => $locationId,
+                'office_id' => $officeId,
+                'status' => $status,
+                'condition' => $condition,
+            ])
+            ->orderBy('property_number')
+            ->get();
 
         $qrCodes = $devices->mapWithKeys(function ($device) {
             $qrPayload = route('admin.devices.show', $device) . '?property_number=' . urlencode($device->property_number);

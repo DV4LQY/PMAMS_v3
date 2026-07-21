@@ -188,20 +188,8 @@
                 @enderror
             </div>
 
-            {{-- Status --}}
-            <div>
-                <label class="text-sm font-medium">Status</label>
-                @php $status = old('status', $device->status); @endphp
-                <select name="status" class="mt-1 w-full border rounded px-3 py-2" required>
-                    <option value="available" @selected($status === 'available')>Available</option>
-                    <option value="issued" @selected($status === 'issued')>Issued</option>
-                    <option value="repair" @selected($status === 'repair')>Repair</option>
-                    <option value="retired" @selected($status === 'retired')>Retired</option>
-                </select>
-                @error('status')
-                    <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
-                @enderror
-            </div>
+            {{-- Status is managed by issuance/return actions and is not edited here. --}}
+            <input type="hidden" name="status" value="{{ old('status', $device->status ?? 'available') }}">
 
             {{-- Condition --}}
             <div>

@@ -544,21 +544,21 @@
 <div class="page-footer">
     <table class="footer-signatures">
         <tr>
-            <td style="width: 50%;">
+            <td style="width: 50%; font-size: 11px;">
                 <span class="sig-label">Checked by:</span>
                 <span class="sig-name-line">{{ $checkedByText }}</span>
-                <br>
+                <br> <br>
                 <span class="sig-label">Date:</span>
                 <span class="sig-date-line">{{ $dateText }}</span>
             </td>
 
-            <td style="width: 50%; text-align: right;">
+            <td style="width: 50%; text-align: right; font-size: 11px;">
                 <div class="approved-signature-block">
                     <span class="sig-label">Approved by:</span>
                     <span class="sig-name-line">
                         {{ $unitHead?->name ?? '' }}
                     </span>
-                    <br>
+                    <br><br>
                     <span class="sig-label">Date:</span>
                     <span class="sig-date-line"></span>
                 </div>
@@ -568,8 +568,8 @@
 
     <div class="document-footer">
         <span class="code">CatSU-F-ICTU-05</span>
-        <span class="rev">Rev: 0</span>
-        <span class="effectivity">Effectivity Date: July 22, 2024</span>
+        <span class="rev">Rev: 1</span>
+        <span class="effectivity">Effectivity Date: September 12, 2024</span>
     </div>
 </div>
 
