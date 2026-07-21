@@ -40,12 +40,12 @@ class ReportController extends Controller
 
     public function accounts(Request $request)
     {
-        abort_unless(auth()->user()?->isAdmin(), 403);
+        abort_unless(auth()->user()?->isSuperAdmin(), 403);
 
         $role = $request->query('role');
         $q = $request->string('q')->toString();
 
-        if (! in_array($role, ['admin', 'custodian'], true)) {
+        if (! in_array($role, ['super_admin', 'admin', 'unit_head', 'custodian'], true)) {
             $role = null;
         }
 
@@ -67,7 +67,9 @@ class ReportController extends Controller
             'users' => $users,
             'role' => $role,
             'q' => $q,
+            'superAdminCount' => User::where('role', User::ROLE_SUPER_ADMIN)->count(),
             'adminCount' => User::where('role', 'admin')->count(),
+            'unitHeadCount' => User::where('role', User::ROLE_UNIT_HEAD)->count(),
             'custodianCount' => User::where('role', 'custodian')->count(),
         ]);
     }
@@ -305,7 +307,7 @@ class ReportController extends Controller
     {
         $user = auth()->user();
 
-        return $user && ($user->isUnitHead() || $user->isCustodian());
+        return $user && ($user->isSuperAdmin() || $user->isUnitHead() || $user->isCustodian());
     }
 
     private function canViewCheckedRecord(DeviceMaintenanceRecord $record): bool

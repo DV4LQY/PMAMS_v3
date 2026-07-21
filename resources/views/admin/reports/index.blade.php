@@ -59,7 +59,7 @@
         </a>
 
         {{-- Accounts --}}
-        @if(auth()->user()?->isAdmin())
+        @if(auth()->user()?->isSuperAdmin())
             <a href="{{ route('admin.reports.accounts') }}"
                class="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:hover:border-violet-500">
 
@@ -68,7 +68,7 @@
                 </div>
 
                 <h2 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">
-                    Registered Admin / Custodian Accounts
+                    All Registered Accounts and Roles
                 </h2>
 
                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">

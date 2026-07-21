@@ -961,7 +961,7 @@ class DeviceController extends Controller
      */
     public function import(Request $request)
     {
-        abort_unless(Auth::user()?->isAdmin() || Auth::user()?->isUnitHead(), 403);
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
 
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:10240'],
@@ -1513,6 +1513,8 @@ class DeviceController extends Controller
 
     public function importTemplate()
     {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+
         return Excel::download(
             new EquipmentImportTemplateExport,
             'equipment-import-template.xls',

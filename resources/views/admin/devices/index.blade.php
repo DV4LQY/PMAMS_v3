@@ -330,7 +330,7 @@
         </div>
 
         <div class="flex flex-wrap gap-2">
-            @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+            @if(auth()->user()?->isSuperAdmin())
                 <button
                     type="button"
                     class="inline-flex shrink-0 items-center rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
@@ -1382,7 +1382,7 @@
     </x-modal>
 
     {{-- Import modal --}}
-    @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+    @if(auth()->user()?->isSuperAdmin())
         <div x-data="{ importOpen: false }" x-on:open-equipment-import.window="importOpen = true">
             <x-modal show="importOpen" title="Import Complete Equipment Records">
                 <form method="POST" action="{{ route('admin.devices.import') }}" enctype="multipart/form-data" class="space-y-4">

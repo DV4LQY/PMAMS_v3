@@ -114,9 +114,13 @@ class UserController extends Controller
 
         // Safety net: an admin can't demote themselves away from admin —
         // avoids accidentally locking every admin out of the system.
-        if ($user->id === auth()->id() && $user->isAdmin() && $data['role'] !== User::ROLE_ADMIN) {
+        if (
+            $user->id === auth()->id()
+            && in_array($user->role, [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN, User::ROLE_UNIT_HEAD], true)
+            && $data['role'] !== $user->role
+        ) {
             return back()->withErrors([
-                'role' => 'You cannot remove your own admin role.',
+                'role' => 'You cannot change your own protected role.',
             ], 'edit');
         }
 

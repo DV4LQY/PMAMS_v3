@@ -371,6 +371,7 @@
 
 
                 @if(auth()->user() && (auth()->user()->isAdmin() || auth()->user()->isUnitHead()))
+                    @if(auth()->user()?->isSuperAdmin())
                     <a
                         href="{{ route('admin.users.index') }}"
                         data-nav-group="users"
@@ -384,6 +385,7 @@
                         </svg>
                         <span>Users</span>
                     </a>
+                    @endif
 
                     <a
                         href="{{ route('admin.logs.index') }}"
@@ -399,7 +401,9 @@
                         <span>Activity Logs</span>
                     </a>
                     
-                                    <a
+                @endif
+                @if(auth()->user())
+                    <a
                     href="{{ route('admin.support') }}"
                     data-nav-group="support"
                     data-active="{{ $currentNavGroup === 'support' ? 'true' : 'false' }}"

@@ -16,9 +16,12 @@ class User extends Authenticatable
     |--------------------------------------------------------------------------
     | Roles
     |--------------------------------------------------------------------------
-    | Three roles:
+    | Four roles:
+    |   - super_admin: unrestricted system owner with access to every module,
+    |     including user and role management.
     |   - admin: full access — manages colleges/offices/staff structure,
-    |     devices, reports, user accounts, and can view the activity log.
+    |     devices, reports, and can view the activity log. User-account
+    |     management is reserved for the Super Admin.
     |   - custodian: a restricted "basic user" account. Can manage devices
     |     and issue/return them to staff, and browse the college/office/staff
     |     directory (read-only). Cannot: create user accounts, delete any
@@ -34,10 +37,12 @@ class User extends Authenticatable
     | different display name later, only the ROLES array below changes.
     */
     public const ROLE_ADMIN = 'admin';
+    public const ROLE_SUPER_ADMIN = 'super_admin';
     public const ROLE_CUSTODIAN = 'custodian';
     public const ROLE_UNIT_HEAD = 'unit_head';
 
     public const ROLES = [
+        self::ROLE_SUPER_ADMIN => 'Super Admin',
         self::ROLE_ADMIN => 'Admin',
         self::ROLE_CUSTODIAN => 'Custodian',
         self::ROLE_UNIT_HEAD => 'Unit Head',
@@ -80,7 +85,12 @@ class User extends Authenticatable
 
     public function isAdmin(): bool
     {
-        return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_UNIT_HEAD], true);
+        return in_array($this->role, [self::ROLE_SUPER_ADMIN, self::ROLE_ADMIN, self::ROLE_UNIT_HEAD], true);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === self::ROLE_SUPER_ADMIN;
     }
 
     public function isCustodian(): bool

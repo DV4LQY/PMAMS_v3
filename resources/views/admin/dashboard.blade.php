@@ -208,12 +208,14 @@
                 </span>
                 <span class="quick-action-text min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-900">Add Location</span><span class="block text-xs text-gray-500">Open locations</span></span>
             </a>
+            @if(auth()->user()?->isSuperAdmin())
             <a href="{{ route('admin.users.index', ['action' => 'add']) }}" class="group flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50 hover:shadow-sm">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 transition group-hover:bg-indigo-600 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/></svg>
                 </span>
                 <span class="quick-action-text min-w-0 flex-1"><span class="block text-sm font-semibold text-gray-900">Add User</span><span class="block text-xs text-gray-500">Manage accounts</span></span>
             </a>
+            @endif
             <a href="{{ route('admin.reports.assets') }}" class="group flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:border-amber-200 hover:bg-amber-50 hover:shadow-sm">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition group-hover:bg-amber-500 group-hover:text-white">
                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>

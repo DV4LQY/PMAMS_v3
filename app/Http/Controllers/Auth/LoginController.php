@@ -25,7 +25,7 @@ class LoginController extends Controller
 
             $user = Auth::user();
 
-            if (in_array($user?->role, ['admin', 'unit_head'], true)) {
+            if (in_array($user?->role, ['super_admin', 'admin', 'unit_head'], true)) {
                 return redirect('/admin/dashboard');
             }
 

@@ -544,7 +544,7 @@
 <div class="page-footer">
     <table class="footer-signatures">
         <tr>
-            <td style="width: 50%; font-size: 11px;">
+            <td style="width: 50%">
                 <span class="sig-label">Checked by:</span>
                 <span class="sig-name-line">{{ $checkedByText }}</span>
                 <br> <br>
@@ -552,7 +552,7 @@
                 <span class="sig-date-line">{{ $dateText }}</span>
             </td>
 
-            <td style="width: 50%; text-align: right; font-size: 11px;">
+            <td style="width: 50%; text-align: right">
                 <div class="approved-signature-block">
                     <span class="sig-label">Approved by:</span>
                     <span class="sig-name-line">

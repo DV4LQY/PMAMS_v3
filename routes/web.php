@@ -106,7 +106,7 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
             Route::get('/issuance', [IssuanceController::class, 'index'])->name('issuance');
             Route::get('/issuance/export', [IssuanceController::class, 'export'])->name('issuance.export');
             Route::get('/accounts', [ReportController::class, 'accounts'])
-                ->middleware('role:admin')
+                ->middleware('role:super_admin')
                 ->name('accounts');
             Route::get('/checked-equipment', [ReportController::class, 'checkedEquipment'])->name('checkedEquipment');
             Route::post('/checked-equipment/pdf-selected', [ReportController::class, 'checkedEquipmentSelectedPdf'])->name('checkedEquipment.pdfSelected');
@@ -167,9 +167,11 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
             ->name('admin.devices.photo.destroy');
 
         Route::post('/devices/import', [DeviceController::class, 'import'])
+            ->middleware('role:super_admin')
             ->name('admin.devices.import');
 
         Route::get('/devices/import-template', [DeviceController::class, 'importTemplate'])
+            ->middleware('role:super_admin')
             ->name('admin.devices.importTemplate');
 
         Route::resource('/devices', DeviceController::class)
@@ -299,12 +301,15 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
             ->name('admin.devices.destroy');
 
         // User accounts & role management
+        // Activity logs — admin-only audit trail
+        Route::get('admin/logs', [ActivityLogController::class, 'index'])->name('admin.logs.index');
+    });
+
+    // User accounts and role management are restricted to Super Admin.
+    Route::middleware('role:super_admin')->group(function () {
         Route::get('admin/users', [UserController::class, 'index'])->name('admin.users.index');
         Route::post('admin/users', [UserController::class, 'store'])->name('admin.users.store');
         Route::put('admin/users/{user}', [UserController::class, 'update'])->name('admin.users.update');
         Route::delete('admin/users/{user}', [UserController::class, 'destroy'])->name('admin.users.destroy');
-
-        // Activity logs — admin-only audit trail
-        Route::get('admin/logs', [ActivityLogController::class, 'index'])->name('admin.logs.index');
     });
 });

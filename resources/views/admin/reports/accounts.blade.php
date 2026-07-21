@@ -15,15 +15,23 @@
     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between no-print">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Registered Accounts Report</h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">List of admin and custodian accounts.</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">List all registered accounts and access levels.</p>
         </div>
         <a href="{{ route('admin.reports.index') }}" class="inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Back to Reports</a>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 no-print">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 no-print">
+        <div class="rounded-2xl border-l-4 border-indigo-500 bg-white p-5 shadow-sm dark:bg-gray-900 dark:border-indigo-400">
+            <div class="text-xs font-semibold uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Super Admin Accounts</div>
+            <div class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{{ number_format($superAdminCount) }}</div>
+        </div>
         <div class="rounded-2xl border-l-4 border-blue-500 bg-white p-5 shadow-sm dark:bg-gray-900 dark:border-blue-400">
             <div class="text-xs font-semibold uppercase tracking-widest text-blue-500 dark:text-blue-400">Admin Accounts</div>
             <div class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{{ number_format($adminCount) }}</div>
+        </div>
+        <div class="rounded-2xl border-l-4 border-purple-500 bg-white p-5 shadow-sm dark:bg-gray-900 dark:border-purple-400">
+            <div class="text-xs font-semibold uppercase tracking-widest text-purple-500 dark:text-purple-400">Unit Head Accounts</div>
+            <div class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{{ number_format($unitHeadCount) }}</div>
         </div>
         <div class="rounded-2xl border-l-4 border-amber-500 bg-white p-5 shadow-sm dark:bg-gray-900 dark:border-amber-400">
             <div class="text-xs font-semibold uppercase tracking-widest text-amber-500 dark:text-amber-400">Custodian Accounts</div>
@@ -37,7 +45,9 @@
 
             <select name="role" class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:ring-blue-900/40">
                 <option value="">All roles</option>
+                <option value="super_admin" @selected($role === 'super_admin')>Super Admin</option>
                 <option value="admin" @selected($role === 'admin')>Admin</option>
+                <option value="unit_head" @selected($role === 'unit_head')>Unit Head</option>
                 <option value="custodian" @selected($role === 'custodian')>Custodian</option>
             </select>
 
