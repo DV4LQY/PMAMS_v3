@@ -16,7 +16,7 @@ class EquipmentImportTemplateExport implements FromArray, ShouldAutoSize, WithHe
             'part_of_property_number',
             'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
             'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks', 'notes',
-            'issued_user_email', 'issued_user', 'first_name', 'last_name', 'office',
+            'issued_user_email', 'issued_user', 'first_name', 'last_name', 'position', 'phone', 'office',
             'location_code', 'issued_at', 'issuance_remarks',
         ];
     }
@@ -27,7 +27,7 @@ class EquipmentImportTemplateExport implements FromArray, ShouldAutoSize, WithHe
             'PN-2026-0001', 'Laptop', 'SN-0001', 'Example', 'Model', 'PC-001', '',
             '25000', '2026-01-15', 'serviceable', '', 'issued', 'Windows 11',
             'OEM Licensed', 'Microsoft 365', 'OEM Licensed', '16 GB', '512 GB SSD',
-            '', '', '', '', 'juan@example.edu', 'Juan Dela Cruz', '', '', 'ICTU',
+            '', '', '', '', 'juan@example.edu', 'Juan Dela Cruz', '', '', '', '', 'ICTU',
             'MAIN', '2026-01-15', 'Initial issuance',
         ]];
     }

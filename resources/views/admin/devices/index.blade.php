@@ -407,6 +407,14 @@
                 <div><span class="font-medium">Issuances:</span> {{ number_format((int) ($importPreview['issued'] ?? 0)) }}</div>
             </div>
 
+            @if(($importPreview['staff_created'] ?? 0) > 0 || ($importPreview['staff_updated'] ?? 0) > 0)
+                <p class="mt-2 text-xs">
+                    <span class="font-medium">Staff profiles:</span>
+                    {{ number_format((int) ($importPreview['staff_created'] ?? 0)) }} created,
+                    {{ number_format((int) ($importPreview['staff_updated'] ?? 0)) }} updated.
+                </p>
+            @endif
+
             @if(($importPreview['error_count'] ?? 0) > 0)
                 <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
                     <div class="font-semibold">{{ number_format((int) $importPreview['error_count']) }} row error(s)</div>
@@ -416,8 +424,22 @@
                         @endforeach
                     </ul>
                 </div>
+            @elseif(($importPreview['warning_count'] ?? 0) > 0)
+                <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                    <div class="font-semibold">{{ number_format((int) $importPreview['warning_count']) }} assignment warning(s)</div>
+                    <p class="mt-1">Equipment specifications were imported. Rows with unmatched staff or office values were kept available/unassigned or assigned to a valid location only.</p>
+                    <ul class="mt-1 list-inside list-disc space-y-0.5">
+                        @foreach(($importPreview['warnings'] ?? []) as $importWarning)
+                            <li>{{ $importWarning }}</li>
+                        @endforeach
+                    </ul>
+                </div>
             @else
-                <p class="mt-3 text-xs">All rows passed validation. Run the import without Preview only when the summary looks correct.</p>
+                @if(($importPreview['mode'] ?? null) === 'import')
+                    <p class="mt-3 text-xs">Import completed successfully.</p>
+                @else
+                    <p class="mt-3 text-xs">All rows passed validation. Run the import without Preview only when the summary looks correct.</p>
+                @endif
             @endif
         </div>
     @endif
@@ -1072,11 +1094,11 @@
                         name="mac_address"
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.mac_address"
-                        maxlength="17"
-                        pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}"
-                        title="Format: 00:1A:2B:3C:4D:5E"
+                        maxlength="100"
+                        pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
+                        title="Enter one or more MAC addresses separated by semicolons"
                         :disabled="!isComputerType(editDevice.device_type_id)"
-                        placeholder="00:1A:2B:3C:4D:5E"
+                        placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C"
                     >
                 </div>
 
@@ -1134,6 +1156,8 @@
                         <option value="Windows 8">Windows 8</option>
                         <option value="Windows 10">Windows 10</option>
                         <option value="Windows 11">Windows 11</option>
+                        <option value="Windows Server">Windows Server</option>
+                        <option value="Linux">Linux</option>
                     </select>
                 </div>
 
@@ -1148,6 +1172,7 @@
                         <option value="">-- Select License --</option>
                         <option value="Cracked">Cracked</option>
                         <option value="OEM Licensed">OEM Licensed</option>
+                        <option value="Open Source">Open Source</option>
                     </select>
                 </div>
 
@@ -1377,7 +1402,7 @@
                     </div>
 
                     <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the registered end user. Use <code>part_of_property_number</code> to link a Monitor/UPS/AVR/Scanner to the main system-unit property number; the equipment <code>property_number</code> may be blank in that case and will receive an internal record number automatically. Linked equipment is grouped under the parent property number in exports. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; staff rows are checked against both. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
+                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the end user. If a staff match is found, the profile is updated; if no match exists, a staff profile is created under the supplied office and location. Use <code>part_of_property_number</code> to link a Monitor/UPS/AVR/Scanner to the main system-unit property number; enter the desktop’s parent property number in that column and leave the child’s own <code>property_number</code> blank if it has none. The parent and child rows may appear in either order in the workbook. Linked equipment is grouped under the parent property number in exports. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; missing offices are created under a valid location. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). For <code>status=issued</code>, unmatched optional staff or office values no longer block the equipment row: the equipment remains available/unassigned or uses the valid location only, and the import summary shows a warning. Blank/zero property numbers receive temporary generated import IDs, invalid property characters are sanitized, duplicate property rows update the same record, and invalid unit prices are left blank. Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
                     </div>
 
                     <label class="flex items-start gap-2 rounded-lg border border-blue-200 bg-white/60 px-3 py-2 text-sm text-gray-700 dark:border-blue-900/50 dark:bg-gray-800/60 dark:text-gray-200">

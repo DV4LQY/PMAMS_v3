@@ -166,10 +166,10 @@
                 <input name="mac_address"
                        value="{{ old('mac_address', $device->mac_address) }}"
                        class="mt-1 w-full border rounded px-3 py-2"
-                       maxlength="17"
-                       pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}"
-                       title="Format: 00:1A:2B:3C:4D:5E"
-                       placeholder="00:1A:2B:3C:4D:5E">
+                       maxlength="100"
+                       pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
+                       title="Enter one or more MAC addresses separated by semicolons"
+                       placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C">
                 @error('mac_address')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
@@ -225,6 +225,8 @@
                     <option value="Windows 8" @selected($oldOsVersion === 'Windows 8')>Windows 8</option>
                     <option value="Windows 10" @selected($oldOsVersion === 'Windows 10')>Windows 10</option>
                     <option value="Windows 11" @selected($oldOsVersion === 'Windows 11')>Windows 11</option>
+                    <option value="Windows Server" @selected($oldOsVersion === 'Windows Server')>Windows Server</option>
+                    <option value="Linux" @selected($oldOsVersion === 'Linux')>Linux</option>
                 </select>
                 @error('os_version')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
@@ -239,6 +241,7 @@
                     <option value="">-- Select License --</option>
                     <option value="Cracked" @selected($oldOsLicense === 'Cracked')>Cracked</option>
                     <option value="OEM Licensed" @selected($oldOsLicense === 'OEM Licensed')>OEM Licensed</option>
+                    <option value="Open Source" @selected($oldOsLicense === 'Open Source')>Open Source</option>
                 </select>
                 @error('os_license')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>

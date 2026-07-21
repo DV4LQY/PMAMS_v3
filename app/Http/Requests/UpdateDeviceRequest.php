@@ -85,8 +85,8 @@ class UpdateDeviceRequest extends FormRequest
             | OS & MS Office (separate columns, Desktop/Laptop only)
             |--------------------------------------------------------------------------
             */
-            'os_version'        => ['nullable', 'string', 'in:Windows 7,Windows 8,Windows 10,Windows 11'],
-            'os_license'        => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
+            'os_version'        => ['nullable', 'string', 'in:Windows 7,Windows 8,Windows 10,Windows 11,Windows Server,Linux'],
+            'os_license'        => ['nullable', 'string', 'in:Cracked,OEM Licensed,Open Source'],
             'ms_office_version' => ['nullable', 'string', 'in:Office 2007,Office 2010,Office 2013,Office 2016,Office 2019,Office 2021,Microsoft 365'],
             'ms_office_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
         ];
@@ -120,7 +120,7 @@ class UpdateDeviceRequest extends FormRequest
             'serial_number.regex'   => 'Serial number may only contain letters, numbers, and hyphens.',
             'brand.regex'           => 'Brand may only contain letters and numbers.',
             'model.regex'           => 'Model may only contain letters and numbers.',
-            'mac_address.regex'     => 'Please enter a valid MAC address, e.g. 00:1A:2B:3C:4D:5E.',
+            'mac_address.regex'     => 'Enter one or more MAC addresses in colon format, separated by semicolons (for example, 90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C).',
 
             'unit_price.numeric' => 'The unit price must be a valid number.',
             'unit_price.min'     => 'The unit price cannot be negative.',
@@ -140,7 +140,7 @@ class UpdateDeviceRequest extends FormRequest
             'specs.form_factor.max' => 'The form factor field must not exceed 255 characters.',
 
             'os_version.in'        => 'Invalid OS version selected.',
-            'os_license.in'        => 'OS license must be either Cracked or OEM Licensed.',
+            'os_license.in'        => 'OS license must be Cracked, OEM Licensed, or Open Source.',
             'ms_office_version.in' => 'Invalid MS Office version selected.',
             'ms_office_license.in' => 'MS Office license must be either Cracked or OEM Licensed.',
         ];

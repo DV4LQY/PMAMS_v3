@@ -208,10 +208,10 @@
             name="mac_address"
             value="{{ old('mac_address') }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            maxlength="17"
-            pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}"
-            title="Format: 00:1A:2B:3C:4D:5E"
-            placeholder="00:1A:2B:3C:4D:5E"
+            maxlength="100"
+            pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
+            title="Enter one or more MAC addresses separated by semicolons"
+            placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C"
             :disabled="!isComputerType(addTypeId)"
         >
         @error('mac_address')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -273,6 +273,8 @@
             <option value="Windows 8">Windows 8</option>
             <option value="Windows 10">Windows 10</option>
             <option value="Windows 11">Windows 11</option>
+            <option value="Windows Server">Windows Server</option>
+            <option value="Linux">Linux</option>
         </select>
         @error('os_version')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
@@ -287,6 +289,7 @@
             <option value="">-- Select License --</option>
             <option value="Cracked" @selected(old('os_license') === 'Cracked')>Cracked</option>
             <option value="OEM Licensed" @selected(old('os_license') === 'OEM Licensed')>OEM Licensed</option>
+            <option value="Open Source" @selected(old('os_license') === 'Open Source')>Open Source</option>
         </select>
         @error('os_license')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>

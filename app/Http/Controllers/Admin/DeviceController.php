@@ -40,6 +40,12 @@ class DeviceController extends Controller
         'offices' => [],
     ];
 
+    /** @var array<string, true> */
+    private array $importPendingParentPropertyNumbers = [];
+
+    /** @var array{created:int, updated:int} */
+    private array $importStaffChanges = ['created' => 0, 'updated' => 0];
+
     public function index(Request $request)
     {
         $q = $request->string('q')->toString();
@@ -980,6 +986,17 @@ class DeviceController extends Controller
             ]);
         }
 
+        // Ignore spreadsheet padding rows before applying the row limit. Keep
+        // the original collection keys so validation messages still point to
+        // the correct spreadsheet row number.
+        $rows = $rows->filter(function ($rawRow): bool {
+            $rawRow = $rawRow instanceof \Illuminate\Support\Collection
+                ? $rawRow->toArray()
+                : (array) $rawRow;
+
+            return !$this->importRowIsEmpty($this->normalizeImportRow($rawRow));
+        });
+
         if ($rows->isEmpty()) {
             $result = $this->importFailureResult(0, 'The file has no data rows.');
             $this->recordImportAudit($dryRun ? 'import_preview_failed' : 'import_failed', $request, $result, $dryRun);
@@ -1050,7 +1067,17 @@ class DeviceController extends Controller
         $message = "{$result['created']} equipment added, {$result['updated']} equipment updated"
             . ($result['issued'] ? ", {$result['issued']} issuance record(s) created." : '.');
 
-        return back()->with('success', $message);
+        if (($result['warning_count'] ?? 0) > 0) {
+            $message .= " {$result['warning_count']} assignment warning(s) were recorded.";
+        }
+
+        if (($result['staff_created'] ?? 0) > 0 || ($result['staff_updated'] ?? 0) > 0) {
+            $message .= " Staff: {$result['staff_created']} created, {$result['staff_updated']} updated.";
+        }
+
+        return back()
+            ->with('success', $message)
+            ->with('import_preview', $this->importPreviewPayload($result, false, true));
     }
 
     private function processImportedRows($rows): array
@@ -1063,8 +1090,32 @@ class DeviceController extends Controller
             'issued' => 0,
             'error_count' => 0,
             'errors' => [],
+            'warning_count' => 0,
+            'warnings' => [],
+            'staff_created' => 0,
+            'staff_updated' => 0,
         ];
+        $this->importStaffChanges = ['created' => 0, 'updated' => 0];
         $seenPropertyNumbers = [];
+
+        // Register parent property numbers from the whole workbook first so
+        // a peripheral can appear before its desktop row and still link to it.
+        $this->importPendingParentPropertyNumbers = [];
+        foreach ($rows as $rawRow) {
+            $rawRow = $rawRow instanceof \Illuminate\Support\Collection
+                ? $rawRow->toArray()
+                : (array) $rawRow;
+            $candidate = $this->importValue(
+                $this->normalizeImportRow($rawRow),
+                ['property_number', 'property_no', 'asset_number', 'asset_no']
+            );
+            if (! $this->importValueIsEmpty($candidate)) {
+                $candidate = trim((string) $candidate);
+                if (preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $candidate)) {
+                    $this->importPendingParentPropertyNumbers[strtolower($candidate)] = true;
+                }
+            }
+        }
 
         foreach ($rows as $index => $rawRow) {
             $rawRow = $rawRow instanceof \Illuminate\Support\Collection
@@ -1092,20 +1143,31 @@ class DeviceController extends Controller
             $result['processed_rows']++;
 
             try {
+                [$row, $preparationWarnings] = $this->prepareImportRowForPersistence($row, $rowNumber);
+
                 $propertyNumber = strtolower(trim((string) $this->importValue($row, ['property_number'])));
+                $rowWarnings = $preparationWarnings;
                 if ($propertyNumber !== '') {
                     if (array_key_exists($propertyNumber, $seenPropertyNumbers)) {
-                        throw new \RuntimeException('property_number is duplicated in this import file.');
+                        $rowWarnings[] = 'property_number is duplicated in this import file; the later row will update the same equipment record.';
                     }
 
                     $seenPropertyNumbers[$propertyNumber] = $rowNumber;
                 }
 
-                [$wasCreated, $wasIssued] = $this->persistImportedInventoryRow($row);
+                [$wasCreated, $wasIssued, $assignmentWarning] = $this->persistImportedInventoryRow($row);
                 $wasCreated ? $result['created']++ : $result['updated']++;
 
                 if ($wasIssued) {
                     $result['issued']++;
+                }
+
+                if ($assignmentWarning) {
+                    $rowWarnings[] = $assignmentWarning;
+                }
+
+                foreach ($rowWarnings as $rowWarning) {
+                    $this->addImportRowWarning($result, $rowNumber, $rowWarning);
                 }
             } catch (\Throwable $exception) {
                 if (! $exception instanceof \RuntimeException) {
@@ -1124,6 +1186,9 @@ class DeviceController extends Controller
             }
         }
 
+        $result['staff_created'] = $this->importStaffChanges['created'];
+        $result['staff_updated'] = $this->importStaffChanges['updated'];
+
         return $result;
     }
 
@@ -1140,13 +1205,39 @@ class DeviceController extends Controller
         }
     }
 
+    private function addImportRowWarning(array &$result, int $rowNumber, string $message): void
+    {
+        $result['warning_count']++;
+
+        if (count($result['warnings']) < self::IMPORT_MAX_ERRORS) {
+            $result['warnings'][] = "Row {$rowNumber}: {$message}";
+        }
+    }
+
     private function safeImportExceptionMessage(\Throwable $exception): string
     {
         $message = trim($exception->getMessage());
+        $unsafeFragments = [
+            'sqlstate',
+            'database',
+            'table',
+            'column',
+            'constraint',
+            'file_get_contents',
+            'storage_path',
+            'vendor\\',
+            'vendor/',
+            'app\\',
+            'app/',
+            'undefined',
+            'call to ',
+        ];
+        $containsUnsafeDetails = Str::contains(Str::lower($message), $unsafeFragments)
+            || preg_match('~[a-z]:\\\\~i', $message) === 1;
 
         if ($exception instanceof \RuntimeException
             && $message !== ''
-            && ! preg_match('/SQLSTATE|database|table|column|constraint|file_get_contents|storage_path|vendor[\\\/]|app[\\\/]|undefined|call to |[A-Z]:\\\\/i', $message)) {
+            && !$containsUnsafeDetails) {
             $cleanMessage = preg_replace('/\s+/', ' ', $message) ?: $message;
 
             return Str::limit($cleanMessage, 240, '...');
@@ -1165,6 +1256,10 @@ class DeviceController extends Controller
             'issued' => 0,
             'error_count' => 1,
             'errors' => [$message],
+            'warning_count' => 0,
+            'warnings' => [],
+            'staff_created' => 0,
+            'staff_updated' => 0,
         ];
     }
 
@@ -1180,6 +1275,10 @@ class DeviceController extends Controller
             'issued' => $result['issued'],
             'error_count' => $result['error_count'],
             'errors' => $result['errors'],
+            'warning_count' => $result['warning_count'] ?? 0,
+            'warnings' => $result['warnings'] ?? [],
+            'staff_created' => $result['staff_created'] ?? 0,
+            'staff_updated' => $result['staff_updated'] ?? 0,
         ];
     }
 
@@ -1200,6 +1299,9 @@ class DeviceController extends Controller
                     'updated' => $result['updated'],
                     'issuance_records' => $result['issued'],
                     'errors' => $result['error_count'],
+                    'warnings' => $result['warning_count'] ?? 0,
+                    'staff_created' => $result['staff_created'] ?? 0,
+                    'staff_updated' => $result['staff_updated'] ?? 0,
                 ])
             );
         } catch (\Throwable $exception) {
@@ -1216,6 +1318,197 @@ class DeviceController extends Controller
             'locations' => [],
             'offices' => [],
         ];
+        $this->importPendingParentPropertyNumbers = [];
+        $this->importStaffChanges = ['created' => 0, 'updated' => 0];
+    }
+
+    /**
+     * Temporarily keep recoverable inventory data importable while making
+     * every generated or changed value visible in the import warnings.
+     *
+     * @return array{0: array, 1: list<string>}
+     */
+    private function prepareImportRowForPersistence(array $row, int $rowNumber): array
+    {
+        $warnings = [];
+        $propertyNumber = $this->importValue($row, ['property_number']);
+        $partOfPropertyNumber = $this->importValue($row, ['part_of_property_number']);
+
+        if ($this->importValueIsEmpty($propertyNumber) && $this->importValueIsEmpty($partOfPropertyNumber)) {
+            $generatedPropertyNumber = $this->generateImportedPropertyNumber($rowNumber);
+            $row['property_number'] = $generatedPropertyNumber;
+            $warnings[] = "property_number was blank/zero; generated {$generatedPropertyNumber}.";
+        } elseif (filled($propertyNumber)
+            && (mb_strlen(trim((string) $propertyNumber)) > 50
+                || ! preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, trim((string) $propertyNumber)))) {
+            $sanitizedPropertyNumber = trim(
+                preg_replace('/[^A-Za-z0-9\-\/]+/', '-', trim((string) $propertyNumber)),
+                '-/'
+            );
+            $sanitizedPropertyNumber = mb_substr($sanitizedPropertyNumber, 0, 50);
+
+            if ($sanitizedPropertyNumber === '') {
+                $sanitizedPropertyNumber = $this->generateImportedPropertyNumber($rowNumber);
+            }
+
+            $row['property_number'] = $sanitizedPropertyNumber;
+            $warnings[] = "property_number was sanitized to {$sanitizedPropertyNumber}.";
+        }
+
+        $equipmentType = trim((string) $this->importValue($row, ['equipment_type', 'device_type', 'type']));
+        $allowedEquipmentTypes = ['desktop', 'laptop', 'printer', 'monitor', 'ups', 'avr', 'scanner', 'other'];
+        if ($equipmentType === '' || ! in_array(strtolower($equipmentType), $allowedEquipmentTypes, true)) {
+            $row['equipment_type'] = 'Other';
+            $warnings[] = 'equipment_type was blank or unsupported; it was set to Other.';
+        }
+
+        foreach (['date_acquired', 'last_maintenance_date', 'issued_at'] as $dateField) {
+            if (! array_key_exists($dateField, $row) || blank($row[$dateField])) {
+                continue;
+            }
+
+            try {
+                $normalizedDate = $this->importDate($row[$dateField], $dateField);
+                if (Carbon::parse($normalizedDate)->isFuture()) {
+                    throw new \RuntimeException('future date');
+                }
+                $row[$dateField] = $normalizedDate;
+            } catch (\Throwable) {
+                $row[$dateField] = null;
+                $warnings[] = "{$dateField} was invalid or in the future; it was left blank.";
+            }
+        }
+
+        $allowedValues = [
+            'condition' => ['serviceable', 'unserviceable', 'condemned'],
+            'status' => ['available', 'issued', 'repair', 'retired'],
+            'os_version' => ['Windows 7', 'Windows 8', 'Windows 10', 'Windows 11', 'Windows Server', 'Linux'],
+            'os_license' => ['Cracked', 'OEM Licensed', 'Open Source'],
+            'ms_office_version' => ['Office 2007', 'Office 2010', 'Office 2013', 'Office 2016', 'Office 2019', 'Office 2021', 'Microsoft 365'],
+            'ms_office_license' => ['Cracked', 'OEM Licensed'],
+        ];
+        foreach ($allowedValues as $field => $allowed) {
+            if (! array_key_exists($field, $row) || blank($row[$field])) {
+                continue;
+            }
+
+            $value = trim((string) $row[$field]);
+            if (! in_array(strtolower($value), array_map('strtolower', $allowed), true)) {
+                $row[$field] = $field === 'condition'
+                    ? 'serviceable'
+                    : ($field === 'status'
+                        ? (($this->importStaffDetailsPresent($row) || $this->importLocationDetailsPresent($row)) ? 'issued' : 'available')
+                        : null);
+                $warnings[] = "{$field} contained an unsupported value; it was normalized to a safe default.";
+            } else {
+                $row[$field] = $allowed[array_search(strtolower($value), array_map('strtolower', $allowed), true)];
+                if ($field === 'status'
+                    && $row[$field] !== 'issued'
+                    && ($this->importStaffDetailsPresent($row) || $this->importLocationDetailsPresent($row))) {
+                    $row[$field] = 'issued';
+                    $warnings[] = 'status was changed to issued because assignment details were supplied.';
+                }
+            }
+        }
+
+        foreach ([
+            'serial_number' => [100, StoreDeviceRequest::SERIAL_NUMBER_REGEX],
+            'brand' => [100, StoreDeviceRequest::BRAND_MODEL_REGEX],
+            'model' => [100, StoreDeviceRequest::BRAND_MODEL_REGEX],
+            'computer_name' => [100, null],
+        ] as $field => [$maxLength, $regex]) {
+            if (! array_key_exists($field, $row) || blank($row[$field])) {
+                continue;
+            }
+
+            $value = trim((string) $row[$field]);
+            if (mb_strlen($value) > $maxLength || ($regex && ! preg_match($regex, $value))) {
+                $row[$field] = null;
+                $warnings[] = "{$field} was invalid or too long; it was left blank.";
+            } else {
+                $row[$field] = $value;
+            }
+        }
+
+        if (filled($row['mac_address'] ?? null)
+            && ! preg_match(StoreDeviceRequest::MAC_ADDRESS_REGEX, (string) $row['mac_address'])) {
+            $row['mac_address'] = null;
+            $warnings[] = 'mac_address was invalid; it was left blank.';
+        }
+
+        if (filled($row['staff_email'] ?? null)
+            && ! filter_var((string) $row['staff_email'], FILTER_VALIDATE_EMAIL)) {
+            $row['staff_email'] = null;
+            $warnings[] = 'staff_email was invalid; name matching was used instead.';
+        }
+
+        foreach ([
+            'memory' => 255,
+            'storage' => 255,
+            'form_factor' => 255,
+            'maintenance_remarks' => 1000,
+            'notes' => 2000,
+            'staff_email' => 255,
+            'staff_name' => 255,
+            'first_name' => 100,
+            'last_name' => 100,
+            'position' => 255,
+            'phone' => 255,
+            'office' => 255,
+            'location' => 255,
+            'location_code' => 100,
+            'issuance_remarks' => 1000,
+        ] as $field => $maxLength) {
+            if (filled($row[$field] ?? null) && mb_strlen((string) $row[$field]) > $maxLength) {
+                $row[$field] = mb_substr((string) $row[$field], 0, $maxLength);
+                $warnings[] = "{$field} was truncated to {$maxLength} characters.";
+            }
+        }
+
+        if (filled($partOfPropertyNumber)) {
+            $parent = trim((string) $partOfPropertyNumber);
+            $parentKey = strtolower($parent);
+            $parentExists = preg_match(StoreDeviceRequest::PROPERTY_NUMBER_REGEX, $parent)
+                && (Device::where('property_number', $parent)
+                    ->whereNull('part_of_property_number')
+                    ->exists()
+                    || isset($this->importPendingParentPropertyNumbers[$parentKey]));
+            if (! $parentExists) {
+                $row['part_of_property_number'] = null;
+                $warnings[] = 'part_of_property_number did not match an existing parent; it was cleared.';
+            }
+        }
+
+        // Clearing an invalid parent must not put the row back into the
+        // required-property error state. Give it the same temporary internal
+        // identifier used for originally blank/zero property numbers.
+        if ($this->importValueIsEmpty($row['property_number'] ?? null)
+            && $this->importValueIsEmpty($row['part_of_property_number'] ?? null)) {
+            $generatedPropertyNumber = $this->generateImportedPropertyNumber($rowNumber);
+            $row['property_number'] = $generatedPropertyNumber;
+            $warnings[] = "property_number was blank after parent cleanup; generated {$generatedPropertyNumber}.";
+        }
+
+        if (array_key_exists('unit_price', $row) && filled($row['unit_price'])) {
+            $unitPrice = str_replace(',', '', (string) $row['unit_price']);
+            if (! is_numeric($unitPrice)
+                || (float) $unitPrice < 0
+                || (float) $unitPrice > 9999999999.99) {
+                $row['unit_price'] = null;
+                $warnings[] = 'unit_price was invalid or outside the allowed range; it was left blank.';
+            }
+        }
+
+        return [$row, $warnings];
+    }
+
+    private function generateImportedPropertyNumber(int $rowNumber): string
+    {
+        do {
+            $candidate = 'IMPORT-' . now()->format('YmdHis') . '-' . $rowNumber . '-' . strtoupper(Str::random(5));
+        } while (Device::where('property_number', $candidate)->exists());
+
+        return $candidate;
     }
 
     public function importTemplate()
@@ -1289,9 +1582,11 @@ class DeviceController extends Controller
                 throw new \RuntimeException('part_of_property_number cannot be the same as property_number.');
             }
 
+            $parentKey = strtolower($partOfPropertyNumber);
             if (! Device::where('property_number', $partOfPropertyNumber)
                 ->whereNull('part_of_property_number')
-                ->exists()) {
+                ->exists()
+                && ! isset($this->importPendingParentPropertyNumbers[$parentKey])) {
                 throw new \RuntimeException('part_of_property_number must match an existing equipment property number.');
             }
 
@@ -1344,11 +1639,19 @@ class DeviceController extends Controller
             if (!in_array($status, ['available', 'repair', 'retired', 'issued'], true)) {
                 throw new \RuntimeException('status must be available, issued, repair, or retired.');
             }
-            if ($status === 'issued' && !$this->importStaffDetailsPresent($row) && !$this->importLocationDetailsPresent($row)) {
-                throw new \RuntimeException('An issued status requires an end user or location in the same row.');
+            $hasAssignmentDetails = $this->importStaffDetailsPresent($row)
+                || $this->importLocationDetailsPresent($row);
+
+            // An inventory row may be marked issued before its assignee is
+            // known. Keep it safely unassigned/available until that detail is
+            // supplied instead of rejecting the entire import row.
+            if ($status === 'issued' && ! $hasAssignmentDetails) {
+                $importedStatus = null;
+                $device->status = 'available';
+            } else {
+                $importedStatus = $status;
+                $device->status = $status === 'issued' ? 'available' : $status;
             }
-            $importedStatus = $status;
-            $device->status = $status === 'issued' ? 'available' : $status;
 
             if ($status !== 'issued'
                 && ($this->importStaffDetailsPresent($row) || $this->importLocationDetailsPresent($row))) {
@@ -1381,15 +1684,76 @@ class DeviceController extends Controller
         $device->save();
 
         $wasIssued = false;
+        $assignmentWarning = null;
         if ($this->importStaffDetailsPresent($row)) {
-            $wasIssued = $this->issueImportedDevice($device->fresh(), $row);
+            try {
+                $wasIssued = $this->issueImportedDevice($device->fresh(), $row);
+            } catch (\RuntimeException $exception) {
+                if (! $this->canSkipImportAssignmentFailure($exception)) {
+                    throw $exception;
+                }
+
+                $assignmentWarning = 'End-user assignment was skipped: ' . $exception->getMessage();
+
+                // Keep a valid location assignment when the named staff
+                // member is not registered, inactive, or ambiguous.
+                if ($this->importLocationDetailsPresent($row)) {
+                    try {
+                        $wasIssued = $this->assignImportedDeviceToLocation($device->fresh(), $row);
+                        $assignmentWarning .= ' Equipment was assigned to the imported location only.';
+                    } catch (\RuntimeException $locationException) {
+                        if (! $this->canSkipImportAssignmentFailure($locationException)) {
+                            throw $locationException;
+                        }
+
+                        $assignmentWarning .= ' Equipment was imported as available/unassigned.';
+                    }
+                } else {
+                    $assignmentWarning .= ' Equipment was imported as available/unassigned.';
+                }
+            }
         } elseif ($importedStatus === 'issued' && $this->importLocationDetailsPresent($row)) {
-            $wasIssued = $this->assignImportedDeviceToLocation($device->fresh(), $row);
+            try {
+                $wasIssued = $this->assignImportedDeviceToLocation($device->fresh(), $row);
+            } catch (\RuntimeException $exception) {
+                if (! $this->canSkipImportAssignmentFailure($exception)) {
+                    throw $exception;
+                }
+
+                $assignmentWarning = 'Location assignment was skipped: ' . $exception->getMessage()
+                    . ' Equipment was imported as available/unassigned.';
+            }
         } elseif ($device->currentAssignment()->exists() && $device->status !== 'issued') {
             $device->update(['status' => 'issued']);
         }
 
-        return [$wasCreated, $wasIssued];
+        return [$wasCreated, $wasIssued, $assignmentWarning];
+    }
+
+    private function canSkipImportAssignmentFailure(\RuntimeException $exception): bool
+    {
+        $message = Str::lower($exception->getMessage());
+
+        return Str::contains($message, [
+            'no active staff record',
+            'multiple active staff records',
+            'provide staff_',
+            'provide both first_name',
+            'no office in the supplied location',
+            'no matching office found',
+            'multiple offices match',
+            'no matching location',
+            'multiple locations match',
+            'the supplied email does not match',
+            'the supplied name does not match',
+            'multiple active staff records match',
+            'multiple active staff records match the supplied identity',
+            'the supplied office does not match',
+            'the supplied location does not match',
+            'the supplied office does not belong',
+            'the selected staff member is not linked to an office',
+            'a registered or imported office is required',
+        ]);
     }
 
     private function issueImportedDevice(Device $device, array $row): bool
@@ -1471,7 +1835,7 @@ class DeviceController extends Controller
     private function assignImportedDeviceToLocation(Device $device, array $row): bool
     {
         $location = $this->resolveImportedLocation($row);
-        $office = $this->resolveImportedOffice($row, $location);
+        $office = $this->resolveOrCreateImportedOffice($row, $location);
         $currentAssignment = $device->currentAssignment()->with(['staff.office.location', 'office.location', 'location'])->first();
 
         if ($currentAssignment) {
@@ -1511,6 +1875,12 @@ class DeviceController extends Controller
 
     private function resolveImportedStaff(array $row): Staff
     {
+        return $this->upsertImportedStaff($row);
+
+        /*
+         * Legacy lookup-only implementation retained below for reference.
+         * The import now creates or updates the staff profile before issuing.
+         */
         $email = strtolower(trim((string) $this->importValue($row, [
             'staff_email', 'end_user_email', 'issued_to_email', 'assigned_to_email', 'email', 'user_email',
         ])));
@@ -1622,6 +1992,144 @@ class DeviceController extends Controller
         throw new \RuntimeException('Multiple active staff records match the supplied name. Add a unique staff_email.');
     }
 
+    private function upsertImportedStaff(array $row): Staff
+    {
+        $email = strtolower(trim((string) $this->importValue($row, [
+            'staff_email', 'end_user_email', 'issued_to_email', 'assigned_to_email', 'email', 'user_email',
+        ])));
+        $staffName = trim((string) $this->importValue($row, ['staff_name', 'issued_to', 'end_user', 'user_name']));
+        $firstName = trim((string) $this->importValue($row, ['first_name', 'staff_first_name']));
+        $lastName = trim((string) $this->importValue($row, ['last_name', 'staff_last_name']));
+
+        if (blank($firstName) && blank($lastName) && filled($staffName)) {
+            if (str_contains($staffName, ',')) {
+                [$lastName, $firstName] = array_map('trim', explode(',', $staffName, 2));
+            } else {
+                $parts = preg_split('/\s+/', $staffName);
+                $firstName = array_shift($parts) ?: '';
+                $lastName = implode(' ', $parts);
+            }
+        }
+
+        if (blank($email) && (blank($firstName) || blank($lastName))) {
+            throw new \RuntimeException('Provide staff_email or both first_name and last_name to create the staff record.');
+        }
+
+        $location = null;
+        if ($this->importLocationDetailsPresent($row)) {
+            try {
+                $location = $this->resolveImportedLocation($row);
+            } catch (\RuntimeException $exception) {
+                if (! $this->canSkipImportAssignmentFailure($exception)) {
+                    throw $exception;
+                }
+            }
+        }
+
+        $office = $this->resolveOrCreateImportedOffice($row, $location);
+        $staff = null;
+
+        if (filled($email)) {
+            $staff = Staff::query()
+                ->whereRaw('LOWER(email) = ?', [$email])
+                ->orderByDesc('is_active')
+                ->orderBy('id')
+                ->first();
+        }
+
+        if (! $staff && filled($firstName) && filled($lastName)) {
+            $staff = Staff::query()
+                ->whereRaw('LOWER(first_name) = ?', [strtolower($firstName)])
+                ->whereRaw('LOWER(last_name) = ?', [strtolower($lastName)])
+                ->when($office, fn ($query) => $query->where('office_id', $office->id))
+                ->orderByDesc('is_active')
+                ->orderBy('id')
+                ->first();
+        }
+
+        if (! $staff && ! $office) {
+            throw new \RuntimeException('A registered or imported office is required to create the staff record.');
+        }
+
+        $position = $this->importValue($row, ['position', 'staff_position']);
+        $phone = $this->importValue($row, ['phone', 'staff_phone']);
+
+        if (! $staff) {
+            $staff = Staff::create([
+                'office_id' => $office->id,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'position' => filled($position) ? trim((string) $position) : null,
+                'email' => filled($email) ? $email : null,
+                'phone' => filled($phone) ? trim((string) $phone) : null,
+                'is_active' => true,
+            ]);
+            $this->importStaffChanges['created']++;
+        } else {
+            $updates = ['is_active' => true];
+            if ($office && (int) $staff->office_id !== (int) $office->id) {
+                $updates['office_id'] = $office->id;
+            }
+            if (filled($firstName)) {
+                $updates['first_name'] = $firstName;
+            }
+            if (filled($lastName)) {
+                $updates['last_name'] = $lastName;
+            }
+            if (filled($email)) {
+                $updates['email'] = $email;
+            }
+            if (filled($position)) {
+                $updates['position'] = trim((string) $position);
+            }
+            if (filled($phone)) {
+                $updates['phone'] = trim((string) $phone);
+            }
+
+            $staff->fill($updates);
+            if ($staff->isDirty()) {
+                $staff->save();
+                $this->importStaffChanges['updated']++;
+            }
+        }
+
+        return $staff->fresh(['office.location']);
+    }
+
+    private function resolveOrCreateImportedOffice(array $row, ?Location $location = null): ?Office
+    {
+        $officeName = trim((string) $this->importValue($row, ['office', 'office_name']));
+        if ($officeName === '') {
+            return null;
+        }
+
+        if ($location) {
+            $office = Office::query()
+                ->where('location_id', $location->id)
+                ->whereRaw('LOWER(name) = ?', [strtolower($officeName)])
+                ->first();
+
+            return $office ?: Office::create([
+                'location_id' => $location->id,
+                'name' => $officeName,
+            ]);
+        }
+
+        $matches = Office::query()
+            ->whereRaw('LOWER(name) = ?', [strtolower($officeName)])
+            ->get();
+
+        if ($matches->count() === 1) {
+            return $matches->first();
+        }
+
+        if ($matches->count() > 1) {
+            throw new \RuntimeException('Multiple offices match the supplied office value. Add a location code.');
+        }
+
+        return null;
+    }
+
     private function resolveImportedLocation(array $row): Location
     {
         $locationName = trim((string) $this->importValue($row, ['location_code', 'location', 'location_name']));
@@ -1666,7 +2174,24 @@ class DeviceController extends Controller
             }
         }
 
-        $office = $this->resolveImportedOffice($row, $location);
+        $office = null;
+        if ($location) {
+            // A valid location can be used without a registered office. This
+            // keeps shared/location-only inventory importable when the office
+            // directory has not been populated yet.
+            if (filled($this->importValue($row, ['office', 'office_name']))) {
+                try {
+                    $office = $this->resolveImportedOffice($row, $location);
+                } catch (\RuntimeException $exception) {
+                    if (! $this->canSkipImportAssignmentFailure($exception)) {
+                        throw $exception;
+                    }
+                }
+            }
+        } else {
+            $office = $this->resolveImportedOffice($row);
+        }
+
         if ($office?->location) {
             if ($location && (int) $office->location_id !== (int) $location->id) {
                 throw new \RuntimeException('The supplied office does not belong to the supplied location.');
@@ -1767,7 +2292,7 @@ class DeviceController extends Controller
 
         if (filled($row['mac_address'] ?? null)
             && ! preg_match(StoreDeviceRequest::MAC_ADDRESS_REGEX, (string) $row['mac_address'])) {
-            throw new \RuntimeException('mac_address must use the format 00:1A:2B:3C:4D:5E.');
+            throw new \RuntimeException('mac_address must contain one or more colon-formatted MAC addresses separated by semicolons.');
         }
 
         foreach ([
@@ -1788,6 +2313,8 @@ class DeviceController extends Controller
             'staff_name' => 255,
             'first_name' => 100,
             'last_name' => 100,
+            'position' => 255,
+            'phone' => 255,
             'office' => 255,
             'location' => 255,
             'location_code' => 100,
@@ -1820,8 +2347,8 @@ class DeviceController extends Controller
         }
 
         foreach ([
-            'os_version' => ['Windows 7', 'Windows 8', 'Windows 10', 'Windows 11'],
-            'os_license' => ['Cracked', 'OEM Licensed'],
+            'os_version' => ['Windows 7', 'Windows 8', 'Windows 10', 'Windows 11', 'Windows Server', 'Linux'],
+            'os_license' => ['Cracked', 'OEM Licensed', 'Open Source'],
             'ms_office_version' => ['Office 2007', 'Office 2010', 'Office 2013', 'Office 2016', 'Office 2019', 'Office 2021', 'Microsoft 365'],
             'ms_office_license' => ['Cracked', 'OEM Licensed'],
         ] as $field => $allowed) {
@@ -1840,7 +2367,7 @@ class DeviceController extends Controller
             'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
             'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks',
             'notes', 'staff_email', 'staff_name', 'first_name', 'last_name', 'office',
-            'location', 'location_code', 'issued_at', 'issuance_remarks',
+            'position', 'phone', 'location', 'location_code', 'issued_at', 'issuance_remarks',
         ];
     }
 
@@ -1848,7 +2375,17 @@ class DeviceController extends Controller
     {
         $normalized = [];
         foreach ($row as $key => $value) {
-            $normalized[Str::snake(trim((string) $key))] = is_string($value) ? trim($value) : $value;
+            $normalizedKey = Str::snake(trim((string) $key));
+
+            // WithHeadingRow assigns numeric placeholder keys to completely
+            // unnamed spreadsheet columns (for example, "30"). These are
+            // layout padding rather than inventory fields and must not make an
+            // otherwise valid workbook fail its unsupported-column check.
+            if ($normalizedKey === '' || ctype_digit($normalizedKey)) {
+                continue;
+            }
+
+            $normalized[$normalizedKey] = is_string($value) ? trim($value) : $value;
         }
 
         $aliases = [
@@ -1865,6 +2402,7 @@ class DeviceController extends Controller
             'user_name' => 'staff_name', 'staff' => 'staff_name', 'assigned_to' => 'staff_name',
             'end_user' => 'staff_name', 'issued_user' => 'staff_name', 'issued_user_name' => 'staff_name',
             'staff_first_name' => 'first_name', 'staff_last_name' => 'last_name',
+            'staff_position' => 'position', 'staff_phone' => 'phone',
             'issued_to' => 'staff_name', 'issue_date' => 'issued_at', 'issue_remarks' => 'issuance_remarks',
             'remarks' => 'issuance_remarks',
         ];
@@ -1878,7 +2416,75 @@ class DeviceController extends Controller
             }
         }
 
+        // Existing inventory sheets often use numeric zero to mean "not
+        // recorded". Convert zero placeholders only for optional fields;
+        // unit_price intentionally keeps a legitimate zero value.
+        foreach ([
+            'part_of_property_number',
+            'serial_number',
+            'computer_name',
+            'brand',
+            'model',
+            'mac_address',
+            'date_acquired',
+            'condition',
+            'status',
+            'os_version',
+            'os_license',
+            'ms_office_version',
+            'ms_office_license',
+            'memory',
+            'storage',
+            'form_factor',
+            'last_maintenance_date',
+            'maintenance_remarks',
+            'notes',
+            'staff_email',
+            'staff_name',
+            'first_name',
+            'last_name',
+            'position',
+            'phone',
+            'office',
+            'location',
+            'location_code',
+            'issued_at',
+            'issuance_remarks',
+        ] as $optionalField) {
+            if (array_key_exists($optionalField, $normalized)
+                && $this->importValueIsEmpty($normalized[$optionalField])) {
+                $normalized[$optionalField] = null;
+            }
+        }
+
+        if (array_key_exists('mac_address', $normalized)) {
+            $normalized['mac_address'] = $this->normalizeImportedMacAddress($normalized['mac_address']);
+        }
+
         return $normalized;
+    }
+
+    private function normalizeImportedMacAddress(mixed $value): ?string
+    {
+        $macAddress = strtoupper(trim((string) $value));
+
+        if ($macAddress === '' || (is_numeric($macAddress) && (float) $macAddress === 0.0)) {
+            return null;
+        }
+
+        // Accept the two standard delimiters and extract valid addresses from
+        // labels such as "LAN: 00-1A-2B-3C-4D-5E". Invalid source values are
+        // returned unchanged so validation can identify the exact row.
+        $matches = [];
+        preg_match_all('/(?<![0-9A-F])(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}(?![0-9A-F])/i', $macAddress, $matches);
+        if (! empty($matches[0])) {
+            return collect($matches[0])
+                ->map(fn ($match) => str_replace('-', ':', strtoupper($match)))
+                ->unique()
+                ->implode('; ');
+        }
+
+        return $macAddress;
     }
 
     private function importValue(array $row, array $keys): mixed
@@ -1895,12 +2501,48 @@ class DeviceController extends Controller
     private function importRowIsEmpty(array $row): bool
     {
         foreach ($row as $value) {
-            if (filled($value)) {
+            // Spreadsheet applications commonly represent an unused row as
+            // null, an empty string, or numeric zero. Treat all of those
+            // placeholders as empty so they never reach row validation or
+            // create/update logic. A zero in a row that also has real data is
+            // still preserved and handled by the normal field rules.
+            if (!$this->importValueIsEmpty($value)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private function importValueIsEmpty(mixed $value): bool
+    {
+        if ($value === null || $value === false) {
+            return true;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+
+            if ($value === '') {
+                return true;
+            }
+
+            return is_numeric($value) && (float) $value === 0.0;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (float) $value === 0.0;
+        }
+
+        if ($value instanceof \Illuminate\Support\Collection) {
+            return $value->isEmpty();
+        }
+
+        if (is_array($value)) {
+            return $value === [];
+        }
+
+        return false;
     }
 
     private function importStaffDetailsPresent(array $row): bool
@@ -2045,8 +2687,8 @@ class DeviceController extends Controller
             'specs.storage' => ['nullable', 'string', 'max:50'],
             'specs.form_factor' => ['nullable', 'string', 'max:50'],
 
-            'os_version' => ['nullable', 'string', 'in:Windows 7,Windows 8,Windows 10,Windows 11'],
-            'os_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
+            'os_version' => ['nullable', 'string', 'in:Windows 7,Windows 8,Windows 10,Windows 11,Windows Server,Linux'],
+            'os_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed,Open Source'],
             'ms_office_version' => ['nullable', 'string', 'in:Office 2007,Office 2010,Office 2013,Office 2016,Office 2019,Office 2021,Microsoft 365'],
             'ms_office_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
         ], [
@@ -2057,11 +2699,11 @@ class DeviceController extends Controller
             'serial_number.regex' => 'Serial number may only contain letters, numbers, and hyphens.',
             'brand.regex' => 'Brand may only contain letters and numbers.',
             'model.regex' => 'Model may only contain letters and numbers.',
-            'mac_address.regex' => 'Please enter a valid MAC address, e.g. 00:1A:2B:3C:4D:5E.',
+            'mac_address.regex' => 'Enter one or more MAC addresses in colon format, separated by semicolons.',
             'date_acquired.before_or_equal' => 'Date acquired cannot be in the future.',
             'last_maintenance_date.before_or_equal' => 'Last maintenance date cannot be in the future.',
             'os_version.in' => 'Invalid OS version selected.',
-            'os_license.in' => 'OS license must be either Cracked or OEM Licensed.',
+            'os_license.in' => 'OS license must be Cracked, OEM Licensed, or Open Source.',
             'ms_office_version.in' => 'Invalid MS Office version selected.',
             'ms_office_license.in' => 'MS Office license must be either Cracked or OEM Licensed.',
         ]);

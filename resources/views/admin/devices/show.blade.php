@@ -976,10 +976,10 @@
                                 name="mac_address"
                                 value="{{ old('mac_address', $device->mac_address) }}"
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                                maxlength="17"
-                                pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}"
-                                title="Format: 00:1A:2B:3C:4D:5E"
-                                placeholder="00:1A:2B:3C:4D:5E"
+                                maxlength="100"
+                                pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
+                                title="Enter one or more MAC addresses separated by semicolons"
+                                placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C"
                                 :disabled="!isComputerType()"
                             >
                         </div>
@@ -1033,6 +1033,8 @@
                                 <option value="Windows 8" {{ old('os_version', $device->os_version) === 'Windows 8' ? 'selected' : '' }}>Windows 8</option>
                                 <option value="Windows 10" {{ old('os_version', $device->os_version) === 'Windows 10' ? 'selected' : '' }}>Windows 10</option>
                                 <option value="Windows 11" {{ old('os_version', $device->os_version) === 'Windows 11' ? 'selected' : '' }}>Windows 11</option>
+                                <option value="Windows Server" {{ old('os_version', $device->os_version) === 'Windows Server' ? 'selected' : '' }}>Windows Server</option>
+                                <option value="Linux" {{ old('os_version', $device->os_version) === 'Linux' ? 'selected' : '' }}>Linux</option>
                             </select>
                         </div>
 
@@ -1043,6 +1045,7 @@
                                 <option value="">-- Select License --</option>
                                 <option value="Cracked" {{ old('os_license', $device->os_license) === 'Cracked' ? 'selected' : '' }}>Cracked</option>
                                 <option value="OEM Licensed" {{ old('os_license', $device->os_license) === 'OEM Licensed' ? 'selected' : '' }}>OEM Licensed</option>
+                                <option value="Open Source" {{ old('os_license', $device->os_license) === 'Open Source' ? 'selected' : '' }}>Open Source</option>
                             </select>
                         </div>
 
