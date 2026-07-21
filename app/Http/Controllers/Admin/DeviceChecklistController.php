@@ -123,7 +123,7 @@ class DeviceChecklistController extends Controller
         if ($remarks === '') {
             $remarks = $avrUpsUnavailable
                 ? 'not available UPS/AVR'
-                : ($printerUnavailable ? null : 'Preventive maintenance checklist completed.');
+                : ($printerUnavailable ? null : 'Serviceable');
         }
 
         if ($correctiveAction === '' && ($avrUpsUnavailable || $printerUnavailable)) {

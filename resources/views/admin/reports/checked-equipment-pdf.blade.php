@@ -100,7 +100,7 @@
             top: 101px;
             right: 0;
             width: 190px;
-            font-size: 9.1px;
+            font-size: 11px;
             text-align: left;
         }
 
@@ -114,9 +114,11 @@
 
         .date-line {
             width: 108px;
+            height: 14px;
+            font-size: 11px;
+            line-height: 12px;
             text-align: center;
-            padding-left: 3px;
-            padding-right: 3px;
+            padding: 1px 3px 0;
         }
 
         .blue-rule-top {
@@ -289,16 +291,23 @@
         .sig-name-line {
             display: inline-block;
             width: 210px;
-            height: 13px;
+            height: 20px;
+            font-size: 12px;
+            line-height: 12px;
+            padding: 1px 2px 0;
             border-bottom: 1px solid #111827;
             text-align: center;
             vertical-align: bottom;
+            white-space: nowrap;
         }
 
         .sig-date-line {
             display: inline-block;
             width: 210px;
-            height: 13px;
+            height: 15px;
+            font-size: 12px;
+            line-height: 12px;
+            padding: 1px 2px 0;
             border-bottom: 1px solid #111827;
             text-align: center;
             vertical-align: bottom;

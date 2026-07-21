@@ -1505,7 +1505,7 @@ class DeviceController extends Controller
     private function generateImportedPropertyNumber(int $rowNumber): string
     {
         do {
-            $candidate = 'IMPORT-' . now()->format('YmdHis') . '-' . $rowNumber . '-' . strtoupper(Str::random(5));
+            $candidate = 'TEMP-' . now()->format('YmdHis') . '-' . $rowNumber . '-' . strtoupper(Str::random(5));
         } while (Device::where('property_number', $candidate)->exists());
 
         return $candidate;
