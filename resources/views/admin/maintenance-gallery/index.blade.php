@@ -48,12 +48,6 @@
         x-on:keydown.escape.window="stopSlideshow()"
         class="space-y-6"
     >
-        @if(session('success'))
-            <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-900/30 dark:text-green-300">
-                {{ session('success') }}
-            </div>
-        @endif
-
         @if($errors->any())
             <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/30 dark:text-red-300">
                 <div class="font-semibold">Please check the photo details.</div>
