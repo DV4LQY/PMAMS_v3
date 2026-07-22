@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Models\Device;
 use App\Models\DeviceType;
 
 class UpdateDeviceRequest extends FormRequest
@@ -104,6 +105,29 @@ class UpdateDeviceRequest extends FormRequest
                 $validator->errors()->add(
                     'part_of_property_number',
                     'Part of property number is available only for Printer, Monitor, AVR, UPS, Scanner, or Other equipment.'
+                );
+
+                return;
+            }
+
+            $slotTypes = match ($typeName) {
+                'monitor' => ['Monitor'],
+                'avr', 'ups' => ['AVR', 'UPS'],
+                'printer' => ['Printer'],
+                default => [],
+            };
+
+            $routeDevice = $this->route('device');
+            $deviceId = is_object($routeDevice) ? $routeDevice->id : $routeDevice;
+            if ($slotTypes !== [] && Device::query()
+                ->where('part_of_property_number', trim((string) $this->input('part_of_property_number')))
+                ->where('id', '!=', $deviceId)
+                ->whereHas('type', fn ($query) => $query->whereIn('name', $slotTypes))
+                ->exists()) {
+                $slotLabel = in_array($typeName, ['avr', 'ups'], true) ? 'AVR/UPS' : ucfirst($typeName);
+                $validator->errors()->add(
+                    'part_of_property_number',
+                    "This system unit already has a linked {$slotLabel}. Use the checklist Change link shortcut to replace it."
                 );
             }
         });

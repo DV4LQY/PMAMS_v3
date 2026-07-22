@@ -19,6 +19,14 @@
     $office = $staff?->office;
     $college = $office?->college;
     $linkedByType = collect($linkedPeripherals ?? [])->groupBy(fn ($peripheral) => strtolower($peripheral->type?->name ?? ''));
+    $linkablePeripheralOptions = collect($linkablePeripherals ?? [])->map(fn ($peripheral) => [
+        'id' => $peripheral->id,
+        'type' => $peripheral->type?->name ?? 'Peripheral',
+        'property_number' => $peripheral->property_number,
+        'serial_number' => $peripheral->serial_number,
+        'computer_name' => $peripheral->computer_name,
+        'parent_property_number' => $peripheral->part_of_property_number,
+    ])->values()->all();
 @endphp
 
 <div class="space-y-6">
@@ -212,20 +220,7 @@
                 </div>
             </div>
 
-            <div class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-                <div class="text-sm text-gray-500 dark:text-gray-400">Linked Child Property Numbers</div>
-                @if(($linkedPeripherals ?? collect())->isNotEmpty())
-                    <div class="mt-2 flex flex-wrap gap-2">
-                        @foreach($linkedPeripherals as $peripheral)
-                            <span class="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200">
-                                {{ $peripheral->type?->name ?? 'Peripheral' }}: {{ $peripheral->property_number }}
-                            </span>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="mt-1 text-sm text-amber-700 dark:text-amber-300">No linked monitor, AVR/UPS, printer, scanner, or other peripheral.</div>
-                @endif
-            </div>
+
         </div>
 
         <div class="mt-6 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
@@ -237,7 +232,7 @@
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">OK</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not OK</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not Available</th>
-                        <th class="px-3 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Repair / Condemn / Not in Use</th>
+                        <th class="px-3 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Status</th>
                     </tr>
                 </thead>
 
@@ -261,11 +256,33 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 <div>{{ $sectionName }}</div>
                                 @if($sectionProperties)
-                                    <div class="mt-1 text-xs text-indigo-600 dark:text-indigo-300">
-                                        Property #: {{ implode(', ', $sectionProperties) }}
-                                    </div>
+                                    @if(auth()->user()?->isAdmin() && in_array($sectionKey, ['monitor', 'avr/ups', 'printer'], true))
+                                        <button
+                                            type="button"
+                                            class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 underline decoration-dotted underline-offset-2 hover:text-indigo-800 dark:text-indigo-300 dark:hover:text-indigo-200"
+                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: true })"
+                                        >
+                                            Property #: {{ implode(', ', $sectionProperties) }}
+                                            <span aria-hidden="true">&#128279;</span>
+                                        </button>
+                                    @else
+                                        <div class="mt-1 text-xs text-indigo-600 dark:text-indigo-300">
+                                            Property #: {{ implode(', ', $sectionProperties) }}
+                                        </div>
+                                    @endif
                                 @elseif(in_array($sectionKey, ['monitor', 'avr/ups', 'printer'], true))
-                                    <div class="mt-1 text-xs text-amber-600 dark:text-amber-300">Property #: Not linked</div>
+                                    @if(auth()->user()?->isAdmin())
+                                        <button
+                                            type="button"
+                                            class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-amber-600 underline decoration-dotted underline-offset-2 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200"
+                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: false })"
+                                        >
+                                            Property #: Not linked
+                                            <span aria-hidden="true">&#128279;</span>
+                                        </button>
+                                    @else
+                                        <div class="mt-1 text-xs text-amber-600 dark:text-amber-300">Property #: Not linked</div>
+                                    @endif
                                 @endif
                             </td>
                             <td class="px-4 py-3 text-gray-800 dark:text-gray-200">{{ $item['label'] ?? '-' }}</td>
@@ -533,5 +550,143 @@
             </div>
         @endif
     </form>
+
+    @if(auth()->user()?->isAdmin())
+        <div
+            x-data="{
+                linkOpen: false,
+                peripheralType: '',
+                allowLinked: false,
+                peripheralQuery: '',
+                candidates: [],
+                selectedPeripheral: null,
+                parentPropertyNumber: @js($device->property_number),
+                linkBaseUrl: @js(url('/admin/devices')),
+                equipmentAddUrl: @js(route('admin.devices.index', ['open_add' => 1])),
+                linkablePeripherals: @js($linkablePeripheralOptions),
+                openLink(type, allowLinked = false) {
+                    this.peripheralType = type;
+                    this.allowLinked = allowLinked;
+                    this.peripheralQuery = '';
+                    this.selectedPeripheral = null;
+                    this.candidates = this.linkablePeripherals.filter((peripheral) => {
+                        const name = String(peripheral.type || '').toLowerCase();
+                        const matchesType = type === 'avr/ups'
+                            ? ['avr', 'ups'].includes(name)
+                            : name === type;
+                        return matchesType && (allowLinked || !peripheral.parent_property_number);
+                    });
+                    this.linkOpen = true;
+                },
+                filteredCandidates() {
+                    const query = this.peripheralQuery.trim().toLowerCase();
+                    if (!query) return this.candidates;
+
+                    return this.candidates.filter((peripheral) => [
+                        peripheral.type,
+                        peripheral.property_number,
+                        peripheral.serial_number,
+                        peripheral.computer_name,
+                        peripheral.parent_property_number,
+                    ].filter(Boolean).join(' ').toLowerCase().includes(query));
+                },
+                openAddEquipment() {
+                    const url = new URL(this.equipmentAddUrl, window.location.origin);
+                    const requestedType = this.peripheralType === 'avr/ups'
+                        ? 'AVR'
+                        : this.peripheralType.charAt(0).toUpperCase() + this.peripheralType.slice(1);
+                    url.searchParams.set('add_type', requestedType);
+                    url.searchParams.set('add_parent', this.parentPropertyNumber);
+                    window.location.assign(url.toString());
+                },
+                selectPeripheral(peripheral) {
+                    this.selectedPeripheral = peripheral;
+                }
+            }"
+            x-on:open-checklist-link.window="openLink($event.detail.peripheralType, $event.detail.allowLinked)"
+        >
+            <x-modal show="linkOpen" title="Link Peripheral to This System Unit" maxWidth="max-w-xl">
+                <form
+                    method="POST"
+                    x-bind:action="selectedPeripheral ? `${linkBaseUrl}/${selectedPeripheral.id}/link-parent` : '#'"
+                    class="space-y-4"
+                >
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="replace_existing" x-bind:value="allowLinked ? 1 : 0">
+
+                    <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100">
+                        Select the <span class="font-semibold" x-text="peripheralType === 'avr/ups' ? 'AVR or UPS' : peripheralType"></span> to attach or reassign to this system unit.
+                    </div>
+
+                    <div>
+                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Parent property number</label>
+                        <input
+                            type="text"
+                            name="parent_property_number"
+                            readonly
+                            x-bind:value="parentPropertyNumber"
+                            class="mt-1 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900/40 dark:text-gray-300"
+                        >
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between gap-3">
+                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Available peripheral</label>
+                            <button
+                                type="button"
+                                x-on:click="openAddEquipment()"
+                                class="inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                            >
+                                + Add Equipment
+                            </button>
+                        </div>
+                        <input
+                            type="search"
+                            x-model="peripheralQuery"
+                            placeholder="Search property number, serial number, or computer name..."
+                            autocomplete="off"
+                            class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                        >
+                        <div class="mt-2 max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                            <template x-if="filteredCandidates().length === 0">
+                                <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                                    No matching peripheral found. Use + Add Equipment to register one.
+                                </div>
+                            </template>
+                            <template x-for="peripheral in filteredCandidates()" :key="peripheral.id">
+                                <button
+                                    type="button"
+                                    class="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-amber-50 dark:border-gray-700 dark:hover:bg-gray-700"
+                                    x-bind:class="selectedPeripheral?.id === peripheral.id ? 'bg-amber-100 dark:bg-amber-900/40' : ''"
+                                    x-on:click="selectPeripheral(peripheral)"
+                                >
+                                    <span class="font-semibold text-gray-900 dark:text-white" x-text="`${peripheral.type} ${peripheral.property_number || ''}`"></span>
+                                    <span class="block text-xs text-gray-500 dark:text-gray-400" x-text="[peripheral.serial_number, peripheral.computer_name, peripheral.parent_property_number ? `Linked to ${peripheral.parent_property_number}` : 'Not linked'].filter(Boolean).join(' / ') || 'No serial or computer name'"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button
+                            type="button"
+                            class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                            x-on:click="linkOpen = false"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-600"
+                            x-bind:disabled="!selectedPeripheral"
+                        >
+                            Link Peripheral
+                        </button>
+                    </div>
+                </form>
+            </x-modal>
+        </div>
+    @endif
 </div>
 @endsection

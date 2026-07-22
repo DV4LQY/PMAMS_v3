@@ -258,7 +258,7 @@
     >
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 class="text-base font-semibold text-gray-900">Equipment by Condition</h2>
+            <h2 class="text-base font-semibold text-gray-900">Equipment Status</h2>
             <p class="mt-1 mb-4 text-sm text-gray-500">Current condition breakdown.</p>
             <div style="position:relative; height:250px;">
                 <canvas id="statusChart"></canvas>

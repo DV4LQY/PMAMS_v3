@@ -86,7 +86,7 @@
             if (!window.Alpine) return;
 
             Alpine.data('staffManager', () => ({
-                addOpen: {{ $addBag->any() ? 'true' : 'false' }},
+                addOpen: {{ ($addBag->any() || ($openAddStaff ?? false)) ? 'true' : 'false' }},
                 editOpen: {{ $editBag->any() ? 'true' : 'false' }},
                 deleteOpen: false,
                 bulkEnabled: {{ old('staff') !== null ? 'true' : 'false' }},

@@ -20,6 +20,10 @@
     $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
     $editLastMaintenanceDate = old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '');
     $editCondition = old('condition', $device->condition ?? 'serviceable');
+    $reissueStaffOffice = $device->currentAssignment?->office ?: $device->currentAssignment?->staff?->office;
+    $reissueAddStaffUrl = $reissueStaffOffice
+        ? route('admin.staff.index', ['office' => $reissueStaffOffice->id, 'open_add' => 1])
+        : route('admin.locations.index');
 @endphp
 
 <script>
@@ -785,7 +789,19 @@
             <form method="POST" action="{{ route('admin.devices.reissue', $device) }}" class="space-y-4 px-6 py-5">
                 @csrf
                 <div>
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search registered end user</label>
+                    <div class="flex items-center justify-between gap-3">
+                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search registered end user</label>
+                        @if(auth()->user()?->isAdmin())
+                            <a
+                                href="{{ $reissueAddStaffUrl }}"
+                                data-no-spa="true"
+                                title="Add a new staff member{{ $reissueStaffOffice ? ' to ' . $reissueStaffOffice->name : '' }}"
+                                class="inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                            >
+                                + Add Staff
+                            </a>
+                        @endif
+                    </div>
                     <input type="text" x-ref="reissueStaffSearch" x-model="reissueStaffQuery" x-on:input="reissueStaffId = ''; reissueStaffSelected = null; queueReissueStaffLookup()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Search name, email, or office" autocomplete="off">
                     <input type="hidden" name="staff_id" x-model="reissueStaffId">
                     <div class="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700" x-show="!reissueStaffId">

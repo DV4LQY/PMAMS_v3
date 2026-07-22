@@ -25,11 +25,23 @@ class DeviceChecklistController extends Controller
 
         abort_unless($this->isComputerDevice($device->type?->name), 404);
 
+        $linkablePeripherals = Device::query()
+            ->with('type:id,name')
+            ->whereHas('type', fn ($query) => $query->whereIn('name', [
+                'Monitor',
+                'AVR',
+                'UPS',
+                'Printer',
+            ]))
+            ->orderBy('property_number')
+            ->get(['id', 'device_type_id', 'property_number', 'serial_number', 'computer_name', 'part_of_property_number']);
+
         return view('admin.devices.checklist-form', [
             'device' => $device,
             'linkedPeripherals' => $device->linkedPeripherals
                 ->sortBy(fn ($peripheral) => strtolower($peripheral->type?->name ?? ''))
                 ->values(),
+            'linkablePeripherals' => $linkablePeripherals,
             'checklistItems' => $this->checklistItems(),
             'softwareItems' => $this->softwareItems(),
             'defaultDate' => now()->toDateString(),

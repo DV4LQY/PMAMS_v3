@@ -49,6 +49,7 @@ class DeviceController extends Controller
     public function index(Request $request)
     {
         $q = $request->string('q')->toString();
+        $openAddEquipment = $request->boolean('open_add');
         $typeId = $request->integer('type');
         $locationId = $request->integer('location') ?: $request->integer('college');
         $collegeId = $locationId; // backward-compatible variable for existing views
@@ -126,6 +127,11 @@ class DeviceController extends Controller
         }
 
         $types = $this->allowedDeviceTypes();
+        $requestedAddType = strtolower($request->string('add_type')->toString());
+        $addTypeId = $types
+            ->first(fn ($type) => strtolower((string) $type->name) === $requestedAddType)
+            ?->id;
+        $addParentPropertyNumber = $request->string('add_parent')->toString();
 
         return view('admin.devices.index', compact(
             'devices',
@@ -142,7 +148,10 @@ class DeviceController extends Controller
             'colleges',
             'offices',
             'showOfficeFilter',
-            'unlinkedPeripheralDevices'
+            'unlinkedPeripheralDevices',
+            'openAddEquipment',
+            'addTypeId',
+            'addParentPropertyNumber'
         ));
     }
 
@@ -321,6 +330,7 @@ class DeviceController extends Controller
 
         $data = $request->validate([
             'parent_property_number' => ['required', 'string', 'max:50', 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX],
+            'replace_existing' => ['nullable', 'boolean'],
         ], [
             'parent_property_number.required' => 'Select a Desktop or Laptop property number.',
             'parent_property_number.regex' => 'Property number may only contain letters, numbers, hyphens, and slashes.',
@@ -342,7 +352,56 @@ class DeviceController extends Controller
             return back()->withErrors(['parent_property_number' => 'A peripheral cannot be linked to itself.']);
         }
 
+        $slotTypes = match (strtolower(trim((string) $device->type?->name))) {
+            'monitor' => ['Monitor'],
+            'avr', 'ups' => ['AVR', 'UPS'],
+            'printer' => ['Printer'],
+            default => [],
+        };
+        $replaceExisting = (bool) ($data['replace_existing'] ?? false);
+        $existingInSlot = collect();
+
+        if ($slotTypes !== []) {
+            $existingInSlot = Device::query()
+                ->with('type')
+                ->where('part_of_property_number', $parent->property_number)
+                ->where('id', '!=', $device->id)
+                ->whereHas('type', fn ($query) => $query->whereIn('name', $slotTypes))
+                ->get();
+
+            if ($existingInSlot->isNotEmpty() && ! $replaceExisting) {
+                $slotLabel = strtolower($device->type?->name) === 'avr' || strtolower($device->type?->name) === 'ups'
+                    ? 'AVR/UPS'
+                    : $device->type?->name;
+
+                return back()
+                    ->withInput()
+                    ->withErrors(['parent_property_number' => "This system unit already has a linked {$slotLabel}. Use the Change link shortcut to replace it."]);
+            }
+        }
+
         $previousParent = $device->part_of_property_number;
+
+        if ($replaceExisting) {
+            foreach ($existingInSlot as $existingDevice) {
+                $existingParent = $existingDevice->part_of_property_number;
+                $existingDevice->update(['part_of_property_number' => null]);
+
+                ActivityLog::record(
+                    'updated',
+                    "Unlinked {$existingDevice->type?->name} \"{$existingDevice->property_number}\" while replacing the {$existingDevice->type?->name} link for \"{$parent->property_number}\"",
+                    $existingDevice,
+                    ActivityLog::makePayload([
+                        'property_number' => $existingDevice->property_number,
+                        'device_type' => $existingDevice->type?->name,
+                        'previous_parent_property_number' => $existingParent,
+                        'replacement_parent_property_number' => $parent->property_number,
+                        'linked_by' => Auth::user()?->name,
+                    ])
+                );
+            }
+        }
+
         $device->update(['part_of_property_number' => $parent->property_number]);
 
         ActivityLog::record(

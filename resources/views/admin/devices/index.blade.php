@@ -12,7 +12,7 @@
 @section('content')
 <div
     x-data="{
-        addOpen: {{ old('form_context') === 'add_equipment' ? 'true' : 'false' }},
+        addOpen: {{ (old('form_context') === 'add_equipment' || ($openAddEquipment ?? false)) ? 'true' : 'false' }},
         editOpen: false,
         issueOpen: false,
         deleteOpen: false,
@@ -22,7 +22,7 @@
         selectAllMatching: false,
         filterTimer: null,
 
-        addTypeId: '{{ old('device_type_id', $types->first()?->id) }}',
+        addTypeId: '{{ old('device_type_id', $addTypeId ?? $types->first()?->id) }}',
         addComputerName: @js(old('computer_name', old('specs.computer_name', ''))),
         addOsVersion: @js(old('os_version', '')),
         addMsVersion: @js(old('ms_office_version', '')),

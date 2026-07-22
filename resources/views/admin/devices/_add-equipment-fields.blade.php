@@ -111,7 +111,7 @@
             <input
                 x-ref="partPropertyInput"
                 name="part_of_property_number"
-                value="{{ old('part_of_property_number') }}"
+            value="{{ old('part_of_property_number', $addParentPropertyNumber ?? '') }}"
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 maxlength="50"
                 pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"

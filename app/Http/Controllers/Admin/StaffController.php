@@ -97,7 +97,7 @@ class StaffController extends Controller
         ];
     }
 
-    public function index(Office $office)
+    public function index(Request $request, Office $office)
     {
         $staff = Staff::where('office_id', $office->id)
             ->orderBy('last_name')->orderBy('first_name')
@@ -105,7 +105,9 @@ class StaffController extends Controller
 
         $office->load('college');
 
-        return view('admin.staff.index', compact('office', 'staff'));
+        $openAddStaff = $request->boolean('open_add');
+
+        return view('admin.staff.index', compact('office', 'staff', 'openAddStaff'));
     }
 
     public function store(Request $request, Office $office)

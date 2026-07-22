@@ -232,6 +232,13 @@
             line-height: 1.05;
         }
 
+        .main-table .computer-peripheral {
+            text-align: center;
+            padding-left: 2px;
+            font-size: 12px;
+            line-height: 1.05;
+        }
+
         .label-row th {
             font-size: 10px;
             font-weight: normal;
@@ -674,7 +681,7 @@
                 @endphp
 
                 <tr class="row-height">
-                    <td class="left" style="{{ $rowHeightStyle }}">{{ $displayComputerPeripheral($record) }}</td>
+                    <td class="computer-peripheral" style="{{ $rowHeightStyle }}">{{ $displayComputerPeripheral($record) }}</td>
 
                     @foreach($hardwareItems as $key => $item)
                         @php
