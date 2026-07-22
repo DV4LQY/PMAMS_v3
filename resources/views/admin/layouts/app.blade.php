@@ -214,6 +214,7 @@
         request()->routeIs('admin.devices.*') => 'devices',
         request()->routeIs('admin.issuance.*') => 'reports',
         request()->routeIs('admin.reports.*') => 'reports',
+        request()->routeIs('admin.maintenance-gallery.*') => 'gallery',
         request()->routeIs('admin.scanner') => 'scanner',
         request()->routeIs('admin.support') => 'support',
         request()->routeIs('admin.users.*') => 'users',
@@ -366,6 +367,20 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7V5a1 1 0 011-1h2m10 0h2a1 1 0 011 1v2m0 10v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2m3-5h10"/>
                     </svg>
                     <span>QR Scanner</span>
+                </a>
+
+                <a
+                    href="{{ route('admin.maintenance-gallery.index') }}"
+                    data-nav-group="gallery"
+                    data-active="{{ $currentNavGroup === 'gallery' ? 'true' : 'false' }}"
+                    @if($currentNavGroup === 'gallery') aria-current="page" @endif
+                    class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition
+                    {{ request()->routeIs('admin.maintenance-gallery.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
+                >
+                    <svg class="h-5 w-5 {{ request()->routeIs('admin.maintenance-gallery.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m3 16 5-5 4 4 3-3 6 6M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/>
+                    </svg>
+                    <span>PM Gallery</span>
                 </a>
 
 
@@ -593,6 +608,9 @@
                                 </a>
                                 <a href="{{ route('admin.reports.checklist') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Checklist
+                                </a>
+                                <a href="{{ route('admin.maintenance-gallery.index') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
+                                    PM Gallery
                                 </a>
                                 <a href="{{ route('admin.change-password') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Change Password

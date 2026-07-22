@@ -362,6 +362,25 @@
             transform: translateY(-1px);
         }
 
+        .apk-download {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            margin-top: 12px;
+            color: #2563eb;
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: color .2s, transform .15s;
+        }
+
+        .apk-download:hover {
+            color: #1d4ed8;
+            text-decoration: underline;
+            transform: translateY(-1px);
+        }
+
         .support-modal {
             position: fixed;
             inset: 0;
@@ -682,6 +701,13 @@
                     Need support?
                 </button>
             </div>
+
+            <a class="apk-download" href="{{ asset('downloads/pmams-android.apk') }}" download="PMAMS-Android.apk">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14a2 2 0 0 0 2-2v-2M3 17v2a2 2 0 0 0 2 2"/>
+                </svg>
+                Download Android app
+            </a>
 
             <footer class="login-footer">
                 PMAMS Version 3.0 &copy; 2026. All rights reserved.

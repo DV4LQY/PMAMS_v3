@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\IssuanceController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\MaintenancePhotoController;
 
 
 /*
@@ -85,6 +86,12 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::view('/org-browser', 'admin.org-browser')->name('admin.org-browser');
         Route::view('/scanner', 'admin.scanner')->name('admin.scanner');
         Route::view('/support', 'admin.support')->name('admin.support');
+        Route::get('/maintenance-gallery', [MaintenancePhotoController::class, 'index'])
+            ->name('admin.maintenance-gallery.index');
+        Route::post('/maintenance-gallery', [MaintenancePhotoController::class, 'store'])
+            ->name('admin.maintenance-gallery.store');
+        Route::delete('/maintenance-gallery/{photo}', [MaintenancePhotoController::class, 'destroy'])
+            ->name('admin.maintenance-gallery.destroy');
         Route::get('/issuance', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance', $request->query()))
             ->name('admin.issuance.index');
         Route::get('/issuance/export', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance.export', $request->query()))

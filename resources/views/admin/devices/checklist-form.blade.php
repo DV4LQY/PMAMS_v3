@@ -461,6 +461,12 @@
             </div>
         </div>
 
+        <div class="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+            <label for="maintenance-photo" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Maintenance photo <span class="font-normal text-gray-500">(optional, maximum 10 MB)</span></label>
+            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">Upload a photo or use the device camera while completing this checklist. The photo is saved in the Maintenance Photo Gallery and linked to this checklist record.</p>
+            <input id="maintenance-photo" name="maintenance_photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200">
+        </div>
+
         <div class="mt-6 flex justify-end gap-2">
             <a
                 href="{{ route('admin.devices.show', $device) }}"

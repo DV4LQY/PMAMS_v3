@@ -145,6 +145,11 @@ class Device extends Model
         return $this->hasMany(DeviceMaintenanceRecord::class);
     }
 
+    public function maintenancePhotos(): HasMany
+    {
+        return $this->hasMany(DeviceMaintenancePhoto::class);
+    }
+
     public function latestMaintenanceRecord(): HasOne
     {
         return $this->hasOne(DeviceMaintenanceRecord::class)

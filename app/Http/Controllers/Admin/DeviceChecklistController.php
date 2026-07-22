@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Device;
+use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -87,6 +88,7 @@ class DeviceChecklistController extends Controller
             'software' => ['required', 'array'],
             'remarks' => ['nullable', 'string', 'max:1000'],
             'corrective_action' => ['nullable', 'string', 'max:1000'],
+            'maintenance_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'confirm_duplicate' => ['nullable', 'boolean'],
             'verification_reason' => ['nullable', 'string', 'max:1000'],
             'disposition' => ['nullable', 'array'],
@@ -267,6 +269,18 @@ class DeviceChecklistController extends Controller
             ],
             'checked_by' => Auth::id(),
         ]);
+
+        if ($request->hasFile('maintenance_photo')) {
+            $photoPath = $request->file('maintenance_photo')->store('maintenance-photos', 'public');
+            DeviceMaintenancePhoto::create([
+                'device_id' => $device->id,
+                'maintenance_record_id' => $record->id,
+                'uploaded_by' => Auth::id(),
+                'photo_path' => $photoPath,
+                'captured_at' => Carbon::parse($dateChecked),
+                'caption' => 'Preventive maintenance checklist photo',
+            ]);
+        }
 
         $latestRecord = $device->maintenanceRecords()
             ->orderByDesc('maintenance_date')

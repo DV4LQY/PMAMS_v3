@@ -403,6 +403,56 @@ import './bootstrap';
     const state = window.__adminQrScannerState = window.__adminQrScannerState || {
         scanner: null,
         isRunning: false,
+        detectionHandled: false,
+        audioContext: null,
+    };
+
+    const unlockAudio = () => {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+
+            state.audioContext = state.audioContext || new AudioContext();
+            if (state.audioContext.state === 'suspended') {
+                state.audioContext.resume().catch(() => {});
+            }
+        } catch (error) {
+            // Audio is optional; scanning must continue when it is unavailable.
+        }
+    };
+
+    const playDetectionBeep = () => {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+
+            state.audioContext = state.audioContext || new AudioContext();
+            const context = state.audioContext;
+            const play = () => {
+                const now = context.currentTime;
+                const oscillator = context.createOscillator();
+                const gain = context.createGain();
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, now);
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+
+                oscillator.connect(gain);
+                gain.connect(context.destination);
+                oscillator.start(now);
+                oscillator.stop(now + 0.16);
+            };
+
+            if (context.state === 'suspended') {
+                context.resume().then(play).catch(() => {});
+            } else {
+                play();
+            }
+        } catch (error) {
+            // Audio is optional; scanning must continue when it is unavailable.
+        }
     };
 
     const setText = (element, text) => {
@@ -482,6 +532,9 @@ import './bootstrap';
         };
 
         const handleScanSuccess = (decodedText) => {
+            if (state.detectionHandled) return;
+            state.detectionHandled = true;
+            playDetectionBeep();
             setStatus('QR code detected');
             setResult(decodedText);
 
@@ -494,6 +547,8 @@ import './bootstrap';
         const startScanner = () => {
             if (state.isRunning) return;
 
+            state.detectionHandled = false;
+            unlockAudio();
             setStatus('Loading scanner...');
             setResult('-');
 
