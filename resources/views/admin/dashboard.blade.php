@@ -144,7 +144,7 @@
     @endif
 
     {{-- Summary Cards --}}
-    <div class="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+    <div class="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8">
         <a href="{{ route('admin.devices.index') }}" class="rounded-2xl border-l-4 border-blue-500 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
             <p class="text-xs font-semibold uppercase tracking-widest text-blue-500">Total Equipment</p>
             <div class="mt-2 text-4xl font-bold text-gray-900">{{ number_format($totalDevices ?? 0) }}</div>
@@ -159,6 +159,16 @@
             <p class="text-xs font-semibold uppercase tracking-widest text-indigo-500">Issued</p>
             <div class="mt-2 text-4xl font-bold text-gray-900">{{ number_format($issuedDevices ?? 0) }}</div>
             <p class="mt-1 text-sm text-gray-400">Assigned to staff</p>
+        </a>
+        <a href="{{ route('admin.devices.index', ['status' => 'repair']) }}" class="rounded-2xl border-l-4 border-amber-500 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <p class="text-xs font-semibold uppercase tracking-widest text-amber-600">Repair</p>
+            <div class="mt-2 text-4xl font-bold text-gray-900">{{ number_format($repairDevices ?? 0) }}</div>
+            <p class="mt-1 text-sm text-gray-400">For repair</p>
+        </a>
+        <a href="{{ route('admin.devices.index', ['status' => 'not_in_use']) }}" class="rounded-2xl border-l-4 border-slate-500 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <p class="text-xs font-semibold uppercase tracking-widest text-slate-600">Not in Use</p>
+            <div class="mt-2 text-4xl font-bold text-gray-900">{{ number_format($notInUseDevices ?? 0) }}</div>
+            <p class="mt-1 text-sm text-gray-400">Temporarily inactive</p>
         </a>
         <a href="{{ route('admin.devices.index', ['condition' => 'serviceable']) }}" class="rounded-2xl border-l-4 border-green-500 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
             <p class="text-xs font-semibold uppercase tracking-widest text-green-500">Serviceable</p>

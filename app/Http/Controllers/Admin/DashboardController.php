@@ -13,6 +13,8 @@ class DashboardController extends Controller
         $totalDevices = Device::count();
         $availableDevices = Device::where('status', 'available')->count();
         $issuedDevices = Device::where('status', 'issued')->count();
+        $repairDevices = Device::where('status', 'repair')->count();
+        $notInUseDevices = Device::where('status', 'not_in_use')->count();
         $serviceableDevices = Device::where('condition', 'serviceable')->count();
         $unserviceableDevices = Device::where('condition', 'unserviceable')->count();
         $condemnedDevices = Device::where('condition', 'condemned')->count();
@@ -101,6 +103,8 @@ class DashboardController extends Controller
             'totalDevices',
             'availableDevices',
             'issuedDevices',
+            'repairDevices',
+            'notInUseDevices',
             'serviceableDevices',
             'unserviceableDevices',
             'condemnedDevices',

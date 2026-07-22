@@ -77,7 +77,7 @@ class StoreDeviceRequest extends FormRequest
             | This is handled in DeviceController@store:
             | $data['status'] = 'available';
             */
-            'status' => ['nullable', 'in:available,issued,repair,retired'],
+            'status' => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
 
             /*
             |--------------------------------------------------------------------------

@@ -250,9 +250,9 @@
 
         .check {
             font-family: DejaVu Sans, Arial, sans-serif;
-            font-size: 10px;
+            font-size: 16px;
             font-weight: bold;
-            line-height: 1.05;
+            line-height: 1;
         }
 
         .remarks-cell,
@@ -422,9 +422,7 @@
             ?: data_get($data, 'snapshot.property_number')
             ?: $device->property_number;
 
-        $status = strtoupper(data_get($data, 'snapshot.condition') ?: ($device->condition ?? ''));
-
-        return trim($computerName . ($status ? ' (' . $status . ')' : ''));
+        return trim($computerName);
     };
 
     $checkedByText = $firstRecord?->checkedBy?->name
@@ -687,7 +685,7 @@
                             }
                         @endphp
                         <td class="check" style="{{ $hardwareCellStyle }} width: 3.5%;">{{ $value === 'OK' ? '✓' : '' }}</td>
-                        <td class="check" style="{{ $hardwareCellStyle }} width: 3.5%;">{{ $value === 'Not OK' ? '✓' : '' }}</td>
+                        <td class="check" style="{{ $hardwareCellStyle }} width: 3.5%;">{{ $value === 'Not OK' ? '✕' : '' }}</td>
                     @endforeach
 
                     <td class="check" style="{{ $rowHeightStyle }} width: 6%;">{{ ($software['setup_antivirus'] ?? '') === 'check' ? '✓' : '' }}</td>

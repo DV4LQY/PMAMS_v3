@@ -132,6 +132,14 @@ class Device extends Model
             ->latestOfMany();
     }
 
+    /**
+     * Peripheral records linked to this parent computer property number.
+     */
+    public function linkedPeripherals(): HasMany
+    {
+        return $this->hasMany(self::class, 'part_of_property_number', 'property_number');
+    }
+
     public function maintenanceRecords(): HasMany
     {
         return $this->hasMany(DeviceMaintenanceRecord::class);

@@ -18,6 +18,7 @@
     $staff = $assignment?->staff;
     $office = $staff?->office;
     $college = $office?->college;
+    $linkedByType = collect($linkedPeripherals ?? [])->groupBy(fn ($peripheral) => strtolower($peripheral->type?->name ?? ''));
 @endphp
 
 <div class="space-y-6">
@@ -47,12 +48,14 @@
         target="_self"
         x-data="{
             remarks: @js(old('remarks', '')),
+            remarksEdited: false,
             correctiveAction: @js(old('corrective_action', '')),
             checklistReady: false,
             checklistVersion: 0,
             checklistRowCount: {{ count($checklistItems) + count($softwareItems) }},
             duplicateReasonOpen: {{ session('duplicate_warning') ? 'true' : 'false' }},
             verificationReason: @js(old('verification_reason', '')),
+            notOkRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [$key => old("hardware.$key") === 'Not OK'])->all()),
             allChecklistAnswered() {
                 const selectedRows = new Set(
                     Array.from(this.$root.querySelectorAll('input[type=radio]:checked'))
@@ -65,7 +68,56 @@
                 this.checklistVersion++;
                 this.checklistReady = this.allChecklistAnswered();
             },
-            applyAvailabilityDefaults() {
+            setNotOkRow(key, enabled) {
+                this.notOkRows[key] = enabled;
+                this.$root.querySelectorAll('input').forEach((input) => {
+                    if (input.name === `disposition[${key}]`) input.disabled = !enabled;
+                });
+            },
+            isNotOkSelected(key) {
+                return Array.from(this.$root.querySelectorAll('input'))
+                    .some((input) => input.name === `hardware[${key}]` && input.value === 'Not OK' && input.checked);
+            },
+            clearDisposition(key) {
+                if (this.isNotOkSelected(key)) return;
+
+                this.$root.querySelectorAll('input').forEach((input) => {
+                    if (input.name === `disposition[${key}]`) input.checked = false;
+                });
+            },
+            formatSectionList(sections) {
+                if (sections.length === 0) return '';
+                if (sections.length === 1) return sections[0];
+                if (sections.length === 2) return `${sections[0]} and ${sections[1]}`;
+                return `${sections.slice(0, -1).join(', ')}, and ${sections[sections.length - 1]}`;
+            },
+            generatedRemarks() {
+                const defectiveSections = Array.from(this.$root.querySelectorAll('input'))
+                    .filter((input) => input.name.startsWith('hardware[') && input.value === 'Not OK' && input.checked)
+                    .map((input) => input.dataset.section)
+                    .filter(Boolean);
+                if (defectiveSections.length) {
+                    return `Defective ${this.formatSectionList(defectiveSections)}`;
+                }
+
+                const form = this.$root;
+                const avrUnavailable = form.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
+                const printerUnavailable = form.elements['hardware[printer_printout]']?.value === 'Not Available';
+                if (avrUnavailable) return 'not available UPS/AVR';
+                if (printerUnavailable) return '';
+                return 'Serviceable';
+            },
+            applyChecklistDefaults() {
+                const currentRemarks = this.remarks.trim();
+                const isGeneratedRemark = currentRemarks === ''
+                    || currentRemarks === 'Serviceable'
+                    || currentRemarks === 'not available UPS/AVR'
+                    || currentRemarks.startsWith('Defective ');
+
+                if (!this.remarksEdited && isGeneratedRemark) {
+                    this.remarks = this.generatedRemarks();
+                }
+
                 const form = this.$root;
                 const avrUnavailable = form.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
                 const printerUnavailable = form.elements['hardware[printer_printout]']?.value === 'Not Available';
@@ -83,7 +135,7 @@
                 }
             }
         }"
-        x-init="$nextTick(() => $data.refreshChecklistState())"
+        x-init="$nextTick(() => { $data.applyChecklistDefaults(); $data.refreshChecklistState() })"
         class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
     >
         @csrf
@@ -145,7 +197,7 @@
                 </div>
 
                 <div>
-                    <div class="text-sm text-gray-500 dark:text-gray-400">Property Number</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">System Unit Property Number</div>
                     <div class="font-semibold text-gray-900 dark:text-white">{{ $device->property_number }}</div>
                 </div>
 
@@ -159,6 +211,21 @@
                     <div class="font-semibold text-gray-900 dark:text-white">{{ auth()->user()->name ?? '-' }}</div>
                 </div>
             </div>
+
+            <div class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+                <div class="text-sm text-gray-500 dark:text-gray-400">Linked Child Property Numbers</div>
+                @if(($linkedPeripherals ?? collect())->isNotEmpty())
+                    <div class="mt-2 flex flex-wrap gap-2">
+                        @foreach($linkedPeripherals as $peripheral)
+                            <span class="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200">
+                                {{ $peripheral->type?->name ?? 'Peripheral' }}: {{ $peripheral->property_number }}
+                            </span>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="mt-1 text-sm text-amber-700 dark:text-amber-300">No linked monitor, AVR/UPS, printer, scanner, or other peripheral.</div>
+                @endif
+            </div>
         </div>
 
         <div class="mt-6 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
@@ -170,13 +237,37 @@
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">OK</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not OK</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not Available</th>
+                        <th class="px-3 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Repair / Condemn / Not in Use</th>
                     </tr>
                 </thead>
 
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700 dark:bg-gray-800">
                     @foreach($checklistItems as $key => $item)
+                        @php
+                            $sectionName = $item['group'] ?? '-';
+                            $sectionKey = strtolower($sectionName);
+                            $sectionProperties = match ($sectionKey) {
+                                'system unit' => [$device->property_number],
+                                'monitor' => $linkedByType->get('monitor', collect())->pluck('property_number')->all(),
+                                'avr/ups' => $linkedByType->get('avr', collect())->pluck('property_number')
+                                    ->merge($linkedByType->get('ups', collect())->pluck('property_number'))
+                                    ->values()
+                                    ->all(),
+                                'printer' => $linkedByType->get('printer', collect())->pluck('property_number')->all(),
+                                default => [],
+                            };
+                        @endphp
                         <tr>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $item['group'] ?? '-' }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                <div>{{ $sectionName }}</div>
+                                @if($sectionProperties)
+                                    <div class="mt-1 text-xs text-indigo-600 dark:text-indigo-300">
+                                        Property #: {{ implode(', ', $sectionProperties) }}
+                                    </div>
+                                @elseif(in_array($sectionKey, ['monitor', 'avr/ups', 'printer'], true))
+                                    <div class="mt-1 text-xs text-amber-600 dark:text-amber-300">Property #: Not linked</div>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-gray-800 dark:text-gray-200">{{ $item['label'] ?? '-' }}</td>
 
                             <td class="px-4 py-3 text-center">
@@ -187,7 +278,7 @@
                                         value="OK"
                                         class="peer sr-only"
                                         @if($loop->first) required @endif
-                                        x-on:change="applyAvailabilityDefaults(); refreshChecklistState()"
+                                        x-on:change="setNotOkRow('{{ $key }}', $event.target.value === 'Not OK'); clearDisposition('{{ $key }}'); applyChecklistDefaults(); refreshChecklistState()"
                                         @checked(old("hardware.$key") === 'OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-green-600 peer-checked:bg-green-50 peer-checked:text-green-700 dark:peer-checked:bg-green-900/30 dark:peer-checked:text-green-400">
@@ -202,8 +293,9 @@
                                         type="radio"
                                         name="hardware[{{ $key }}]"
                                         value="Not OK"
+                                        data-section="{{ $item['group'] ?? '-' }}"
                                         class="peer sr-only"
-                                        x-on:change="applyAvailabilityDefaults(); refreshChecklistState()"
+                                        x-on:change="setNotOkRow('{{ $key }}', $event.target.value === 'Not OK'); clearDisposition('{{ $key }}'); applyChecklistDefaults(); refreshChecklistState()"
                                         @checked(old("hardware.$key") === 'Not OK')
                                     >
                                     <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-red-600 peer-checked:bg-red-50 peer-checked:text-red-700 dark:peer-checked:bg-red-900/30 dark:peer-checked:text-red-400">
@@ -220,13 +312,61 @@
                                             name="hardware[{{ $key }}]"
                                             value="Not Available"
                                             class="peer sr-only"
-                                            x-on:change="applyAvailabilityDefaults(); refreshChecklistState()"
+                                            x-on:change="setNotOkRow('{{ $key }}', $event.target.value === 'Not OK'); clearDisposition('{{ $key }}'); applyChecklistDefaults(); refreshChecklistState()"
                                             @checked(old("hardware.$key") === 'Not Available')
                                         >
-                                        <span class="flex min-h-8 min-w-8 items-center justify-center rounded border-2 border-gray-400 px-2 text-xs font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
-                                            N/A
-                                        </span>
+                                       <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
+    N/A
+</span>
                                     </label>
+                                @else
+                                    <span class="text-gray-300 dark:text-gray-600">—</span>
+                                @endif
+                            </td>
+
+                            <td class="px-3 py-3 text-center">
+                                @if(!in_array($item['group'] ?? '', ['Keyboard', 'Mouse'], true))
+                                    <div
+                                        class="flex flex-col items-start justify-center gap-1 text-xs text-gray-600 dark:text-gray-300"
+                                        x-bind:class="{ 'opacity-50': !notOkRows['{{ $key }}'] }"
+                                    >
+                                    <label class="inline-flex cursor-pointer items-center gap-1">
+                                        <input
+                                            type="checkbox"
+                                            name="disposition[{{ $key }}]"
+                                            value="repair"
+                                            class="h-3.5 w-3.5 accent-amber-500"
+                                            x-bind:disabled="!notOkRows['{{ $key }}']"
+                                            x-on:change="$event.target.closest('td').querySelectorAll('input[type=checkbox]').forEach((checkbox) => { if (checkbox !== $event.target) checkbox.checked = false })"
+                                            @checked(old("disposition.$key") === 'repair')
+                                        >
+                                        <span>Repair</span>
+                                    </label>
+                                    <label class="inline-flex cursor-pointer items-center gap-1">
+                                        <input
+                                            type="checkbox"
+                                            name="disposition[{{ $key }}]"
+                                            value="condemn"
+                                            class="h-3.5 w-3.5 accent-red-600"
+                                            x-bind:disabled="!notOkRows['{{ $key }}']"
+                                            x-on:change="$event.target.closest('td').querySelectorAll('input[type=checkbox]').forEach((checkbox) => { if (checkbox !== $event.target) checkbox.checked = false })"
+                                            @checked(old("disposition.$key") === 'condemn')
+                                        >
+                                        <span>Condemn</span>
+                                    </label>
+                                    <label class="inline-flex cursor-pointer items-center gap-1">
+                                        <input
+                                            type="checkbox"
+                                            name="disposition[{{ $key }}]"
+                                            value="not_in_use"
+                                            class="h-3.5 w-3.5 accent-slate-500"
+                                            x-bind:disabled="!notOkRows['{{ $key }}']"
+                                            x-on:change="$event.target.closest('td').querySelectorAll('input[type=checkbox]').forEach((checkbox) => { if (checkbox !== $event.target) checkbox.checked = false })"
+                                            @checked(old("disposition.$key") === 'not_in_use')
+                                        >
+                                        <span>Not in Use</span>
+                                    </label>
+                                    </div>
                                 @else
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
                                 @endif
@@ -272,6 +412,7 @@
                                 </label>
                             </td>
                             <td class="px-4 py-3 text-center text-gray-300 dark:text-gray-600">—</td>
+                            <td class="px-3 py-3 text-center text-gray-300 dark:text-gray-600">—</td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -284,6 +425,7 @@
                 <textarea
                     name="remarks"
                     x-model="remarks"
+                    x-on:input="remarksEdited = true"
                     rows="4"
                     class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     placeholder="Optional remarks"

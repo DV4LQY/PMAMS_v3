@@ -23,6 +23,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Date</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Type</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Condition</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Disposition</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Remarks</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Corrective Action</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Checked By</th>
@@ -34,12 +35,28 @@
                             <td class="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $record->maintenance_date?->format('M d, Y') }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->maintenance_type }}</td>
                             <td class="px-4 py-3 capitalize text-gray-700 dark:text-gray-300">{{ $record->condition ?: ($device->condition ?: 'serviceable') }}</td>
+                            @php
+                                $dispositions = is_array($record->checklist_data) ? data_get($record->checklist_data, 'disposition', []) : [];
+                                $shortcut = is_array($record->checklist_data) ? data_get($record->checklist_data, 'status_shortcut') : null;
+                                $recordDisposition = collect($dispositions)->contains('condemn')
+                                    ? 'Condemn'
+                                    : (collect($dispositions)->contains('repair')
+                                        ? 'Repair'
+                                        : (collect($dispositions)->contains('not_in_use')
+                                            ? 'Not in Use'
+                                        : match ($shortcut) {
+                                            'not_in_use' => 'Not in Use',
+                                            'condemn' => 'Condemn',
+                                            default => null,
+                                        }));
+                            @endphp
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $recordDisposition ?: '-' }}</td>
                             <td class="max-w-md px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->remarks ?: '-' }}</td>
                             <td class="max-w-md px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->corrective_action ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->checkedBy?->name ?? $record->checkedBy?->email ?? '-' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No maintenance records yet.</td></tr>
+                        <tr><td colspan="7" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No maintenance records yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

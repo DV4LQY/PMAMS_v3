@@ -36,6 +36,17 @@
         issueStaffTimer: null,
         issueStaffAbort: null,
 
+        linkOpen: false,
+        linkDevice: { id: null, property_number: '', type: '' },
+        linkParentQuery: '',
+        linkParentPropertyNumber: '',
+        linkParentResults: [],
+        linkParentLoading: false,
+        linkParentHasSearched: false,
+        linkParentTimer: null,
+        linkParentAbort: null,
+        propertyLookupUrl: @js(route('admin.devices.lookup.property')),
+
         issueDevice: {
             id: null,
             property_number: '',
@@ -174,6 +185,64 @@
                 }
             } finally {
                 this.issueStaffLoading = false;
+            }
+        },
+
+        openLink(device) {
+            this.linkDevice = {
+                id: device.id,
+                property_number: device.property_number || '',
+                type: device.type || 'Peripheral',
+            };
+            this.linkParentQuery = '';
+            this.linkParentPropertyNumber = '';
+            this.linkParentResults = [];
+            this.linkParentHasSearched = false;
+            this.linkOpen = true;
+            this.$nextTick(() => {
+                this.$refs.linkParentSearch?.focus();
+                this.fetchLinkParents();
+            });
+        },
+
+        selectLinkParent(parent) {
+            this.linkParentPropertyNumber = parent.property_number || '';
+            this.linkParentQuery = parent.label || parent.property_number || '';
+            this.linkParentResults = [];
+        },
+
+        queueLinkParentLookup() {
+            clearTimeout(this.linkParentTimer);
+            this.linkParentPropertyNumber = '';
+            this.linkParentTimer = setTimeout(() => this.fetchLinkParents(), 250);
+        },
+
+        async fetchLinkParents() {
+            const query = this.linkParentQuery.trim();
+
+            if (this.linkParentAbort) this.linkParentAbort.abort();
+
+            this.linkParentAbort = new AbortController();
+            this.linkParentLoading = true;
+            this.linkParentHasSearched = query !== '';
+
+            try {
+                const url = new URL(this.propertyLookupUrl, window.location.origin);
+                url.searchParams.set('q', query);
+
+                const response = await fetch(url, {
+                    headers: { 'Accept': 'application/json' },
+                    signal: this.linkParentAbort.signal,
+                });
+
+                if (!response.ok) throw new Error('Unable to search parent equipment.');
+
+                const data = await response.json();
+                this.linkParentResults = Array.isArray(data.results) ? data.results : [];
+            } catch (error) {
+                if (error.name !== 'AbortError') this.linkParentResults = [];
+            } finally {
+                this.linkParentLoading = false;
             }
         },
 
@@ -505,6 +574,8 @@
                     <option value="" @selected(empty($status))>All Statuses</option>
                     <option value="available" @selected(($status ?? '') === 'available')>Available</option>
                     <option value="issued" @selected(($status ?? '') === 'issued')>Issued</option>
+                    <option value="repair" @selected(($status ?? '') === 'repair')>Repair</option>
+                    <option value="not_in_use" @selected(($status ?? '') === 'not_in_use')>Not in Use</option>
                 </select>
             </div>
 
@@ -602,6 +673,7 @@
                 $deviceTypeName = strtolower($d->type?->name ?? '');
                 $isDesktop = $deviceTypeName === 'desktop';
                 $isComputerDevice = in_array($deviceTypeName, ['desktop', 'laptop'], true);
+                $isPeripheralDevice = in_array($deviceTypeName, ['printer', 'monitor', 'ups', 'avr', 'scanner', 'other'], true);
             @endphp
 
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -704,19 +776,30 @@
                         View
                     </a>
 
-                    <a
-                        href="{{ route('admin.devices.history', $d) }}"
-                        class="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-                    >
-                        History
-                    </a>
+                    @if($isComputerDevice)
+                        <a
+                            href="{{ route('admin.devices.history', $d) }}"
+                            class="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
+                        >
+                            History
+                        </a>
 
-                    <a
-                        href="{{ route('admin.devices.checklist.form', $d) }}"
-                        class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                    >
-                        Mark Checked
-                    </a>
+                        <a
+                            href="{{ route('admin.devices.checklist.form', $d) }}"
+                            class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                        >
+                            Mark Checked
+                        </a>
+                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin())
+                        <button
+                            type="button"
+                            title="Link this peripheral to a Desktop or Laptop"
+                            class="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                            x-on:click="openLink({ id: {{ $d->id }}, property_number: @js($d->property_number), type: @js($d->type?->name ?? 'Peripheral') })"
+                        >
+                            <span aria-hidden="true">&#128279;</span> Link
+                        </button>
+                    @endif
 
                     <button
                         type="button"
@@ -852,19 +935,36 @@
                                         View
                                     </a>
 
-                                    <a
-                                        href="{{ route('admin.devices.history', $d) }}"
-                                        class="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-                                    >
-                                        History
-                                    </a>
+                                    @php
+                                        $deviceTypeName = strtolower($d->type?->name ?? '');
+                                        $isComputerDevice = in_array($deviceTypeName, ['desktop', 'laptop'], true);
+                                        $isPeripheralDevice = in_array($deviceTypeName, ['printer', 'monitor', 'ups', 'avr', 'scanner', 'other'], true);
+                                    @endphp
 
-                                    <a
-                                        href="{{ route('admin.devices.checklist.form', $d) }}"
-                                        class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                                    >
-                                        Mark Checked
-                                    </a>
+                                    @if($isComputerDevice)
+                                        <a
+                                            href="{{ route('admin.devices.history', $d) }}"
+                                            class="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
+                                        >
+                                            History
+                                        </a>
+
+                                        <a
+                                            href="{{ route('admin.devices.checklist.form', $d) }}"
+                                            class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                                        >
+                                            Mark Checked
+                                        </a>
+                                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin())
+                                        <button
+                                            type="button"
+                                            title="Link this peripheral to a Desktop or Laptop"
+                                            class="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                                            x-on:click="openLink({ id: {{ $d->id }}, property_number: @js($d->property_number), type: @js($d->type?->name ?? 'Peripheral') })"
+                                        >
+                                            <span aria-hidden="true">&#128279;</span> Link
+                                        </button>
+                                    @endif
 
                                     <button
                                         type="button"
@@ -1376,6 +1476,80 @@
                     :disabled="!issueStaffId"
                 >
                     Issue Equipment
+                </button>
+            </div>
+        </form>
+    </x-modal>
+
+    {{-- Link peripheral modal --}}
+    <x-modal show="linkOpen" title="Link Peripheral to System Unit">
+        <form
+            method="POST"
+            :action="`{{ url('/admin/devices') }}/${linkDevice.id}/link-parent`"
+            class="space-y-4"
+        >
+            @csrf
+            @method('PATCH')
+
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100">
+                <div class="font-semibold" x-text="`${linkDevice.type} ${linkDevice.property_number}`"></div>
+                <div class="mt-1 text-xs">Choose the Desktop or Laptop system unit that owns this peripheral.</div>
+            </div>
+
+            <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Parent Property Number</label>
+                <input
+                    type="text"
+                    x-ref="linkParentSearch"
+                    x-model="linkParentQuery"
+                    x-on:input="queueLinkParentLookup()"
+                    placeholder="Search Desktop/Laptop property number..."
+                    autocomplete="off"
+                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                >
+                <input type="hidden" name="parent_property_number" :value="linkParentPropertyNumber">
+
+                <div class="mt-2 max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                    <template x-if="linkParentLoading">
+                        <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">Searching parent equipment...</div>
+                    </template>
+                    <template x-if="!linkParentLoading && !linkParentHasSearched && linkParentResults.length === 0">
+                        <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">Type a property number, serial number, or computer name.</div>
+                    </template>
+                    <template x-if="!linkParentLoading && linkParentHasSearched && linkParentResults.length === 0">
+                        <div class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No Desktop or Laptop found.</div>
+                    </template>
+                    <template x-for="parent in linkParentResults" :key="parent.id">
+                        <button
+                            type="button"
+                            class="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-amber-50 dark:border-gray-700 dark:hover:bg-gray-700"
+                            x-on:click="selectLinkParent(parent)"
+                        >
+                            <span class="font-semibold text-gray-900 dark:text-white" x-text="parent.property_number"></span>
+                            <span class="block text-xs text-gray-500 dark:text-gray-400" x-text="parent.label"></span>
+                        </button>
+                    </template>
+                </div>
+
+                <p x-show="linkParentPropertyNumber" class="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                    Selected parent: <span class="font-semibold" x-text="linkParentPropertyNumber"></span>
+                </p>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button
+                    type="button"
+                    class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    x-on:click="linkOpen = false"
+                >
+                    Cancel
+                </button>
+                <button
+                    type="submit"
+                    class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-600"
+                    x-bind:disabled="!linkParentPropertyNumber"
+                >
+                    Link Peripheral
                 </button>
             </div>
         </form>

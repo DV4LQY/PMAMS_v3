@@ -443,23 +443,27 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
-                    <a
-                        href="{{ route('admin.devices.history', $device) }}"
-                        class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
-                    >
-                        History
-                    </a>
+                    @if($isComputerType)
+                        <a
+                            href="{{ route('admin.devices.history', $device) }}"
+                            class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                        >
+                            History
+                        </a>
+                    @endif
 
                     <button type="button" x-on:click="openReissue()" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
                         Reissue
                     </button>
 
-                    <a
-                        href="{{ route('admin.devices.checklist.form', $device) }}"
-                        class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
-                    >
-                        Mark as Checked
-                    </a>
+                    @if($isComputerType)
+                        <a
+                            href="{{ route('admin.devices.checklist.form', $device) }}"
+                            class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                        >
+                            Mark as Checked
+                        </a>
+                    @endif
 
                     <button
                         id="open-edit-device-modal"

@@ -56,7 +56,7 @@ class DeviceController extends Controller
         $status = $request->query('status');
         $condition = $request->query('condition');
 
-        if (!in_array($status, ['available', 'issued', 'repair', 'retired'], true)) {
+        if (!in_array($status, ['available', 'issued', 'repair', 'retired', 'not_in_use'], true)) {
             $status = null;
         }
 
@@ -115,6 +115,16 @@ class DeviceController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        $unlinkedPeripheralDevices = collect();
+        if (auth()->user()?->isAdmin()) {
+            $unlinkedPeripheralDevices = Device::query()
+                ->with('type:id,name')
+                ->whereNull('part_of_property_number')
+                ->whereHas('type', fn ($query) => $query->whereIn('name', $this->peripheralTypeNames()))
+                ->orderBy('property_number')
+                ->get();
+        }
+
         $types = $this->allowedDeviceTypes();
 
         return view('admin.devices.index', compact(
@@ -131,7 +141,8 @@ class DeviceController extends Controller
             'locations',
             'colleges',
             'offices',
-            'showOfficeFilter'
+            'showOfficeFilter',
+            'unlinkedPeripheralDevices'
         ));
     }
 
@@ -254,6 +265,7 @@ class DeviceController extends Controller
             ->select(['id', 'device_type_id', 'property_number', 'part_of_property_number', 'serial_number', 'brand', 'model'])
             ->with('type:id,name')
             ->whereNull('part_of_property_number')
+            ->whereHas('type', fn ($query) => $query->whereIn('name', ['Desktop', 'Laptop']))
             ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
             ->when($tokens !== [], function ($query) use ($tokens) {
                 foreach ($tokens as $token) {
@@ -292,6 +304,61 @@ class DeviceController extends Controller
             ->values();
 
         return response()->json(['results' => $devices]);
+    }
+
+    /**
+     * Link an unassigned peripheral to a Desktop or Laptop parent property.
+     * This is intentionally separate from the full edit endpoint so the
+     * shortcut can update only the relationship without overwriting specs.
+     */
+    public function linkPeripheral(Request $request, Device $device)
+    {
+        abort_unless(Auth::user()?->isAdmin(), 403);
+
+        $device->load('type');
+
+        abort_unless($this->isPeripheralDevice($device->type?->name), 404);
+
+        $data = $request->validate([
+            'parent_property_number' => ['required', 'string', 'max:50', 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX],
+        ], [
+            'parent_property_number.required' => 'Select a Desktop or Laptop property number.',
+            'parent_property_number.regex' => 'Property number may only contain letters, numbers, hyphens, and slashes.',
+        ]);
+
+        $parent = Device::query()
+            ->with('type')
+            ->where('property_number', trim($data['parent_property_number']))
+            ->whereNull('part_of_property_number')
+            ->first();
+
+        if (! $parent || ! $this->isComputerDevice($parent->type?->name)) {
+            return back()
+                ->withInput()
+                ->withErrors(['parent_property_number' => 'The selected property number must belong to a standalone Desktop or Laptop.']);
+        }
+
+        if ((int) $parent->id === (int) $device->id) {
+            return back()->withErrors(['parent_property_number' => 'A peripheral cannot be linked to itself.']);
+        }
+
+        $previousParent = $device->part_of_property_number;
+        $device->update(['part_of_property_number' => $parent->property_number]);
+
+        ActivityLog::record(
+            'updated',
+            "Linked peripheral \"{$device->property_number}\" to \"{$parent->property_number}\"",
+            $device,
+            ActivityLog::makePayload([
+                'property_number' => $device->property_number,
+                'device_type' => $device->type?->name,
+                'part_of_property_number' => $parent->property_number,
+                'previous_parent_property_number' => $previousParent,
+                'linked_by' => Auth::user()?->name,
+            ])
+        );
+
+        return back()->with('success', "{$device->type?->name} {$device->property_number} linked to {$parent->property_number}.");
     }
 
     public function create()
@@ -883,7 +950,7 @@ class DeviceController extends Controller
                 'filter_type' => ['nullable', 'integer', 'exists:device_types,id'],
                 'filter_location' => ['nullable', 'integer', 'exists:locations,id'],
                 'filter_office' => ['nullable', 'integer', 'exists:offices,id'],
-                'filter_status' => ['nullable', 'in:available,issued,repair,retired'],
+                'filter_status' => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
                 'filter_condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
             ]);
 
@@ -1381,7 +1448,7 @@ class DeviceController extends Controller
 
         $allowedValues = [
             'condition' => ['serviceable', 'unserviceable', 'condemned'],
-            'status' => ['available', 'issued', 'repair', 'retired'],
+            'status' => ['available', 'issued', 'repair', 'retired', 'not_in_use'],
             'os_version' => ['Windows 7', 'Windows 8', 'Windows 10', 'Windows 11', 'Windows Server', 'Linux'],
             'os_license' => ['Cracked', 'OEM Licensed', 'Open Source'],
             'ms_office_version' => ['Office 2007', 'Office 2010', 'Office 2013', 'Office 2016', 'Office 2019', 'Office 2021', 'Microsoft 365'],
@@ -1638,8 +1705,8 @@ class DeviceController extends Controller
         $statusValue = $this->importValue($row, ['status', 'availability']);
         if (filled($statusValue)) {
             $status = strtolower(trim((string) $statusValue));
-            if (!in_array($status, ['available', 'repair', 'retired', 'issued'], true)) {
-                throw new \RuntimeException('status must be available, issued, repair, or retired.');
+            if (!in_array($status, ['available', 'repair', 'retired', 'issued', 'not_in_use'], true)) {
+                throw new \RuntimeException('status must be available, issued, repair, retired, or not_in_use.');
             }
             $hasAssignmentDetails = $this->importStaffDetailsPresent($row)
                 || $this->importLocationDetailsPresent($row);
@@ -2677,7 +2744,7 @@ class DeviceController extends Controller
             'date_acquired' => ['nullable', 'date', 'before_or_equal:today'],
 
             'condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
-            'status' => ['nullable', 'in:available,issued,repair,retired'],
+            'status' => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
 
             'last_maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
             'maintenance_remarks' => ['nullable', 'string', 'max:1000'],
@@ -2841,6 +2908,9 @@ class DeviceController extends Controller
      */
     public function markChecked(Request $request, Device $device)
     {
+        $device->loadMissing('type');
+        abort_unless($this->isComputerDevice($device->type?->name), 404);
+
         $data = $request->validate([
             'maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
             'maintenance_type' => ['nullable', 'string', 'max:100'],
@@ -2924,6 +2994,8 @@ class DeviceController extends Controller
             'maintenanceRecords.checkedBy',
         ]);
 
+        abort_unless($this->isComputerDevice($device->type?->name), 404);
+
         $records = $device->maintenanceRecords()
             ->with('checkedBy')
             ->orderByDesc('maintenance_date')
@@ -2958,7 +3030,7 @@ class DeviceController extends Controller
         $status = $request->query('status');
         $condition = $request->query('condition');
 
-        if (!in_array($status, ['available', 'issued', 'repair', 'retired'], true)) {
+        if (!in_array($status, ['available', 'issued', 'repair', 'retired', 'not_in_use'], true)) {
             $status = null;
         }
 
@@ -3005,7 +3077,7 @@ class DeviceController extends Controller
         $status = $request->query('status');
         $condition = $request->query('condition');
 
-        if (!in_array($status, ['available', 'issued', 'repair', 'retired'], true)) {
+        if (!in_array($status, ['available', 'issued', 'repair', 'retired', 'not_in_use'], true)) {
             $status = null;
         }
 
@@ -3135,6 +3207,16 @@ class DeviceController extends Controller
             ['desktop', 'laptop'],
             true
         );
+    }
+
+    private function peripheralTypeNames(): array
+    {
+        return ['Printer', 'Monitor', 'UPS', 'AVR', 'Scanner', 'Other'];
+    }
+
+    private function isPeripheralDevice(?string $deviceType): bool
+    {
+        return in_array((string) $deviceType, $this->peripheralTypeNames(), true);
     }
 
     private function staffLookupResult(Staff $staff): array

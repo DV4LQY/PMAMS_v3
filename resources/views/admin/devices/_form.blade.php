@@ -64,7 +64,7 @@
     <div>
         <label class="text-sm font-medium">Status</label>
         <select name="status" class="mt-1 w-full border rounded px-3 py-2" required>
-            @foreach(['available','issued'] as $st)
+            @foreach(['available','issued','repair','not_in_use'] as $st)
                 <option value="{{ $st }}" @selected(old('status', $editing ? $device->status : 'available') === $st)>
                     {{ ucfirst($st) }}
                 </option>
