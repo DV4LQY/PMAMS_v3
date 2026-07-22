@@ -90,6 +90,10 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
             ->name('admin.maintenance-gallery.index');
         Route::post('/maintenance-gallery', [MaintenancePhotoController::class, 'store'])
             ->name('admin.maintenance-gallery.store');
+        Route::post('/maintenance-gallery/bulk-delete', [MaintenancePhotoController::class, 'bulkDestroy'])
+            ->name('admin.maintenance-gallery.bulkDestroy');
+        Route::post('/maintenance-gallery/bulk-download', [MaintenancePhotoController::class, 'bulkDownload'])
+            ->name('admin.maintenance-gallery.bulkDownload');
         Route::delete('/maintenance-gallery/{photo}', [MaintenancePhotoController::class, 'destroy'])
             ->name('admin.maintenance-gallery.destroy');
         Route::get('/issuance', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance', $request->query()))
