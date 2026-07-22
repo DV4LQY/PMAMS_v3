@@ -145,6 +145,7 @@ resources/css/       Tailwind application styles
 resources/views/     Authentication, admin pages, reports, and shared components
 routes/web.php       Public and authenticated web routes
 public/              Public assets and compiled Vite output
+android-app/         Android WebView client with ICTU branding
 ```
 
 ## Security notes
@@ -154,6 +155,10 @@ public/              Public assets and compiled Vite output
 - Change database and application credentials before deployment.
 - Review role permissions before creating production users.
 - Validate and review imported spreadsheets before applying them to live inventory.
+
+## Android app
+
+The `android-app` folder contains a PMAMS Android WebView client that uses the ICTU logo and supports the existing web workflows, camera input, QR scanning, and file downloads. See [`android-app/README.md`](android-app/README.md) for emulator, physical-device, and APK build instructions.
 
 ## License
 

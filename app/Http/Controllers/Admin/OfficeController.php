@@ -8,6 +8,7 @@ use App\Models\Location;
 use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 
 class OfficeController extends Controller
 {
@@ -225,5 +226,53 @@ class OfficeController extends Controller
         $office->delete();
 
         return back()->with('success', 'Office deleted.');
+    }
+
+    public function bulkDestroy(Request $request, Location $location)
+    {
+        $data = $request->validate([
+            'office_ids' => ['required', 'array', 'min:1'],
+            'office_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('offices', 'id')->where(
+                    fn ($query) => $query->where('location_id', $location->id)
+                ),
+            ],
+        ], [
+            'office_ids.required' => 'Select at least one office to delete.',
+            'office_ids.min' => 'Select at least one office to delete.',
+            'office_ids.*.exists' => 'One or more selected offices are not in this location.',
+        ]);
+
+        $offices = Office::query()
+            ->where('location_id', $location->id)
+            ->whereIn('id', $data['office_ids'])
+            ->orderBy('name')
+            ->get();
+
+        $items = $offices->map(fn (Office $office) => [
+            'summary' => $this->buildDeleteSummary($office),
+        ])->values()->all();
+
+        DB::transaction(function () use ($offices) {
+            foreach ($offices as $office) {
+                $office->delete();
+            }
+        });
+
+        $count = count($items);
+        ActivityLog::record(
+            'deleted',
+            "Deleted {$count} office(s) from \"{$location->name}\" (Bulk Delete)",
+            null,
+            ActivityLog::makePayload([
+                'bulk' => true,
+                'record_type' => 'Office',
+                'items' => $items,
+            ])
+        );
+
+        return back()->with('success', "{$count} office(s) deleted.");
     }
 }

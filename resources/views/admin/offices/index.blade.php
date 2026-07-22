@@ -18,6 +18,7 @@
             'nameError' => $addBag->first("names.$i"),
         ];
     }
+    $officePageIds = $offices->getCollection()->pluck('id')->map(fn ($id) => (string) $id)->values()->all();
 @endphp
 <script>
 function registerOfficeManager() {
@@ -27,6 +28,8 @@ function registerOfficeManager() {
         addOpen: {{ $addBag->any() ? 'true' : 'false' }},
         editOpen: {{ $editBag->any() ? 'true' : 'false' }},
         deleteOpen: false,
+        selectedOfficeIds: [],
+        officePageIds: @js($officePageIds),
         bulkEnabled: {{ old('names') !== null ? 'true' : 'false' }},
 
         addSingle: {
@@ -78,6 +81,10 @@ function registerOfficeManager() {
             this.deleteOfficeId = id;
             this.deleteOpen = true;
             this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
+        },
+
+        toggleAllOffices(checked) {
+            this.selectedOfficeIds = checked ? [...this.officePageIds] : [];
         }
     }));
     initializeOfficeManagerTree();
@@ -137,12 +144,56 @@ document.addEventListener('livewire:navigated', () => {
         @endif
     </div>
 
+    @if(auth()->user()->isAdmin() && $offices->count())
+        <form
+            method="POST"
+            action="{{ route('admin.offices.bulkDestroy', $location) }}"
+            @submit="if (!selectedOfficeIds.length || !window.confirm('Delete the selected office(s)? This also removes their staff and related assignments.')) $event.preventDefault()"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm"
+        >
+            @csrf
+            @method('DELETE')
+            <template x-for="officeId in selectedOfficeIds" :key="officeId">
+                <input type="hidden" name="office_ids[]" :value="officeId">
+            </template>
+
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    :checked="officePageIds.length > 0 && selectedOfficeIds.length === officePageIds.length"
+                    @change="toggleAllOffices($event.target.checked)"
+                >
+                Select all offices on this page
+            </label>
+
+            <button
+                type="submit"
+                class="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="selectedOfficeIds.length === 0"
+            >
+                Delete Selected
+            </button>
+        </form>
+    @endif
+
     {{-- Mobile cards --}}
     <div class="grid grid-cols-1 gap-3 md:hidden">
         @forelse ($offices as $o)
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div class="space-y-3">
                     <div>
+                        @if(auth()->user()->isAdmin())
+                            <label class="mb-2 inline-flex items-center gap-2 text-sm text-gray-600">
+                                <input
+                                    type="checkbox"
+                                    value="{{ $o->id }}"
+                                    x-model="selectedOfficeIds"
+                                    class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                >
+                                Select office
+                            </label>
+                        @endif
                         <a
                             class="font-semibold text-blue-700 hover:underline"
                             href="{{ route('admin.staff.index', $o) }}"
@@ -188,6 +239,17 @@ document.addEventListener('livewire:navigated', () => {
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 text-left">
                     <tr>
+                        @if(auth()->user()->isAdmin())
+                            <th class="w-12 px-4 py-3 font-semibold text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    :checked="officePageIds.length > 0 && selectedOfficeIds.length === officePageIds.length"
+                                    @change="toggleAllOffices($event.target.checked)"
+                                    aria-label="Select all offices on this page"
+                                >
+                            </th>
+                        @endif
                         <th class="px-4 py-3 font-semibold text-gray-700">Office Name</th>
                         <th class="px-4 py-3 font-semibold text-gray-700">Actions</th>
                     </tr>
@@ -195,6 +257,17 @@ document.addEventListener('livewire:navigated', () => {
                 <tbody class="divide-y divide-gray-200">
                     @forelse ($offices as $o)
                         <tr class="hover:bg-gray-50">
+                            @if(auth()->user()->isAdmin())
+                                <td class="px-4 py-3">
+                                    <input
+                                        type="checkbox"
+                                        value="{{ $o->id }}"
+                                        x-model="selectedOfficeIds"
+                                        class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        aria-label="Select {{ $o->name }}"
+                                    >
+                                </td>
+                            @endif
                             <td class="px-4 py-3">
                                 <a
                                     class="font-medium text-blue-700 hover:underline"
@@ -233,7 +306,7 @@ document.addEventListener('livewire:navigated', () => {
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="2" class="px-6 py-8 text-center text-gray-500">
+                            <td colspan="{{ auth()->user()->isAdmin() ? 3 : 2 }}" class="px-6 py-8 text-center text-gray-500">
                                 No offices found.
                             </td>
                         </tr>

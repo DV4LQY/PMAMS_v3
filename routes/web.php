@@ -277,6 +277,8 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
             ->name('admin.offices.edit');
         Route::put('admin/locations/{location}/offices/{office}', [OfficeController::class, 'update'])
             ->name('admin.offices.update');
+        Route::delete('admin/locations/{location}/offices/bulk-delete', [OfficeController::class, 'bulkDestroy'])
+            ->name('admin.offices.bulkDestroy');
         Route::delete('admin/locations/{location}/offices/{office}', [OfficeController::class, 'destroy'])
             ->name('admin.offices.destroy');
 
