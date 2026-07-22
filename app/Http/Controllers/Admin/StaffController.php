@@ -217,7 +217,7 @@ class StaffController extends Controller
                     'items' => $bulkItems,
                 ])
             );
-            return back()->with('success', 'Staff created.');
+            return $this->afterStaffSave($request, 'Staff created.');
         }
 
         // Single
@@ -295,7 +295,22 @@ class StaffController extends Controller
                 $this->buildCreateSummary($staff)
             )
         );
-        return back()->with('success', 'Staff created.');
+        return $this->afterStaffSave($request, 'Staff created.');
+    }
+
+    /**
+     * Return to the originating equipment details page when Add Staff was
+     * opened from the Reissue dialog. Only local absolute paths are accepted.
+     */
+    private function afterStaffSave(Request $request, string $message)
+    {
+        $returnTo = trim((string) $request->input('return_to', ''));
+
+        if ($returnTo !== '' && str_starts_with($returnTo, '/') && ! str_starts_with($returnTo, '//')) {
+            return redirect()->to($returnTo)->with('success', $message);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function edit(Office $office, Staff $staff)

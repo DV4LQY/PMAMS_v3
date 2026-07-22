@@ -20,9 +20,14 @@
     $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
     $editLastMaintenanceDate = old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '');
     $editCondition = old('condition', $device->condition ?? 'serviceable');
+    $reissueReturnPath = parse_url($deviceUrl, PHP_URL_PATH);
     $reissueStaffOffice = $device->currentAssignment?->office ?: $device->currentAssignment?->staff?->office;
     $reissueAddStaffUrl = $reissueStaffOffice
-        ? route('admin.staff.index', ['office' => $reissueStaffOffice->id, 'open_add' => 1])
+        ? route('admin.staff.index', [
+            'office' => $reissueStaffOffice->id,
+            'open_add' => 1,
+            'return_to' => $reissueReturnPath,
+        ])
         : route('admin.locations.index');
 @endphp
 

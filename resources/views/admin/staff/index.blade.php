@@ -429,6 +429,9 @@
         <x-modal show="addOpen" title="Add Staff">
             <form method="POST" action="{{ route('admin.staff.store', $office) }}" class="space-y-3">
                 @csrf
+                @if(request()->filled('return_to'))
+                    <input type="hidden" name="return_to" value="{{ request('return_to') }}">
+                @endif
 
                 <div class="flex items-center justify-between">
                     <span class="text-sm font-medium text-gray-700">Add multiple staff</span>
