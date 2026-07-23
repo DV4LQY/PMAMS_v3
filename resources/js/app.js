@@ -329,6 +329,7 @@ import './bootstrap';
         if (path.startsWith('/admin/devices')) return 'devices';
         if (path.startsWith('/admin/issuance')) return 'issuance';
         if (path.startsWith('/admin/reports') || path.startsWith('/admin/maintenance-cleanup')) return 'reports';
+        if (path.startsWith('/admin/database')) return 'database';
         if (path.startsWith('/admin/maintenance-gallery')) return 'gallery';
         if (path.startsWith('/admin/scanner')) return 'scanner';
         if (path.startsWith('/admin/support')) return 'support';
@@ -546,11 +547,11 @@ import './bootstrap';
             };
 
             create('statusChart', 'bar', {
-                labels: data.status?.labels || data.condition?.labels || [],
+                labels: data.condition?.labels || [],
                 datasets: [{
                     label: 'Equipment',
-                    data: data.status?.values || data.condition?.values || [],
-                    backgroundColor: ['#22c55e', '#ef4444', '#6b7280', '#f59e0b', '#64748b'],
+                    data: data.condition?.values || [],
+                    backgroundColor: ['#22c55e', '#ef4444', '#6b7280'],
                     borderRadius: 6,
                     borderSkipped: false,
                 }],
@@ -561,10 +562,10 @@ import './bootstrap';
             });
 
             create('totalEquipmentChart', 'pie', {
-                labels: data.availability?.labels || [],
+                labels: data.status?.labels || data.availability?.labels || [],
                 datasets: [{
-                    data: data.availability?.values || [],
-                    backgroundColor: ['#10b981', '#6366f1'],
+                    data: data.status?.values || data.availability?.values || [],
+                    backgroundColor: ['#10b981', '#6366f1', '#f59e0b', '#64748b'],
                     borderWidth: 2,
                 }],
             }, {

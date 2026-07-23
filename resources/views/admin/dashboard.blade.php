@@ -262,8 +262,8 @@
     >
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 class="text-base font-semibold text-gray-900">Equipment Status</h2>
-            <p class="mt-1 mb-4 text-sm text-gray-500">Condition, repair, and not-in-use breakdown.</p>
+            <h2 class="text-base font-semibold text-gray-900">Equipment Condition</h2>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Serviceable, unserviceable, and condemned equipment.</p>
             <div style="position:relative; height:250px;">
                 <canvas id="statusChart"></canvas>
             </div>
@@ -294,8 +294,8 @@
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 class="text-base font-semibold text-gray-900">Total Equipment Registered</h2>
-            <p class="mt-1 mb-4 text-sm text-gray-500">Available and issued equipment breakdown.</p>
+            <h2 class="text-base font-semibold text-gray-900">Equipment Status</h2>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Available, issued, repair, and not in use equipment.</p>
             <div style="position:relative; height:250px;"><canvas id="totalEquipmentChart"></canvas></div>
         </div>
 
@@ -429,11 +429,11 @@
     new Chart(document.getElementById('statusChart'), {
         type: 'bar',
         data: {
-            labels: @json(array_keys($devicesByStatus ?? [])),
+            labels: @json(array_keys($devicesByCondition ?? [])),
             datasets: [{
                 label: 'Equipment',
-                data: @json(array_values($devicesByStatus ?? [])),
-                backgroundColor: ['#22c55e', '#ef4444', '#6b7280', '#f59e0b', '#64748b'],
+                data: @json(array_values($devicesByCondition ?? [])),
+                backgroundColor: ['#22c55e', '#ef4444', '#6b7280'],
                 borderRadius: 6,
                 borderSkipped: false,
             }]
@@ -449,10 +449,10 @@
     new Chart(document.getElementById('totalEquipmentChart'), {
         type: 'pie',
         data: {
-            labels: @json(array_keys($devicesByAvailability ?? [])),
+            labels: @json(array_keys($devicesByStatus ?? [])),
             datasets: [{
-                data: @json(array_values($devicesByAvailability ?? [])),
-                backgroundColor: ['#10b981', '#6366f1'],
+                data: @json(array_values($devicesByStatus ?? [])),
+                backgroundColor: ['#10b981', '#6366f1', '#f59e0b', '#64748b'],
                 borderWidth: 2,
             }]
         },

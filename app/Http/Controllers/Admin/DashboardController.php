@@ -74,12 +74,10 @@ class DashboardController extends Controller
             'Issued' => $issuedDevices,
         ];
 
-        // The dashboard status chart includes both condition values and the
-        // operational statuses that affect an item's availability.
+        // Operational status is separate from the equipment condition chart.
         $devicesByStatus = [
-            'Serviceable' => $serviceableDevices,
-            'Unserviceable' => $unserviceableDevices,
-            'Condemned' => $condemnedDevices,
+            'Available' => $availableDevices,
+            'Issued' => $issuedDevices,
             'Repair' => $repairDevices,
             'Not in Use' => $notInUseDevices,
         ];

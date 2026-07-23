@@ -215,6 +215,7 @@
         request()->routeIs('admin.issuance.*') => 'reports',
         request()->routeIs('admin.reports.*') => 'reports',
         request()->routeIs('admin.maintenance-cleanup.*') => 'reports',
+        request()->routeIs('admin.database.*') => 'database',
         request()->routeIs('admin.maintenance-gallery.*') => 'gallery',
         request()->routeIs('admin.scanner') => 'scanner',
         request()->routeIs('admin.support') => 'support',
@@ -408,6 +409,18 @@
                     >
                         <svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7H5m12 0v12H7V7m3-3h4l1 3H9l1-3Zm-1 7v5m4-5v5"/></svg>
                         <span>Checklist Cleanup</span>
+                    </a>
+                    <a
+                        href="{{ route('admin.database.index') }}"
+                        data-nav-group="database"
+                        data-active="{{ $currentNavGroup === 'database' ? 'true' : 'false' }}"
+                        @if($currentNavGroup === 'database') aria-current="page" @endif
+                        class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition {{ request()->routeIs('admin.database.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
+                    >
+                        <svg class="h-5 w-5 {{ request()->routeIs('admin.database.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6a8 3 0 1 0 16 0A8 3 0 1 0 4 6Zm0 0v6a8 3 0 1 0 16 0V6M4 12v6a8 3 0 1 0 16 0v-6"/>
+                        </svg>
+                        <span>Backup &amp; Restore</span>
                     </a>
                     @endif
 
@@ -664,7 +677,7 @@
         </main>
 
         <footer class="px-3 pb-5 text-center text-xs text-gray-500 dark:text-gray-400 sm:px-6">
-            PMAMS Version 3.2.6 &copy; 2026. All rights reserved.
+            PMAMS Version 3.2.7 &copy; 2026. All rights reserved.
         </footer>
     </div>
 </div>

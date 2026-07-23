@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\MaintenancePhotoController;
 use App\Http\Controllers\Admin\MaintenanceCleanupController;
+use App\Http\Controllers\Admin\DatabaseBackupController;
 
 
 /*
@@ -104,6 +105,12 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
                 ->name('admin.maintenance-cleanup.window');
             Route::delete('/maintenance-cleanup', [MaintenanceCleanupController::class, 'destroy'])
                 ->name('admin.maintenance-cleanup.destroy');
+            Route::get('/database', [DatabaseBackupController::class, 'index'])
+                ->name('admin.database.index');
+            Route::get('/database/download', [DatabaseBackupController::class, 'download'])
+                ->name('admin.database.download');
+            Route::post('/database/restore', [DatabaseBackupController::class, 'restore'])
+                ->name('admin.database.restore');
         });
         Route::get('/issuance', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance', $request->query()))
             ->name('admin.issuance.index');
