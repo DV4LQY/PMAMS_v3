@@ -24,6 +24,8 @@
         filterTimer: null,
 
         addTypeId: '{{ old('device_type_id', $addTypeId ?? $types->first()?->id) }}',
+        addCondition: @js(strtolower((string) old('condition', 'serviceable'))),
+        addStatus: @js(strtolower((string) old('status', 'available'))),
         addComputerName: @js(old('computer_name', old('specs.computer_name', ''))),
         addOsVersion: @js(old('os_version', '')),
         addMsVersion: @js(old('ms_office_version', '')),
@@ -292,6 +294,8 @@
             const specs = device.specs ?? {};
 
             this.addTypeId = String(device.device_type_id ?? '');
+                this.addCondition = String(device.condition ?? 'serviceable').toLowerCase();
+                this.addStatus = String(device.status ?? 'available').toLowerCase();
             this.addComputerName = device.computer_name ?? specs.computer_name ?? '';
             this.addOsVersion = device.os_version ?? '';
             this.addMsVersion = device.ms_office_version ?? '';
@@ -326,6 +330,7 @@
             setValue('unit_price', this.formatUnitPriceValue(device.unit_price));
             setValue('date_acquired', device.date_acquired);
             setValue('condition', device.condition ?? 'serviceable');
+            setValue('status', this.addStatus);
             setValue('last_maintenance_date', device.last_maintenance_date);
             setValue('maintenance_remarks', device.maintenance_remarks);
         },
@@ -1060,7 +1065,6 @@
         <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             <input type="hidden" name="form_context" value="add_equipment">
-            <input type="hidden" name="status" value="available">
             @if(request()->filled('return_to'))<input type="hidden" name="return_to" value="{{ request('return_to') }}">@endif
 
             @include('admin.devices._add-equipment-fields')
@@ -1094,7 +1098,6 @@
             @csrf
             @method('PUT')
             <input type="hidden" name="device_id" x-model="editDevice.id">
-            <input type="hidden" name="status" x-model="editDevice.status">
 
             @include('admin.devices._add-equipment-fields', [
                 'lockEquipmentType' => true,
@@ -1587,7 +1590,7 @@
                     </div>
 
                     <div class="rounded-lg bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the end user. If a staff match is found, the profile is updated; if no match exists, a staff profile is created under the supplied office and location. Use <code>part_of_property_number</code> to link a Monitor/UPS/AVR/Scanner to the main system-unit property number; enter the desktop’s parent property number in that column and leave the child’s own <code>property_number</code> blank if it has none. The parent and child rows may appear in either order in the workbook. Linked equipment is grouped under the parent property number in exports. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; missing offices are created under a valid location. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). For <code>status=issued</code>, unmatched optional staff or office values no longer block the equipment row: the equipment remains available/unassigned or uses the valid location only, and the import summary shows a warning. Blank/zero property numbers receive temporary <code>TEMP-</code> labels, invalid property characters are sanitized, duplicate property rows update the same record, and invalid unit prices are left blank. Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
+                        One file covers the complete equipment specifications and optional issuance. Use <code>issued_user_email</code> (or <code>staff_email</code>) and <code>issued_user</code> (or <code>staff_name</code>) for the end user. If a staff match is found, the profile is updated; if no match exists, a staff profile is created under the supplied office and location. Use <code>part_of_property_number</code> to link a Monitor/UPS/AVR/Scanner to the main system-unit property number; enter the desktop’s parent property number in that column and leave the child’s own <code>property_number</code> blank if it has none. The parent and child rows may appear in either order in the workbook. Linked equipment is grouped under the parent property number in exports. Use <code>office</code> and <code>location_code</code> to link the assignment to registered office/location records; missing offices are created under a valid location. Leave the issued-user fields blank for shared equipment and provide <code>status=issued</code> plus an office or location (a blank status with location details is also treated as issued). For <code>status=issued</code>, unmatched optional staff or office values no longer block the equipment row: the equipment remains available/unassigned or uses the valid location only, and the import summary shows a warning. Blank/zero property numbers receive readable labels in the form <code>TYPE-COLLEGE-YYYYMMDD-####</code>; the type uses its first four characters and <code>location_code</code> supplies the college segment. Invalid property characters are sanitized, duplicate property rows update the same record, and invalid unit prices are left blank. Matches use active staff email first, then a unique name. Maximum 5,000 data rows and 10 MB per file.
                     </div>
 
                     <label class="flex items-start gap-2 rounded-lg border border-blue-200 bg-white/60 px-3 py-2 text-sm text-gray-700 dark:border-blue-900/50 dark:bg-gray-800/60 dark:text-gray-200">

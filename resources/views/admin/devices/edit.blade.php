@@ -14,6 +14,8 @@
     <div
         x-data="{
             addTypeId: @js(old('device_type_id', $device->device_type_id)),
+            addCondition: @js(strtolower((string) old('condition', $device->condition ?? 'serviceable'))),
+            addStatus: @js(strtolower((string) old('status', $device->status ?? 'available'))),
             addOsVersion: @js(old('os_version', $device->os_version ?? '')),
             addMsVersion: @js(old('ms_office_version', $device->ms_office_version ?? '')),
             typeNames: @js($types->pluck('name', 'id')),
@@ -50,7 +52,6 @@
             @csrf
             @method('PUT')
             <input type="hidden" name="device_id" value="{{ $device->id }}">
-            <input type="hidden" name="status" value="{{ old('status', $device->status ?? 'available') }}">
 
             @include('admin.devices._add-equipment-fields', [
                 'lockEquipmentType' => true,

@@ -124,13 +124,24 @@
                 @enderror
             </div>
 
-            {{-- New equipment always starts as available. Issuance changes its status. --}}
-            <input type="hidden" name="status" value="available">
+            {{-- Status is editable when an item is marked unserviceable. --}}
+            <div id="device_status_wrapper" style="display: none;">
+                <label class="text-sm font-medium">Status</label>
+                <select name="status" id="device_status_select" class="mt-1 w-full border rounded px-3 py-2">
+                    @foreach(['repair', 'not_in_use', 'available', 'issued'] as $statusOption)
+                        <option value="{{ $statusOption }}" @selected(old('status', 'available') === $statusOption)>
+                            {{ $statusOption === 'not_in_use' ? 'Not in Use' : ucfirst($statusOption) }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('status')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+                <div class="text-xs text-gray-500 mt-1">Shown only for equipment marked unserviceable.</div>
+            </div>
 
             {{-- Condition --}}
             <div>
                 <label class="text-sm font-medium">Condition</label>
-                <select name="condition" class="mt-1 w-full border rounded px-3 py-2">
+                <select name="condition" id="device_condition_select" class="mt-1 w-full border rounded px-3 py-2">
                     <option value="serviceable" @selected(old('condition', 'serviceable') === 'serviceable')>Serviceable</option>
                     <option value="unserviceable" @selected(old('condition') === 'unserviceable')>Unserviceable</option>
                     <option value="condemned" @selected(old('condition') === 'condemned')>Condemned</option>
@@ -219,6 +230,9 @@
 <script>
     (function () {
         var typeSelect      = document.getElementById('device_type_select');
+        var conditionSelect = document.getElementById('device_condition_select');
+        var statusWrap      = document.getElementById('device_status_wrapper');
+        var statusSelect    = document.getElementById('device_status_select');
         var osVersionSel    = document.getElementById('os_version_select');
         var msVersionSel    = document.getElementById('ms_office_version_select');
 
@@ -236,6 +250,19 @@
 
         function show(el) { el.style.display = ''; }
         function hide(el) { el.style.display = 'none'; }
+
+        function updateStatusField() {
+            var visible = conditionSelect && String(conditionSelect.value || '').toLowerCase() === 'unserviceable';
+            if (!statusWrap || !statusSelect) return;
+
+            if (visible) {
+                show(statusWrap);
+                statusSelect.disabled = false;
+            } else {
+                hide(statusWrap);
+                statusSelect.disabled = true;
+            }
+        }
 
         function updateFields() {
             var selected = typeSelect.options[typeSelect.selectedIndex];
@@ -267,6 +294,7 @@
         }
 
         typeSelect.addEventListener('change', updateFields);
+        conditionSelect.addEventListener('change', updateStatusField);
 
         osVersionSel.addEventListener('change', function () {
             if (this.value) { show(osLicenseWrap); } else { hide(osLicenseWrap); }
@@ -278,6 +306,7 @@
 
         // Run on page load
         updateFields();
+        updateStatusField();
     })();
 </script>
 @endpush

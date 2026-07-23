@@ -88,18 +88,54 @@
             setNotOkRow(key, enabled) {
                 this.notOkRows[key] = enabled;
                 this.$root.querySelectorAll('input').forEach((input) => {
-                    if (input.name === `disposition[${key}]`) input.disabled = !enabled;
+                    if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) {
+                        input.disabled = !enabled;
+                        if (!enabled) input.checked = false;
+                    }
                 });
+
+                if (enabled && !this.$root.querySelector(`input[name='condition[${key}]']:checked`)) {
+                    const defaultCondition = this.$root.querySelector(`input[name='condition[${key}]'][value='unserviceable']`);
+                    if (defaultCondition) defaultCondition.checked = true;
+                }
             },
             isNotOkSelected(key) {
                 return Array.from(this.$root.querySelectorAll('input'))
                     .some((input) => input.name === `hardware[${key}]` && input.value === 'Not OK' && input.checked);
             },
+            isUnserviceableSelected(key) {
+                // Include the version counter so Alpine reevaluates this
+                // after a checkbox is changed by code.
+                return this.checklistVersion >= 0
+                    && Boolean(this.$root.querySelector(`input[name='condition[${key}]'][value='unserviceable']:checked`));
+            },
+            syncCondition(key) {
+                const selected = this.$root.querySelector(`input[name='condition[${key}]']:checked`);
+                this.$root.querySelectorAll(`input[name='condition[${key}]']`).forEach((input) => {
+                    input.checked = selected === input;
+                });
+
+                // Repair/Not in Use is only valid for an explicitly
+                // unserviceable row. Remove stale status choices otherwise.
+                if (!selected || selected.value !== 'unserviceable') {
+                    this.$root.querySelectorAll(`input[name='disposition[${key}]']`).forEach((input) => {
+                        input.checked = false;
+                    });
+                }
+
+                this.refreshChecklistState();
+            },
+            syncStatus(key, event) {
+                this.$root.querySelectorAll(`input[name='disposition[${key}]']`).forEach((input) => {
+                    input.checked = input.checked && input === event?.target;
+                });
+                this.refreshChecklistState();
+            },
             clearDisposition(key) {
                 if (this.isNotOkSelected(key)) return;
 
                 this.$root.querySelectorAll('input').forEach((input) => {
-                    if (input.name === `disposition[${key}]`) input.checked = false;
+                    if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) input.checked = false;
                 });
             },
             formatSectionList(sections) {
@@ -241,6 +277,7 @@
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">OK</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not OK</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not Available</th>
+                        <th class="px-3 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Condition</th>
                         <th class="px-3 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Status</th>
                     </tr>
                 </thead>
@@ -356,42 +393,69 @@
                                         class="flex flex-col items-start justify-center gap-1 text-xs text-gray-600 dark:text-gray-300"
                                         x-bind:class="{ 'opacity-50': !notOkRows['{{ $key }}'] }"
                                     >
+                                        <span x-show="!notOkRows['{{ $key }}']" x-cloak class="font-semibold text-emerald-600 dark:text-emerald-400">Serviceable</span>
+                                        <label x-show="notOkRows['{{ $key }}']" x-cloak class="inline-flex cursor-pointer items-center gap-1">
+                                            <input
+                                                type="checkbox"
+                                                name="condition[{{ $key }}]"
+                                                value="unserviceable"
+                                                class="h-3.5 w-3.5 accent-red-600"
+                                                x-bind:disabled="!notOkRows['{{ $key }}']"
+                                                x-on:change="syncCondition('{{ $key }}')"
+                                                @checked(old("condition.$key", old("hardware.$key") === 'Not OK' ? 'unserviceable' : null) === 'unserviceable')
+                                            >
+                                            <span>Unserviceable</span>
+                                        </label>
+                                        <label x-show="notOkRows['{{ $key }}']" x-cloak class="inline-flex cursor-pointer items-center gap-1">
+                                            <input
+                                                type="checkbox"
+                                                name="condition[{{ $key }}]"
+                                                value="condemned"
+                                                class="h-3.5 w-3.5 accent-red-700"
+                                                x-bind:disabled="!notOkRows['{{ $key }}']"
+                                                x-on:change="syncCondition('{{ $key }}')"
+                                                @checked(old("condition.$key") === 'condemned')
+                                            >
+                                            <span>Condemned</span>
+                                        </label>
+                                    </div>
+                                @else
+                                    <span class="text-gray-300 dark:text-gray-600">&mdash;</span>
+                                @endif
+                            </td>
+
+                            <td class="px-3 py-3 text-center">
+                                @if(!in_array($item['group'] ?? '', ['Keyboard', 'Mouse'], true))
+                                    <div
+                                        x-show="isUnserviceableSelected('{{ $key }}')"
+                                        x-cloak
+                                        class="flex flex-col items-start justify-center gap-1 text-xs text-gray-600 dark:text-gray-300"
+                                        x-bind:class="{ 'opacity-50': !isUnserviceableSelected('{{ $key }}') }"
+                                    >
                                     <label class="inline-flex cursor-pointer items-center gap-1">
                                         <input
                                             type="checkbox"
                                             name="disposition[{{ $key }}]"
                                             value="repair"
                                             class="h-3.5 w-3.5 accent-amber-500"
-                                            x-bind:disabled="!notOkRows['{{ $key }}']"
-                                            x-on:change="$event.target.closest('td').querySelectorAll('input[type=checkbox]').forEach((checkbox) => { if (checkbox !== $event.target) checkbox.checked = false })"
+                                            x-bind:disabled="!isUnserviceableSelected('{{ $key }}')"
+                                            x-on:change="syncStatus('{{ $key }}', $event)"
                                             @checked(old("disposition.$key") === 'repair')
                                         >
                                         <span>Repair</span>
                                     </label>
                                     <label class="inline-flex cursor-pointer items-center gap-1">
-                                        <input
-                                            type="checkbox"
-                                            name="disposition[{{ $key }}]"
-                                            value="condemn"
-                                            class="h-3.5 w-3.5 accent-red-600"
-                                            x-bind:disabled="!notOkRows['{{ $key }}']"
-                                            x-on:change="$event.target.closest('td').querySelectorAll('input[type=checkbox]').forEach((checkbox) => { if (checkbox !== $event.target) checkbox.checked = false })"
-                                            @checked(old("disposition.$key") === 'condemn')
-                                        >
-                                        <span>Condemn</span>
-                                    </label>
-                                    <label class="inline-flex cursor-pointer items-center gap-1">
-                                        <input
-                                            type="checkbox"
-                                            name="disposition[{{ $key }}]"
-                                            value="not_in_use"
-                                            class="h-3.5 w-3.5 accent-slate-500"
-                                            x-bind:disabled="!notOkRows['{{ $key }}']"
-                                            x-on:change="$event.target.closest('td').querySelectorAll('input[type=checkbox]').forEach((checkbox) => { if (checkbox !== $event.target) checkbox.checked = false })"
-                                            @checked(old("disposition.$key") === 'not_in_use')
-                                        >
-                                        <span>Not in Use</span>
-                                    </label>
+                                            <input
+                                                type="checkbox"
+                                                name="disposition[{{ $key }}]"
+                                                value="not_in_use"
+                                                class="h-3.5 w-3.5 accent-slate-500"
+                                                x-bind:disabled="!isUnserviceableSelected('{{ $key }}')"
+                                                x-on:change="syncStatus('{{ $key }}', $event)"
+                                                @checked(old("disposition.$key") === 'not_in_use')
+                                            >
+                                            <span>Not in Use</span>
+                                        </label>
                                     </div>
                                 @else
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
@@ -746,12 +810,12 @@
         const name = document.getElementById('checklist-photo-name');
         if (!form || !video || !input || form.dataset.cameraReady === '1') return;
         form.dataset.cameraReady = '1';
-        const stopCamera = () => { if (stream) stream.getTracks().forEach(track => track.stop()); stream = null; video.srcObject = null; video.classList.add('hidden'); capture.classList.add('hidden'); stop.classList.add('hidden'); start.classList.remove('hidden'); };
+        const stopCamera = () => { if (stream) stream.getTracks().forEach(track => track.stop()); stream = null; window.__checklistCameraStream = null; video.pause?.(); video.srcObject = null; video.classList.add('hidden'); capture.classList.add('hidden'); stop.classList.add('hidden'); start.classList.remove('hidden'); };
         const showFile = (file) => { if (!file) return; image.src = URL.createObjectURL(file); image.classList.remove('hidden'); placeholder.classList.add('hidden'); name.textContent = file.name || 'Captured photo'; };
         input.addEventListener('change', () => showFile(input.files?.[0]));
         start.addEventListener('click', async () => {
             if (!navigator.mediaDevices?.getUserMedia) { input.click(); return; }
-            try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); video.srcObject = stream; await video.play(); video.classList.remove('hidden'); image.classList.add('hidden'); placeholder.classList.add('hidden'); start.classList.add('hidden'); capture.classList.remove('hidden'); stop.classList.remove('hidden'); }
+            try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); window.__checklistCameraStream = stream; video.srcObject = stream; await video.play(); video.classList.remove('hidden'); image.classList.add('hidden'); placeholder.classList.add('hidden'); start.classList.add('hidden'); capture.classList.remove('hidden'); stop.classList.remove('hidden'); }
             catch (error) { input.click(); }
         });
         capture.addEventListener('click', () => { if (!stream || !video.videoWidth) return; const size = Math.min(video.videoWidth, video.videoHeight); canvas.width = 1280; canvas.height = 1280; canvas.getContext('2d').drawImage(video, (video.videoWidth-size)/2, (video.videoHeight-size)/2, size, size, 0, 0, 1280, 1280); canvas.toBlob(blob => { if (!blob || blob.size > 10 * 1024 * 1024) return; const file = new File([blob], 'maintenance-photo.jpg', { type: 'image/jpeg' }); const transfer = new DataTransfer(); transfer.items.add(file); input.files = transfer.files; showFile(file); stopCamera(); }, 'image/jpeg', 0.9); });

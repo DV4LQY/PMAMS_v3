@@ -285,6 +285,7 @@
             const cameraControls = document.getElementById('gallery-camera-controls');
             const form = mainInput?.form;
             let cameraStream = window.__maintenanceGalleryCameraStream || null;
+            let cameraRequest = 0;
             if (!mainInput || !form || form.dataset.cameraReady === '1') return;
             form.dataset.cameraReady = '1';
 
@@ -313,11 +314,13 @@
             }
 
             function closeCamera() {
+                cameraRequest += 1;
                 if (cameraStream) {
                     cameraStream.getTracks().forEach((track) => track.stop());
                     cameraStream = null;
                     window.__maintenanceGalleryCameraStream = null;
                 }
+                cameraPreview.pause?.();
                 cameraPreview.srcObject = null;
                 cameraPreview.classList.add('hidden');
                 cameraControls.classList.add('hidden');
@@ -328,16 +331,22 @@
             }
 
             async function openCamera() {
+                const request = ++cameraRequest;
                 if (!navigator.mediaDevices?.getUserMedia) {
                     cameraInput.click();
                     return;
                 }
 
                 try {
-                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                    const stream = await navigator.mediaDevices.getUserMedia({
                         video: { facingMode: { ideal: 'environment' } },
                         audio: false,
                     });
+                    if (request !== cameraRequest) {
+                        stream.getTracks().forEach((track) => track.stop());
+                        return;
+                    }
+                    cameraStream = stream;
                     cameraPreview.srcObject = cameraStream;
                     window.__maintenanceGalleryCameraStream = cameraStream;
                     placeholder?.classList.add('hidden');

@@ -72,17 +72,17 @@ class StoreDeviceRequest extends FormRequest
             |--------------------------------------------------------------------------
             | Device Availability Status
             |--------------------------------------------------------------------------
-            | Newly added devices should always be available.
-            | This is handled in DeviceController@store:
-            | $data['status'] = 'available';
+            | Status is optional. The controller defaults new records to
+            | available when the status control is hidden for serviceable
+            | equipment.
             */
-            'status' => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
+            'status' => ['nullable', 'in:available,issued,repair,not_in_use'],
 
             /*
             |--------------------------------------------------------------------------
             | Device Condition
             |--------------------------------------------------------------------------
-            | Status = availability: available, issued, repair, retired
+            | Status = availability: available, issued, repair, not_in_use
             | Condition = physical condition: serviceable, unserviceable
             */
             'condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
@@ -157,7 +157,7 @@ class StoreDeviceRequest extends FormRequest
     {
         return [
             'property_number.regex' => 'Property number may only contain letters, numbers, hyphens, and slashes.',
-            'property_number.required_without' => 'A temporary property number will be generated when this field is blank.',
+            'property_number.required_without' => 'A generated property number will be assigned when this field is blank.',
             'part_of_property_number.exists' => 'The selected parent property number does not exist.',
             'part_of_property_number.required_without' => 'A parent property number is optional.',
             'part_of_property_number.regex' => 'Part of property number may only contain letters, numbers, hyphens, and slashes.',

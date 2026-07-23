@@ -71,6 +71,240 @@ import './bootstrap';
     });
 })();
 
+// Maintenance checklist camera: initialize on every SPA navigation so the
+// camera controls work immediately without requiring a full page reload.
+(function setupChecklistCamera() {
+    const stopCamera = () => {
+        const stream = window.__checklistCameraStream;
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        window.__checklistCameraStream = null;
+
+        const video = document.getElementById('checklist-camera-preview');
+        const capture = document.getElementById('checklist-camera-capture');
+        const stop = document.getElementById('checklist-camera-stop');
+        const start = document.getElementById('checklist-camera-start');
+        if (video) {
+            video.srcObject = null;
+            video.classList.add('hidden');
+        }
+        capture?.classList.add('hidden');
+        stop?.classList.add('hidden');
+        start?.classList.remove('hidden');
+    };
+
+    const init = () => {
+        const input = document.getElementById('maintenance-photo');
+        const form = input?.form;
+        const video = document.getElementById('checklist-camera-preview');
+        const canvas = document.getElementById('checklist-camera-canvas');
+        const image = document.getElementById('checklist-photo-preview');
+        const placeholder = document.getElementById('checklist-photo-placeholder');
+        const start = document.getElementById('checklist-camera-start');
+        const capture = document.getElementById('checklist-camera-capture');
+        const stop = document.getElementById('checklist-camera-stop');
+        const name = document.getElementById('checklist-photo-name');
+        if (!form || !input || !video || !canvas || !start || !capture || !stop || form.dataset.cameraReady === '1') return;
+        form.dataset.cameraReady = '1';
+
+        const showFile = (file) => {
+            if (!file) return;
+            image.src = URL.createObjectURL(file);
+            image.classList.remove('hidden');
+            placeholder?.classList.add('hidden');
+            if (name) name.textContent = file.name || 'Captured photo';
+        };
+
+        input.addEventListener('change', () => showFile(input.files?.[0]));
+        start.addEventListener('click', async () => {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                input.click();
+                return;
+            }
+            try {
+                stopCamera();
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: false,
+                });
+                window.__checklistCameraStream = stream;
+                video.srcObject = stream;
+                await video.play();
+                video.classList.remove('hidden');
+                image?.classList.add('hidden');
+                placeholder?.classList.add('hidden');
+                start.classList.add('hidden');
+                capture.classList.remove('hidden');
+                stop.classList.remove('hidden');
+            } catch (error) {
+                input.click();
+            }
+        });
+        capture.addEventListener('click', () => {
+            const stream = window.__checklistCameraStream;
+            if (!stream || !video.videoWidth || !video.videoHeight) return;
+            const size = Math.min(video.videoWidth, video.videoHeight);
+            canvas.width = 1280;
+            canvas.height = 1280;
+            canvas.getContext('2d').drawImage(video, (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size, 0, 0, 1280, 1280);
+            canvas.toBlob((blob) => {
+                if (!blob || blob.size > 10 * 1024 * 1024) return;
+                const file = new File([blob], `maintenance-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                try {
+                    const transfer = new DataTransfer();
+                    transfer.items.add(file);
+                    input.files = transfer.files;
+                } catch (error) {
+                    return;
+                }
+                showFile(file);
+                stopCamera();
+            }, 'image/jpeg', 0.9);
+        });
+        stop.addEventListener('click', stopCamera);
+    };
+
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+    document.addEventListener('livewire:navigated', init);
+    document.addEventListener('livewire:navigating', stopCamera);
+    init();
+})();
+
+// Equipment details camera fallback. Blade supplies the same handlers on a
+// full render; these globals keep them available when the page is reached via
+// SPA navigation where inline scripts may not be evaluated again.
+(function setupEquipmentDetailsCamera() {
+    let stream = null;
+    let requestId = 0;
+
+    const setBusy = (busy) => {
+        ['device-take-photo-button', 'device-capture-photo-button', 'device-clear-photo-button']
+            .map((id) => document.getElementById(id))
+            .filter(Boolean)
+            .forEach((button) => { button.disabled = busy; });
+    };
+
+    const close = () => {
+        requestId += 1;
+        (stream || window.__deviceDetailsCameraStream)?.getTracks().forEach((track) => track.stop());
+        stream = null;
+        window.__deviceDetailsCameraStream = null;
+        const video = document.getElementById('device-camera-video');
+        const controls = document.getElementById('device-camera-controls');
+        if (video) {
+            video.pause?.();
+            video.srcObject = null;
+            video.classList.add('hidden');
+        }
+        controls?.classList.add('hidden');
+        controls?.classList.remove('flex');
+    };
+
+    const open = async () => {
+        const video = document.getElementById('device-camera-video');
+        const controls = document.getElementById('device-camera-controls');
+        const status = document.getElementById('device-photo-status');
+        if (!video || !controls || !status) return;
+        if (!navigator.mediaDevices?.getUserMedia) {
+            status.textContent = 'Camera access is not available in this browser.';
+            return;
+        }
+
+        close();
+        const currentRequest = ++requestId;
+        status.textContent = 'Opening camera...';
+        setBusy(true);
+        try {
+            const nextStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } },
+                audio: false,
+            });
+            if (currentRequest !== requestId) {
+                nextStream.getTracks().forEach((track) => track.stop());
+                return;
+            }
+            stream = nextStream;
+            window.__deviceDetailsCameraStream = stream;
+            video.srcObject = stream;
+            await video.play();
+            video.classList.remove('hidden');
+            controls.classList.remove('hidden');
+            controls.classList.add('flex');
+            status.textContent = 'Camera ready.';
+        } catch (error) {
+            status.textContent = 'Camera permission was blocked or no camera was found.';
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const capture = async () => {
+        const form = document.getElementById('device-photo-form');
+        const video = document.getElementById('device-camera-video');
+        const canvas = document.getElementById('device-camera-canvas');
+        const image = document.getElementById('device-photo-image');
+        const empty = document.getElementById('device-photo-empty');
+        const status = document.getElementById('device-photo-status');
+        if (!form || !video || !canvas || !image || !status || !stream || !video.videoWidth) return;
+        setBusy(true);
+        status.textContent = 'Saving photo...';
+        try {
+            const size = Math.min(video.videoWidth, video.videoHeight);
+            canvas.width = 1280;
+            canvas.height = 1280;
+            canvas.getContext('2d').drawImage(video, (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size, 0, 0, 1280, 1280);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+            if (!blob || blob.size > 10 * 1024 * 1024) throw new Error('The captured photo is larger than 10 MB.');
+            const data = new FormData(form);
+            data.append('equipment_photo', blob, 'equipment-photo.jpg');
+            const response = await fetch(form.action, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
+            if (!response.ok) throw new Error('Photo upload failed.');
+            const result = await response.json();
+            image.src = `${result.photo_url}?v=${Date.now()}`;
+            image.classList.remove('hidden');
+            empty?.classList.add('hidden');
+            empty?.classList.remove('flex');
+            document.getElementById('device-clear-photo-button')?.classList.remove('hidden');
+            status.textContent = result.message || 'Photo saved.';
+            close();
+        } catch (error) {
+            status.textContent = error.message || 'Photo upload failed. Please try again.';
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const clearPhoto = async () => {
+        if (!window.confirm('Delete this equipment photo?')) return;
+        const form = document.getElementById('device-photo-delete-form');
+        const image = document.getElementById('device-photo-image');
+        const empty = document.getElementById('device-photo-empty');
+        const status = document.getElementById('device-photo-status');
+        if (!form || !status) return;
+        setBusy(true);
+        try {
+            const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
+            if (!response.ok) throw new Error('Photo delete failed.');
+            const result = await response.json();
+            image?.classList.add('hidden');
+            image?.removeAttribute('src');
+            empty?.classList.remove('hidden');
+            empty?.classList.add('flex');
+            document.getElementById('device-clear-photo-button')?.classList.add('hidden');
+            status.textContent = result.message || 'Photo cleared.';
+        } catch (error) {
+            status.textContent = error.message || 'Photo delete failed. Please try again.';
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (!window.openDeviceCamera) window.openDeviceCamera = open;
+    if (!window.closeDeviceCamera) window.closeDeviceCamera = close;
+    if (!window.captureDevicePhoto) window.captureDevicePhoto = capture;
+    if (!window.clearDevicePhoto) window.clearDevicePhoto = clearPhoto;
+    document.addEventListener('livewire:navigating', close);
+})();
+
 (function setupAdminNavigationState() {
     if (window.__adminNavigationStateReady) return;
     window.__adminNavigationStateReady = true;

@@ -19,7 +19,7 @@
     $editComputerName = old('computer_name', $device->computer_name ?? data_get($device->specs, 'computer_name', ''));
     $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
     $editLastMaintenanceDate = old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '');
-    $editCondition = old('condition', $device->condition ?? 'serviceable');
+    $editCondition = strtolower((string) old('condition', $device->condition ?? 'serviceable'));
     $reissueReturnPath = parse_url($deviceUrl, PHP_URL_PATH) . '?reissue_open=1';
     $reissueStaffOffice = $device->currentAssignment?->office ?: $device->currentAssignment?->staff?->office;
     $reissueAddStaffUrl = $reissueStaffOffice
@@ -85,6 +85,8 @@
             selectedOsVersion: window.__deviceShowData.selectedOsVersion,
             selectedMsOfficeVersion: window.__deviceShowData.selectedMsOfficeVersion,
             addTypeId: window.__deviceShowData.selectedTypeId,
+            addCondition: String(window.__deviceShowData.editDevice.condition || 'serviceable').toLowerCase(),
+            addStatus: String(window.__deviceShowData.editDevice.status || 'available').toLowerCase(),
             addComputerName: window.__deviceShowData.editDevice.computer_name || '',
             addOsVersion: window.__deviceShowData.selectedOsVersion || '',
             addMsVersion: window.__deviceShowData.selectedMsOfficeVersion || '',
@@ -139,6 +141,8 @@
                 const specs = device.specs ?? {};
 
                 this.addTypeId = String(device.device_type_id ?? '');
+                this.addCondition = String(device.condition ?? 'serviceable').toLowerCase();
+                this.addStatus = String(device.status ?? 'available').toLowerCase();
                 this.addComputerName = device.computer_name ?? specs.computer_name ?? '';
                 this.addOsVersion = device.os_version ?? '';
                 this.addMsVersion = device.ms_office_version ?? '';
@@ -173,6 +177,7 @@
                 setValue('unit_price', this.formatUnitPriceValue(device.unit_price));
                 setValue('date_acquired', device.date_acquired);
                 setValue('condition', device.condition ?? 'serviceable');
+                setValue('status', this.addStatus);
                 setValue('last_maintenance_date', device.last_maintenance_date);
                 setValue('maintenance_remarks', device.maintenance_remarks);
             },
@@ -256,16 +261,16 @@
     }
 
     let deviceCameraStream = null;
+    let deviceCameraRequest = 0;
 
     function renderEmptyDevicePhotoPreview() {
-        const preview = document.getElementById('device-photo-preview');
+        const image = document.getElementById('device-photo-image');
+        const emptyState = document.getElementById('device-photo-empty');
 
-        preview.innerHTML = '';
-
-        const emptyState = document.createElement('div');
-        emptyState.className = 'flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400';
-        emptyState.textContent = 'No equipment photo uploaded.';
-        preview.appendChild(emptyState);
+        image?.classList.add('hidden');
+        image?.removeAttribute('src');
+        emptyState?.classList.remove('hidden');
+        emptyState?.classList.add('flex');
     }
 
     function setDevicePhotoBusy(isBusy) {
@@ -281,25 +286,29 @@
     }
 
     function closeDeviceCamera() {
-        const panel = document.getElementById('device-camera-panel');
+        deviceCameraRequest += 1;
         const video = document.getElementById('device-camera-video');
+        const controls = document.getElementById('device-camera-controls');
 
         if (deviceCameraStream) {
             deviceCameraStream.getTracks().forEach((track) => track.stop());
             deviceCameraStream = null;
         }
+        window.__deviceDetailsCameraStream = null;
 
         if (video) {
             video.srcObject = null;
         }
 
-        panel?.classList.add('hidden');
-        panel?.classList.remove('flex');
+        video?.classList.add('hidden');
+        controls?.classList.add('hidden');
+        controls?.classList.remove('flex');
     }
 
     async function openDeviceCamera() {
-        const panel = document.getElementById('device-camera-panel');
+        const request = ++deviceCameraRequest;
         const video = document.getElementById('device-camera-video');
+        const controls = document.getElementById('device-camera-controls');
         const status = document.getElementById('device-photo-status');
 
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -311,7 +320,7 @@
         setDevicePhotoBusy(true);
 
         try {
-            deviceCameraStream = await navigator.mediaDevices.getUserMedia({
+            const cameraStream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     facingMode: { ideal: 'environment' },
                     width: { ideal: 1280 },
@@ -320,11 +329,20 @@
                 audio: false
             });
 
+            if (request !== deviceCameraRequest) {
+                cameraStream.getTracks().forEach((track) => track.stop());
+                return;
+            }
+
+            deviceCameraStream = cameraStream;
+            window.__deviceDetailsCameraStream = deviceCameraStream;
+
             video.srcObject = deviceCameraStream;
             await video.play();
 
-            panel.classList.remove('hidden');
-            panel.classList.add('flex');
+            video.classList.remove('hidden');
+            controls?.classList.remove('hidden');
+            controls?.classList.add('flex');
             status.textContent = 'Camera ready.';
         } catch (error) {
             status.textContent = window.isSecureContext
@@ -339,7 +357,8 @@
         const form = document.getElementById('device-photo-form');
         const video = document.getElementById('device-camera-video');
         const canvas = document.getElementById('device-camera-canvas');
-        const preview = document.getElementById('device-photo-preview');
+        const image = document.getElementById('device-photo-image');
+        const emptyState = document.getElementById('device-photo-empty');
         const status = document.getElementById('device-photo-status');
 
         if (!deviceCameraStream || !video.videoWidth || !video.videoHeight) {
@@ -380,13 +399,11 @@
             if (!response.ok) throw new Error('Photo upload failed.');
 
             const result = await response.json();
-            preview.innerHTML = '';
-
-            const image = document.createElement('img');
             image.src = result.photo_url + '?v=' + Date.now();
             image.alt = 'Photo of equipment';
-            image.className = 'h-full w-full object-cover';
-            preview.appendChild(image);
+            image.classList.remove('hidden');
+            emptyState?.classList.add('hidden');
+            emptyState?.classList.remove('flex');
             status.textContent = result.message;
             const clearButton = document.getElementById('device-clear-photo-button');
             clearButton?.classList.remove('hidden');
@@ -507,19 +524,25 @@
             <div class="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
                 <div>
                     <h2 class="font-semibold text-gray-900 dark:text-white">Equipment Photo</h2>
-                    <div id="device-photo-preview" class="mt-3 aspect-square w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
-                        @if($device->photo_path)
-                            <img
-                                id="device-photo-image"
-                                src="{{ asset('storage/' . $device->photo_path) }}"
-                                alt="Photo of {{ $device->property_number }}"
-                                class="h-full w-full object-cover"
-                            >
-                        @else
-                            <div class="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                                No equipment photo uploaded.
-                            </div>
-                        @endif
+                    <div id="device-photo-preview" class="relative mt-3 aspect-square w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
+                        <img
+                            id="device-photo-image"
+                            src="{{ $device->photo_path ? asset('storage/' . $device->photo_path) : '' }}"
+                            alt="Photo of {{ $device->property_number }}"
+                            class="{{ $device->photo_path ? '' : 'hidden' }} h-full w-full object-cover"
+                        >
+                        <div id="device-photo-empty" class="{{ $device->photo_path ? 'hidden' : 'flex' }} h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                            No equipment photo uploaded.
+                        </div>
+                        <video id="device-camera-video" class="absolute inset-0 z-10 hidden h-full w-full bg-black object-cover" autoplay playsinline muted></video>
+                        <canvas id="device-camera-canvas" class="hidden"></canvas>
+                        <div id="device-camera-controls" class="absolute bottom-3 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-2 rounded-xl bg-black/75 p-2">
+                            <button type="button" onclick="closeDeviceCamera()" class="rounded-lg bg-gray-800 px-3 py-2 text-xs font-medium text-white hover:bg-gray-700">Cancel</button>
+                            <button id="device-capture-photo-button" type="button" onclick="captureDevicePhoto()" class="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
+                                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.1-1.6a2 2 0 0 1 1.7-.9h2.4a2 2 0 0 1 1.7.9L16 6h1.5A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z" /></svg>
+                                Capture
+                            </button>
+                        </div>
                     </div>
                     <form
                         id="device-photo-form"
@@ -877,7 +900,6 @@
                 @method('PUT')
 
                 <input type="hidden" name="device_id" x-model="editDevice.id">
-                <input type="hidden" name="status" x-model="editDevice.status">
 
                 <div class="max-h-[75vh] overflow-y-auto px-6 py-5">
                     @include('admin.devices._add-equipment-fields', [
@@ -1191,63 +1213,6 @@
                 </div>
             </form>
             @endif
-        </div>
-    </div>
-</div>
-
-<div
-    id="device-camera-panel"
-    class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-950/90 px-4 py-6"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Equipment camera"
->
-    <div class="w-full max-w-md overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl">
-        <div class="flex items-center justify-between border-b border-gray-700 px-4 py-3">
-            <h2 class="text-base font-semibold text-white">Take Equipment Photo</h2>
-            <button
-                type="button"
-                onclick="closeDeviceCamera()"
-                class="rounded-lg p-2 text-gray-300 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label="Close camera"
-            >
-                <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" />
-                </svg>
-            </button>
-        </div>
-
-        <div class="aspect-square bg-black">
-            <video
-                id="device-camera-video"
-                class="h-full w-full object-cover"
-                autoplay
-                playsinline
-                muted
-            ></video>
-            <canvas id="device-camera-canvas" class="hidden"></canvas>
-        </div>
-
-        <div class="flex gap-3 px-4 py-4">
-            <button
-                type="button"
-                onclick="closeDeviceCamera()"
-                class="inline-flex flex-1 items-center justify-center rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-            >
-                Cancel
-            </button>
-            <button
-                id="device-capture-photo-button"
-                type="button"
-                onclick="captureDevicePhoto()"
-                class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3.5" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.1-1.6a2 2 0 0 1 1.7-.9h2.4a2 2 0 0 1 1.7.9L16 6h1.5A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z" />
-                </svg>
-                Capture Photo
-            </button>
         </div>
     </div>
 </div>

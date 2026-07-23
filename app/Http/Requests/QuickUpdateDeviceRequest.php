@@ -34,7 +34,7 @@ class QuickUpdateDeviceRequest extends FormRequest
             'date_acquired' => ['nullable', 'date'],
 
             'condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
-            'status'    => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
+            'status'    => ['nullable', 'in:available,issued,repair,not_in_use'],
 
             'last_maintenance_date' => ['nullable', 'date'],
             'maintenance_remarks'   => ['nullable', 'string'],

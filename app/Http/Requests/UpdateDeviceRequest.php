@@ -62,7 +62,7 @@ class UpdateDeviceRequest extends FormRequest
             | Keep status nullable
             |--------------------------------------------------------------------------
             */
-            'status'    => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
+            'status'    => ['nullable', 'in:available,issued,repair,not_in_use'],
             'condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
 
             'notes' => ['nullable', 'string', 'max:2000'],

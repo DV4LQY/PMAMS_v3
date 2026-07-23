@@ -45,6 +45,8 @@
     x-data="{
         addDeviceOpen: {{ ($errors->any() || request('action') === 'add-equipment') ? 'true' : 'false' }},
         addTypeId: '{{ old('device_type_id', $types->first()?->id) }}',
+        addCondition: @js(strtolower((string) old('condition', 'serviceable'))),
+        addStatus: @js(strtolower((string) old('status', 'available'))),
         addOsVersion: @js(old('os_version', '')),
         addMsVersion: @js(old('ms_office_version', '')),
 
@@ -398,7 +400,6 @@
                 <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="flex min-h-0 flex-1 flex-col" x-on:submit="cleanUnitPrices($event.target)">
                     @csrf
                     <input type="hidden" name="form_context" value="add_equipment">
-                    <input type="hidden" name="status" value="available">
                     <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                         @include('admin.devices._add-equipment-fields')
                     </div>

@@ -36,7 +36,7 @@
             placeholder="e.g. PN-2026-0001"
         >
         @error('property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank to generate a temporary TEMP-* number, or use a parent property number for a linked peripheral.</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank to generate a TYPE-COLLEGE-YYYYMMDD-#### number, or use a parent property number for a linked peripheral.</p>
     </div>
 
     <div x-data="{
@@ -356,12 +356,24 @@
 
     <div>
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Condition</label>
-        <select name="condition" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-            <option value="serviceable" @selected(old('condition', 'serviceable') === 'serviceable')>Serviceable</option>
-            <option value="unserviceable" @selected(old('condition') === 'unserviceable')>Unserviceable</option>
-            <option value="condemned" @selected(old('condition') === 'condemned')>Condemned</option>
+        <select name="condition" x-model="addCondition" x-on:change="addCondition = String($event.target.value).toLowerCase()" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+            <option value="serviceable">Serviceable</option>
+            <option value="unserviceable">Unserviceable</option>
+            <option value="condemned">Condemned</option>
         </select>
         @error('condition')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+    </div>
+
+    <div x-show="String(addCondition || '').toLowerCase() === 'unserviceable'" x-cloak data-equipment-field="status">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+        <select name="status" x-model="addStatus" x-on:change="addStatus = String($event.target.value).toLowerCase()" x-bind:disabled="addCondition !== 'unserviceable'" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-700 dark:text-white">
+            <option value="repair">Repair</option>
+            <option value="not_in_use">Not in Use</option>
+            <option value="available">Available</option>
+            <option value="issued">Issued</option>
+        </select>
+        @error('status')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Availability and workflow status.</p>
     </div>
 
     <div>

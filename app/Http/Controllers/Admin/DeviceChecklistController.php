@@ -77,7 +77,13 @@ class DeviceChecklistController extends Controller
 
         $dispositionRules = [];
         foreach ($this->dispositionItems() as $key => $item) {
+            // Accept the legacy value during the transition; it is converted
+            // to the Condition column below and is never persisted as a status.
             $dispositionRules["disposition.{$key}"] = ['nullable', 'string', Rule::in(['repair', 'condemn', 'not_in_use'])];
+        }
+        $conditionRules = [];
+        foreach ($this->dispositionItems() as $key => $item) {
+            $conditionRules["condition.{$key}"] = ['nullable', 'string', Rule::in(['serviceable', 'unserviceable', 'condemned'])];
         }
 
         $data = $request->validate(array_merge([
@@ -93,7 +99,8 @@ class DeviceChecklistController extends Controller
             'confirm_duplicate' => ['nullable', 'boolean'],
             'verification_reason' => ['nullable', 'string', 'max:1000'],
             'disposition' => ['nullable', 'array'],
-        ], $hardwareRules, $softwareRules, $dispositionRules));
+            'condition' => ['nullable', 'array'],
+        ], $hardwareRules, $softwareRules, $dispositionRules, $conditionRules));
 
         $dateChecked = $data['date_checked']
             ?? $data['maintenance_date']
@@ -111,13 +118,38 @@ class DeviceChecklistController extends Controller
             array_intersect_key($data['disposition'] ?? [], $this->dispositionItems()),
             static fn ($value) => in_array($value, ['repair', 'condemn', 'not_in_use'], true)
         );
+        $conditionResponses = array_filter(
+            array_intersect_key($data['condition'] ?? [], $this->dispositionItems()),
+            static fn ($value) => in_array($value, ['serviceable', 'unserviceable', 'condemned'], true)
+        );
+
+        foreach ($dispositionResponses as $key => $disposition) {
+            if ($disposition === 'condemn') {
+                $conditionResponses[$key] = 'condemned';
+                unset($dispositionResponses[$key]);
+            }
+        }
+
+        // OK rows are always serviceable. A Not OK row defaults to
+        // unserviceable unless the checker explicitly selects Condemned.
+        foreach ($this->dispositionItems() as $key => $item) {
+            $response = $hardwareResponses[$key] ?? null;
+            if ($response === 'OK' || $response === 'Not Available') {
+                $conditionResponses[$key] = 'serviceable';
+            } elseif ($response === 'Not OK' && ! isset($conditionResponses[$key])) {
+                $conditionResponses[$key] = 'unserviceable';
+            }
+        }
+        foreach ($dispositionResponses as $key => $disposition) {
+            $conditionResponses[$key] = $disposition === 'repair' ? 'unserviceable' : 'serviceable';
+        }
 
         foreach ($dispositionResponses as $key => $disposition) {
             if (($hardwareResponses[$key] ?? null) !== 'Not OK') {
                 return redirect()
                     ->back()
                     ->withInput()
-                    ->withErrors(["disposition.{$key}" => 'Repair, Condemn, or Not in Use can only be selected for a Not OK checklist item.']);
+                    ->withErrors(["disposition.{$key}" => 'Repair or Not in Use can only be selected for a Not OK checklist item.']);
             }
 
             if ($key !== 'system_unit_power_on' && $this->checklistTargetDevices($device, $key)->isEmpty()) {
@@ -128,10 +160,22 @@ class DeviceChecklistController extends Controller
             }
         }
 
+        foreach ($conditionResponses as $key => $condition) {
+            if ($key !== 'system_unit_power_on'
+                && ($hardwareResponses[$key] ?? null) === 'Not OK'
+                && $this->checklistTargetDevices($device, $key)->isEmpty()) {
+                return redirect()
+                    ->back()
+                    ->withInput()
+                    ->withErrors(["condition.{$key}" => 'Link the section property number to this system unit before applying a condition.']);
+            }
+        }
+
         // The parent system-unit disposition is independent from each linked
         // peripheral disposition. Every row is persisted by checklist key and
         // applied to the property number(s) represented by that section.
         $parentDisposition = $dispositionResponses['system_unit_power_on'] ?? null;
+        $parentCondition = $conditionResponses['system_unit_power_on'] ?? 'serviceable';
         $remarks = trim((string) ($data['remarks'] ?? ''));
         $correctiveAction = trim((string) ($data['corrective_action'] ?? ''));
         $verificationReason = trim((string) ($data['verification_reason'] ?? ''));
@@ -202,11 +246,10 @@ class DeviceChecklistController extends Controller
         $staff = $assignment?->staff;
         $office = $assignment?->office ?: $staff?->office;
         $location = $assignment?->location ?: $office?->location;
-        $historicalCondition = match ($parentDisposition) {
-            'repair', 'condemn' => 'unserviceable',
-            'not_in_use' => 'serviceable',
-            default => $device->condition ?? 'serviceable',
-        };
+        // Preserve the exact condition selected for the parent record. A
+        // Condemned selection must remain Condemned in history and on the
+        // linked property instead of being flattened to Unserviceable.
+        $historicalCondition = $parentCondition;
 
         $snapshot = [
             'property_number' => $device->property_number,
@@ -240,6 +283,17 @@ class DeviceChecklistController extends Controller
                     ],
                 ])
                 ->all(),
+            'conditions_by_section' => collect($conditionResponses)
+                ->mapWithKeys(fn ($condition, $key) => [
+                    $key => [
+                        'condition' => $condition,
+                        'property_numbers' => $this->checklistTargetDevices($device, $key)
+                            ->pluck('property_number')
+                            ->values()
+                            ->all(),
+                    ],
+                ])
+                ->all(),
             'staff_id' => $staff?->id,
             'end_user' => $staff ? trim($staff->first_name . ' ' . $staff->last_name) : null,
             'staff_email' => $staff?->email,
@@ -264,6 +318,7 @@ class DeviceChecklistController extends Controller
                 'hardware' => $hardwareResponses,
                 'software' => $softwareResponses,
                 'disposition' => $dispositionResponses,
+                'condition' => $conditionResponses,
                 'snapshot' => $snapshot,
                 'duplicate_check' => [
                     'matched_record_id' => $duplicateRecord?->id,
@@ -296,37 +351,42 @@ class DeviceChecklistController extends Controller
             'maintenance_remarks' => $latestRecord?->remarks,
         ];
 
+        // Apply the same condition value selected in the checklist to the
+        // system-unit property. This keeps Serviceable, Unserviceable, and
+        // Condemned distinct in the current record and its history.
+        $deviceUpdates['condition'] = $parentCondition;
         if ($parentDisposition === 'repair') {
             $deviceUpdates['status'] = 'repair';
-            $deviceUpdates['condition'] = 'unserviceable';
         } elseif ($parentDisposition === 'not_in_use') {
             $deviceUpdates['status'] = 'not_in_use';
-            $deviceUpdates['condition'] = 'serviceable';
-        } elseif ($parentDisposition === 'condemn') {
-            $deviceUpdates['condition'] = 'unserviceable';
         }
 
         $device->update($deviceUpdates);
 
-        foreach ($dispositionResponses as $key => $rowDisposition) {
+        $affectedSectionKeys = array_values(array_unique(array_merge(
+            array_keys($dispositionResponses),
+            array_keys($conditionResponses)
+        )));
+        foreach ($affectedSectionKeys as $key) {
+            $rowDisposition = $dispositionResponses[$key] ?? null;
             if ($key === 'system_unit_power_on') {
                 continue;
             }
 
             foreach ($this->checklistTargetDevices($device, $key) as $targetDevice) {
+                $rowCondition = $conditionResponses[$key] ?? 'serviceable';
                 $targetUpdates = [
                     'last_maintenance_date' => $dateChecked,
                     'maintenance_remarks' => $remarks,
+                    // Keep the selected condition aligned with the linked
+                    // property's own inventory condition.
+                    'condition' => $rowCondition,
                 ];
 
                 if ($rowDisposition === 'repair') {
                     $targetUpdates['status'] = 'repair';
-                    $targetUpdates['condition'] = 'unserviceable';
                 } elseif ($rowDisposition === 'not_in_use') {
                     $targetUpdates['status'] = 'not_in_use';
-                    $targetUpdates['condition'] = 'serviceable';
-                } elseif ($rowDisposition === 'condemn') {
-                    $targetUpdates['condition'] = 'unserviceable';
                 }
 
                 $targetDevice->update($targetUpdates);
@@ -338,6 +398,7 @@ class DeviceChecklistController extends Controller
                         'property_number' => $targetDevice->property_number,
                         'section' => $this->checklistItems()[$key]['group'] ?? $key,
                         'disposition' => $rowDisposition,
+                        'condition' => $rowCondition,
                         'parent_property_number' => $device->property_number,
                         'maintenance_date' => $dateChecked,
                     ])
@@ -349,6 +410,11 @@ class DeviceChecklistController extends Controller
         if ($dispositionResponses !== []) {
             $activityDescription .= '. Dispositions: ' . collect($dispositionResponses)
                 ->map(fn ($value, $key) => ($this->checklistItems()[$key]['group'] ?? $key) . ' = ' . ($value === 'not_in_use' ? 'Not in Use' : ucfirst($value)))
+                ->join(', ');
+        }
+        if ($conditionResponses !== []) {
+            $activityDescription .= '. Conditions: ' . collect($conditionResponses)
+                ->map(fn ($value, $key) => ($this->checklistItems()[$key]['group'] ?? $key) . ' = ' . ucfirst($value))
                 ->join(', ');
         }
         if ($duplicateRecord) {

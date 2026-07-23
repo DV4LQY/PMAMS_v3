@@ -46,6 +46,9 @@ class DeviceController extends Controller
     /** @var array{created:int, updated:int} */
     private array $importStaffChanges = ['created' => 0, 'updated' => 0];
 
+    /** @var list<string> Generated numbers reserved during the current import/request. */
+    private array $generatedPropertyNumbers = [];
+
     public function index(Request $request)
     {
         $q = $request->string('q')->toString();
@@ -57,7 +60,7 @@ class DeviceController extends Controller
         $status = $request->query('status');
         $condition = $request->query('condition');
 
-        if (!in_array($status, ['available', 'issued', 'repair', 'retired', 'not_in_use'], true)) {
+        if (!in_array($status, ['available', 'issued', 'repair', 'not_in_use'], true)) {
             $status = null;
         }
 
@@ -437,24 +440,8 @@ class DeviceController extends Controller
         $data = $request->validated();
         unset($data['equipment_photo']);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Default Device Availability
-        |--------------------------------------------------------------------------
-        | Every newly added device is automatically available.
-        | Do not let the form decide this.
-        */
-        $data['status'] = 'available';
-
-        /*
-        |--------------------------------------------------------------------------
-        | Default Device Condition
-        |--------------------------------------------------------------------------
-        | Device condition is separate from availability.
-        | condition = serviceable / unserviceable
-        | status = available / issued / repair / retired
-        */
         $data['condition'] = $data['condition'] ?? 'serviceable';
+        $data['status'] = $data['status'] ?? 'available';
 
         $data = $this->cleanDeviceDataByType($data);
 
@@ -470,7 +457,9 @@ class DeviceController extends Controller
         }
 
         if ($this->importValueIsEmpty($data['property_number'] ?? null)) {
-            $data['property_number'] = $this->generateImportedPropertyNumber(0);
+            $typeName = DeviceType::whereKey((int) ($data['device_type_id'] ?? 0))->value('name');
+            $collegeCode = $this->collegeCodeForParentProperty($data['part_of_property_number'] ?? null);
+            $data['property_number'] = $this->generateAutoPropertyNumber($typeName, $collegeCode);
         }
 
         $device = Device::create($data);
@@ -733,6 +722,7 @@ class DeviceController extends Controller
         }
 
         $data['condition'] = $data['condition'] ?? $device->condition ?? 'serviceable';
+        $data['status'] = $data['status'] ?? $device->status ?? 'available';
 
         $data = $this->cleanDeviceDataByType($data);
         $oldPhotoPath = $device->photo_path;
@@ -1021,7 +1011,7 @@ class DeviceController extends Controller
                 'filter_type' => ['nullable', 'integer', 'exists:device_types,id'],
                 'filter_location' => ['nullable', 'integer', 'exists:locations,id'],
                 'filter_office' => ['nullable', 'integer', 'exists:offices,id'],
-                'filter_status' => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
+                'filter_status' => ['nullable', 'in:available,issued,repair,not_in_use'],
                 'filter_condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
             ]);
 
@@ -1458,6 +1448,7 @@ class DeviceController extends Controller
         ];
         $this->importPendingParentPropertyNumbers = [];
         $this->importStaffChanges = ['created' => 0, 'updated' => 0];
+        $this->generatedPropertyNumbers = [];
     }
 
     /**
@@ -1472,8 +1463,19 @@ class DeviceController extends Controller
         $propertyNumber = $this->importValue($row, ['property_number']);
         $partOfPropertyNumber = $this->importValue($row, ['part_of_property_number']);
 
+        $equipmentType = trim((string) $this->importValue($row, ['equipment_type', 'device_type', 'type']));
+        $allowedEquipmentTypes = ['desktop', 'laptop', 'printer', 'monitor', 'ups', 'avr', 'scanner', 'other'];
+        if ($equipmentType === '' || ! in_array(strtolower($equipmentType), $allowedEquipmentTypes, true)) {
+            $equipmentType = 'Other';
+            $row['equipment_type'] = $equipmentType;
+            $warnings[] = 'equipment_type was blank or unsupported; it was set to Other.';
+        }
+
         if ($this->importValueIsEmpty($propertyNumber) && $this->importValueIsEmpty($partOfPropertyNumber)) {
-            $generatedPropertyNumber = $this->generateImportedPropertyNumber($rowNumber);
+            $generatedPropertyNumber = $this->generateAutoPropertyNumber(
+                $equipmentType,
+                $this->importValue($row, ['college_code', 'location_code'])
+            );
             $row['property_number'] = $generatedPropertyNumber;
             $warnings[] = "property_number was blank/zero; generated {$generatedPropertyNumber}.";
         } elseif (filled($propertyNumber)
@@ -1486,18 +1488,14 @@ class DeviceController extends Controller
             $sanitizedPropertyNumber = mb_substr($sanitizedPropertyNumber, 0, 50);
 
             if ($sanitizedPropertyNumber === '') {
-                $sanitizedPropertyNumber = $this->generateImportedPropertyNumber($rowNumber);
+                $sanitizedPropertyNumber = $this->generateAutoPropertyNumber(
+                    $equipmentType,
+                    $this->importValue($row, ['college_code', 'location_code'])
+                );
             }
 
             $row['property_number'] = $sanitizedPropertyNumber;
             $warnings[] = "property_number was sanitized to {$sanitizedPropertyNumber}.";
-        }
-
-        $equipmentType = trim((string) $this->importValue($row, ['equipment_type', 'device_type', 'type']));
-        $allowedEquipmentTypes = ['desktop', 'laptop', 'printer', 'monitor', 'ups', 'avr', 'scanner', 'other'];
-        if ($equipmentType === '' || ! in_array(strtolower($equipmentType), $allowedEquipmentTypes, true)) {
-            $row['equipment_type'] = 'Other';
-            $warnings[] = 'equipment_type was blank or unsupported; it was set to Other.';
         }
 
         foreach (['date_acquired', 'last_maintenance_date', 'issued_at'] as $dateField) {
@@ -1519,7 +1517,7 @@ class DeviceController extends Controller
 
         $allowedValues = [
             'condition' => ['serviceable', 'unserviceable', 'condemned'],
-            'status' => ['available', 'issued', 'repair', 'retired', 'not_in_use'],
+            'status' => ['available', 'issued', 'repair', 'not_in_use'],
             'os_version' => ['Windows 7', 'Windows 8', 'Windows 10', 'Windows 11', 'Windows Server', 'Linux'],
             'os_license' => ['Cracked', 'OEM Licensed', 'Open Source'],
             'ms_office_version' => ['Office 2007', 'Office 2010', 'Office 2013', 'Office 2016', 'Office 2019', 'Office 2021', 'Microsoft 365'],
@@ -1618,11 +1616,14 @@ class DeviceController extends Controller
         }
 
         // Clearing an invalid parent must not put the row back into the
-        // required-property error state. Give it the same temporary internal
+        // required-property error state. Give it the same readable generated
         // identifier used for originally blank/zero property numbers.
         if ($this->importValueIsEmpty($row['property_number'] ?? null)
             && $this->importValueIsEmpty($row['part_of_property_number'] ?? null)) {
-            $generatedPropertyNumber = $this->generateImportedPropertyNumber($rowNumber);
+            $generatedPropertyNumber = $this->generateAutoPropertyNumber(
+                $equipmentType,
+                $this->importValue($row, ['college_code', 'location_code'])
+            );
             $row['property_number'] = $generatedPropertyNumber;
             $warnings[] = "property_number was blank after parent cleanup; generated {$generatedPropertyNumber}.";
         }
@@ -1640,13 +1641,70 @@ class DeviceController extends Controller
         return [$row, $warnings];
     }
 
-    private function generateImportedPropertyNumber(int $rowNumber): string
+    /**
+     * Generate a readable, unique property number for an inventory row that
+     * does not have one yet. The four-digit sequence is scoped to the type,
+     * college/location code, and generation date.
+     */
+    private function generateAutoPropertyNumber(?string $equipmentType, ?string $collegeCode = null): string
     {
+        $typeSegment = $this->propertyNumberSegment($equipmentType, 'EQUIP', 4);
+        $collegeSegment = $this->propertyNumberSegment($collegeCode, 'GEN', 12);
+        $dateSegment = now()->format('Ymd');
+        $prefix = "{$typeSegment}-{$collegeSegment}-{$dateSegment}-";
+
+        $usedNumbers = Device::query()
+            ->where('property_number', 'like', $prefix . '%')
+            ->pluck('property_number')
+            ->map(fn ($number) => strtoupper((string) $number))
+            ->all();
+
+        $usedNumbers = array_merge($usedNumbers, array_map('strtoupper', $this->generatedPropertyNumbers));
+        $sequence = 1;
+
         do {
-            $candidate = 'TEMP-' . now()->format('YmdHis') . '-' . $rowNumber . '-' . strtoupper(Str::random(5));
-        } while (Device::where('property_number', $candidate)->exists());
+            $candidate = $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            $sequence++;
+        } while (in_array(strtoupper($candidate), $usedNumbers, true));
+
+        $this->generatedPropertyNumbers[] = $candidate;
 
         return $candidate;
+    }
+
+    private function propertyNumberSegment(?string $value, string $fallback, int $maxLength): string
+    {
+        $segment = strtoupper(Str::ascii(trim((string) $value)));
+        $segment = preg_replace('/[^A-Z0-9]+/', '', $segment) ?: '';
+        $segment = substr($segment, 0, $maxLength);
+
+        return $segment !== '' ? $segment : $fallback;
+    }
+
+    private function collegeCodeForParentProperty(?string $parentPropertyNumber): ?string
+    {
+        $parentPropertyNumber = trim((string) $parentPropertyNumber);
+        if ($parentPropertyNumber === '') {
+            return null;
+        }
+
+        $parent = Device::query()
+            ->with(['currentAssignment.location', 'currentAssignment.office.location'])
+            ->where('property_number', $parentPropertyNumber)
+            ->first();
+
+        $location = $parent?->currentAssignment?->location
+            ?: $parent?->currentAssignment?->office?->location;
+
+        if ($location?->code || $location?->name) {
+            return $location->code ?: $location->name;
+        }
+
+        // If the parent was generated by this convention, reuse its college
+        // segment even before an assignment has been recorded.
+        $segments = explode('-', strtoupper($parentPropertyNumber));
+
+        return count($segments) >= 4 ? $segments[1] : null;
     }
 
     public function importTemplate()
@@ -1706,11 +1764,19 @@ class DeviceController extends Controller
         }
 
         if (blank($propertyNumber) && filled($partOfPropertyNumber)) {
-            $propertyNumber = $this->generateLinkedPropertyNumber($partOfPropertyNumber, (int) $type->id);
+            $propertyNumber = $this->generateLinkedPropertyNumber(
+                $partOfPropertyNumber,
+                (int) $type->id,
+                $type->name,
+                $this->importValue($row, ['college_code', 'location_code'])
+            );
         }
 
         if (blank($propertyNumber)) {
-            $propertyNumber = $this->generateImportedPropertyNumber(0);
+            $propertyNumber = $this->generateAutoPropertyNumber(
+                $type->name,
+                $this->importValue($row, ['college_code', 'location_code'])
+            );
         }
 
         $device = Device::firstOrNew(['property_number' => $propertyNumber]);
@@ -1776,8 +1842,8 @@ class DeviceController extends Controller
         $statusValue = $this->importValue($row, ['status', 'availability']);
         if (filled($statusValue)) {
             $status = strtolower(trim((string) $statusValue));
-            if (!in_array($status, ['available', 'repair', 'retired', 'issued', 'not_in_use'], true)) {
-                throw new \RuntimeException('status must be available, issued, repair, retired, or not_in_use.');
+            if (!in_array($status, ['available', 'repair', 'issued', 'not_in_use'], true)) {
+                throw new \RuntimeException('status must be available, issued, repair, or not_in_use.');
             }
             $hasAssignmentDetails = $this->importStaffDetailsPresent($row)
                 || $this->importLocationDetailsPresent($row);
@@ -2395,8 +2461,8 @@ class DeviceController extends Controller
 
         $propertyNumber = trim((string) $this->importValue($row, ['property_number']));
         $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number']));
-        // A missing property number is valid: persistence assigns a unique
-        // TEMP-* number so inventory rows remain addressable and unique.
+        // A missing property number is valid: persistence assigns a readable
+        // TYPE-COLLEGE-YYYYMMDD-#### number so inventory rows remain unique.
 
         $equipmentType = trim((string) $this->importValue($row, ['equipment_type']));
         if ($equipmentType === '') {
@@ -2544,6 +2610,7 @@ class DeviceController extends Controller
             'staff_position' => 'position', 'staff_phone' => 'phone',
             'issued_to' => 'staff_name', 'issue_date' => 'issued_at', 'issue_remarks' => 'issuance_remarks',
             'remarks' => 'issuance_remarks',
+            'college_code' => 'location_code',
         ];
         foreach ($aliases as $from => $to) {
             if (array_key_exists($from, $normalized)) {
@@ -2756,21 +2823,20 @@ class DeviceController extends Controller
     }
 
     /**
-     * Generate a unique internal record number when a linked peripheral does
-     * not have its own property number. The export uses the parent number for
-     * grouping, while the database still keeps every equipment row distinct.
+     * Generate a readable property number for a linked peripheral that has no
+     * child number of its own. The parent remains in part_of_property_number;
+     * this generated value keeps each child record unique.
      */
-    private function generateLinkedPropertyNumber(string $parentPropertyNumber, ?int $deviceTypeId = null): string
-    {
-        $base = preg_replace('/[^A-Za-z0-9]+/', '-', strtoupper(trim($parentPropertyNumber))) ?: 'PARENT';
-        $base = trim(substr($base, 0, 28), '-');
-        $typeSegment = $deviceTypeId ? 'T' . $deviceTypeId . '-' : '';
+    private function generateLinkedPropertyNumber(
+        string $parentPropertyNumber,
+        ?int $deviceTypeId = null,
+        ?string $equipmentTypeName = null,
+        ?string $collegeCode = null
+    ): string {
+        $equipmentTypeName ??= DeviceType::whereKey($deviceTypeId)->value('name');
+        $collegeCode ??= $this->collegeCodeForParentProperty($parentPropertyNumber);
 
-        do {
-            $candidate = $base . '-LINK-' . $typeSegment . strtoupper(Str::random(8));
-        } while (Device::where('property_number', $candidate)->exists());
-
-        return $candidate;
+        return $this->generateAutoPropertyNumber($equipmentTypeName, $collegeCode);
     }
 
     /**
@@ -2814,7 +2880,7 @@ class DeviceController extends Controller
             'date_acquired' => ['nullable', 'date', 'before_or_equal:today'],
 
             'condition' => ['nullable', 'in:serviceable,unserviceable,condemned'],
-            'status' => ['nullable', 'in:available,issued,repair,retired,not_in_use'],
+            'status' => ['nullable', 'in:available,issued,repair,not_in_use'],
 
             'last_maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
             'maintenance_remarks' => ['nullable', 'string', 'max:1000'],
@@ -3100,7 +3166,7 @@ class DeviceController extends Controller
         $status = $request->query('status');
         $condition = $request->query('condition');
 
-        if (!in_array($status, ['available', 'issued', 'repair', 'retired', 'not_in_use'], true)) {
+        if (!in_array($status, ['available', 'issued', 'repair', 'not_in_use'], true)) {
             $status = null;
         }
 
@@ -3147,7 +3213,7 @@ class DeviceController extends Controller
         $status = $request->query('status');
         $condition = $request->query('condition');
 
-        if (!in_array($status, ['available', 'issued', 'repair', 'retired', 'not_in_use'], true)) {
+        if (!in_array($status, ['available', 'issued', 'repair', 'not_in_use'], true)) {
             $status = null;
         }
 
