@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\MaintenancePhotoController;
+use App\Http\Controllers\Admin\MaintenanceCleanupController;
 
 
 /*
@@ -96,6 +97,14 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
             ->name('admin.maintenance-gallery.bulkDownload');
         Route::delete('/maintenance-gallery/{photo}', [MaintenancePhotoController::class, 'destroy'])
             ->name('admin.maintenance-gallery.destroy');
+        Route::middleware('role:super_admin')->group(function () {
+            Route::get('/maintenance-cleanup', [MaintenanceCleanupController::class, 'index'])
+                ->name('admin.maintenance-cleanup.index');
+            Route::post('/maintenance-cleanup/window', [MaintenanceCleanupController::class, 'updateWindow'])
+                ->name('admin.maintenance-cleanup.window');
+            Route::delete('/maintenance-cleanup', [MaintenanceCleanupController::class, 'destroy'])
+                ->name('admin.maintenance-cleanup.destroy');
+        });
         Route::get('/issuance', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance', $request->query()))
             ->name('admin.issuance.index');
         Route::get('/issuance/export', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance.export', $request->query()))
@@ -123,6 +132,7 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
             Route::post('/checked-equipment/pdf-selected', [ReportController::class, 'checkedEquipmentSelectedPdf'])->name('checkedEquipment.pdfSelected');
             Route::get('/checked-equipment/pdf-filtered', [ReportController::class, 'checkedEquipmentFilteredPdf'])->name('checkedEquipment.pdfFiltered');
             Route::get('/checked-equipment/{record}/pdf', [ReportController::class, 'checkedEquipmentPdf'])->name('checkedEquipment.pdf');
+            Route::get('/checked-equipment/{record}/preview', [ReportController::class, 'checkedEquipmentPreview'])->name('checkedEquipment.preview');
             Route::get('/checklist', [ReportController::class, 'checklist'])->name('checklist');
         });
 

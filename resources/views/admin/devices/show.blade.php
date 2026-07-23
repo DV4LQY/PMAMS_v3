@@ -20,7 +20,7 @@
     $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
     $editLastMaintenanceDate = old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '');
     $editCondition = old('condition', $device->condition ?? 'serviceable');
-    $reissueReturnPath = parse_url($deviceUrl, PHP_URL_PATH);
+    $reissueReturnPath = parse_url($deviceUrl, PHP_URL_PATH) . '?reissue_open=1';
     $reissueStaffOffice = $device->currentAssignment?->office ?: $device->currentAssignment?->staff?->office;
     $reissueAddStaffUrl = $reissueStaffOffice
         ? route('admin.staff.index', [
@@ -69,7 +69,7 @@
     function deviceEditor() {
         return {
             editOpen: false,
-            reissueOpen: false,
+            reissueOpen: @json(request()->boolean('reissue_open')),
             staffLookupUrl: @js(route('admin.devices.lookup.staff')),
             reissueStaffQuery: '',
             reissueStaffId: '',

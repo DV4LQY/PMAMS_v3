@@ -132,6 +132,10 @@ class DeviceController extends Controller
             ->first(fn ($type) => strtolower((string) $type->name) === $requestedAddType)
             ?->id;
         $addParentPropertyNumber = $request->string('add_parent')->toString();
+        $returnTo = trim((string) $request->input('return_to', ''));
+        if ($returnTo !== '' && (! str_starts_with($returnTo, '/') || str_starts_with($returnTo, '//'))) {
+            $returnTo = '';
+        }
 
         return view('admin.devices.index', compact(
             'devices',
@@ -151,7 +155,8 @@ class DeviceController extends Controller
             'unlinkedPeripheralDevices',
             'openAddEquipment',
             'addTypeId',
-            'addParentPropertyNumber'
+            'addParentPropertyNumber',
+            'returnTo'
         ));
     }
 
@@ -464,6 +469,10 @@ class DeviceController extends Controller
             );
         }
 
+        if ($this->importValueIsEmpty($data['property_number'] ?? null)) {
+            $data['property_number'] = $this->generateImportedPropertyNumber(0);
+        }
+
         $device = Device::create($data);
         $device->load('type');
 
@@ -509,9 +518,12 @@ class DeviceController extends Controller
             ActivityLog::makePayload($summary)
         );
 
-        return redirect()
-            ->back()
-            ->with('success', 'Equipment added successfully.');
+        $returnTo = trim((string) $request->input('return_to', ''));
+        if ($returnTo !== '' && str_starts_with($returnTo, '/') && ! str_starts_with($returnTo, '//')) {
+            return redirect()->to($returnTo)->with('success', 'Equipment added successfully.');
+        }
+
+        return redirect()->back()->with('success', 'Equipment added successfully.');
     }
 
     public function show(Device $device)
@@ -1654,7 +1666,7 @@ class DeviceController extends Controller
         $this->validateImportedRow($row);
 
         $propertyNumber = $this->importValue($row, ['property_number', 'property_no', 'asset_number', 'asset_no']);
-        $propertyNumber = blank($propertyNumber) ? null : trim((string) $propertyNumber);
+        $propertyNumber = $this->importValueIsEmpty($propertyNumber) ? null : trim((string) $propertyNumber);
         $partOfPropertyNumber = $this->importValue($row, ['part_of_property_number', 'parent_property_number', 'parent_property_no']);
         $partOfPropertyNumber = blank($partOfPropertyNumber) ? null : trim((string) $partOfPropertyNumber);
 
@@ -1698,7 +1710,7 @@ class DeviceController extends Controller
         }
 
         if (blank($propertyNumber)) {
-            throw new \RuntimeException('property_number or part_of_property_number is required.');
+            $propertyNumber = $this->generateImportedPropertyNumber(0);
         }
 
         $device = Device::firstOrNew(['property_number' => $propertyNumber]);
@@ -2383,9 +2395,8 @@ class DeviceController extends Controller
 
         $propertyNumber = trim((string) $this->importValue($row, ['property_number']));
         $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number']));
-        if ($propertyNumber === '' && $partOfPropertyNumber === '') {
-            throw new \RuntimeException('property_number or part_of_property_number is required.');
-        }
+        // A missing property number is valid: persistence assigns a unique
+        // TEMP-* number so inventory rows remain addressable and unique.
 
         $equipmentType = trim((string) $this->importValue($row, ['equipment_type']));
         if ($equipmentType === '') {

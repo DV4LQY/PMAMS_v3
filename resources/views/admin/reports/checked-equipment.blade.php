@@ -423,6 +423,10 @@
                                 PDF
 
                             </a>
+                            <a href="{{ route('admin.reports.checkedEquipment.preview', $record) }}"
+                               class="ml-1 rounded bg-indigo-600 px-3 py-1 text-white">
+                                Preview
+                            </a>
 
 
                             @endif

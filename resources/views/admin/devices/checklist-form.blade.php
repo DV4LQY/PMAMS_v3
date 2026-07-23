@@ -27,9 +27,18 @@
         'computer_name' => $peripheral->computer_name,
         'parent_property_number' => $peripheral->part_of_property_number,
     ])->values()->all();
+    $openLink = request()->boolean('open_link');
+    $requestedPeripheralType = request()->query('peripheral_type', '');
+    $requestedAllowLinked = request()->boolean('allow_linked');
+    $checklistReturnPath = parse_url(route('admin.devices.checklist.form', $device), PHP_URL_PATH)
+        . '?open_link=1&peripheral_type=' . rawurlencode($requestedPeripheralType ?: 'monitor')
+        . '&allow_linked=' . ($requestedAllowLinked ? '1' : '0');
 @endphp
 
 <div class="space-y-6">
+    @if(session('success'))
+        <div class="rounded-xl border border-green-700/40 bg-green-900/20 px-4 py-3 text-sm text-green-300">{{ session('success') }}</div>
+    @endif
     <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -463,8 +472,23 @@
 
         <div class="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
             <label for="maintenance-photo" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Maintenance photo <span class="font-normal text-gray-500">(optional, maximum 10 MB)</span></label>
-            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">Upload a photo or use the device camera while completing this checklist. The photo is saved in the Maintenance Photo Gallery and linked to this checklist record.</p>
-            <input id="maintenance-photo" name="maintenance_photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200">
+            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">Take a rear-camera photo or upload an existing image. The photo is saved in the Maintenance Photo Gallery and linked to this checklist record.</p>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,18rem)_1fr]">
+                <div class="relative aspect-[4/3] overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
+                    <video id="checklist-camera-preview" class="hidden h-full w-full object-cover" autoplay playsinline muted></video>
+                    <img id="checklist-photo-preview" class="hidden h-full w-full object-contain" alt="Maintenance photo preview">
+                    <div id="checklist-photo-placeholder" class="flex h-full items-center justify-center px-3 text-center text-xs text-gray-500 dark:text-gray-400">No photo selected</div>
+                    <canvas id="checklist-camera-canvas" class="hidden"></canvas>
+                </div>
+                <div class="flex flex-wrap content-start gap-2">
+                    <button id="checklist-camera-start" type="button" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Take photo</button>
+                    <button id="checklist-camera-capture" type="button" class="hidden rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Capture</button>
+                    <button id="checklist-camera-stop" type="button" class="hidden rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-500">Stop camera</button>
+                    <label for="maintenance-photo" class="cursor-pointer rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-500">Upload photo</label>
+                    <input id="maintenance-photo" name="maintenance_photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" class="sr-only">
+                    <div id="checklist-photo-name" class="w-full text-xs text-gray-500 dark:text-gray-400">No photo selected.</div>
+                </div>
+            </div>
         </div>
 
         <div class="mt-6 flex justify-end gap-2">
@@ -517,7 +541,7 @@
                     <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
                         The equipment was already checked on date
                         <strong>{{ session('duplicate_warning.date') }}</strong>.
-                        Do you want to verify the checklist?
+                        Do you want to verify the checklist? This is within the configured {{ session('duplicate_warning.window_months', 3) }}-month verification window.
                     </p>
 
                     <div class="mt-5">
@@ -560,15 +584,16 @@
     @if(auth()->user()?->isAdmin())
         <div
             x-data="{
-                linkOpen: false,
-                peripheralType: '',
-                allowLinked: false,
+                linkOpen: @json($openLink),
+                peripheralType: @js($requestedPeripheralType),
+                allowLinked: @json($requestedAllowLinked),
                 peripheralQuery: '',
                 candidates: [],
                 selectedPeripheral: null,
                 parentPropertyNumber: @js($device->property_number),
                 linkBaseUrl: @js(url('/admin/devices')),
                 equipmentAddUrl: @js(route('admin.devices.index', ['open_add' => 1])),
+                returnTo: @js($checklistReturnPath),
                 linkablePeripherals: @js($linkablePeripheralOptions),
                 openLink(type, allowLinked = false) {
                     this.peripheralType = type;
@@ -603,12 +628,18 @@
                         : this.peripheralType.charAt(0).toUpperCase() + this.peripheralType.slice(1);
                     url.searchParams.set('add_type', requestedType);
                     url.searchParams.set('add_parent', this.parentPropertyNumber);
+                    const returnUrl = new URL(this.returnTo, window.location.origin);
+                    returnUrl.searchParams.set('open_link', '1');
+                    returnUrl.searchParams.set('peripheral_type', this.peripheralType);
+                    returnUrl.searchParams.set('allow_linked', this.allowLinked ? '1' : '0');
+                    url.searchParams.set('return_to', returnUrl.pathname + returnUrl.search);
                     window.location.assign(url.toString());
                 },
                 selectPeripheral(peripheral) {
                     this.selectedPeripheral = peripheral;
                 }
             }"
+            x-init="if (linkOpen && peripheralType) $nextTick(() => openLink(peripheralType, allowLinked))"
             x-on:open-checklist-link.window="openLink($event.detail.peripheralType, $event.detail.allowLinked)"
         >
             <x-modal show="linkOpen" title="Link Peripheral to This System Unit" maxWidth="max-w-xl">
@@ -695,4 +726,45 @@
         </div>
     @endif
 </div>
+
+@push('scripts')
+<script>
+(function () {
+    if (window.__checklistCameraReady) return;
+    window.__checklistCameraReady = true;
+    let stream = null;
+    function initChecklistCamera() {
+        const form = document.getElementById('maintenance-photo')?.form;
+        const video = document.getElementById('checklist-camera-preview');
+        const canvas = document.getElementById('checklist-camera-canvas');
+        const image = document.getElementById('checklist-photo-preview');
+        const placeholder = document.getElementById('checklist-photo-placeholder');
+        const input = document.getElementById('maintenance-photo');
+        const start = document.getElementById('checklist-camera-start');
+        const capture = document.getElementById('checklist-camera-capture');
+        const stop = document.getElementById('checklist-camera-stop');
+        const name = document.getElementById('checklist-photo-name');
+        if (!form || !video || !input || form.dataset.cameraReady === '1') return;
+        form.dataset.cameraReady = '1';
+        const stopCamera = () => { if (stream) stream.getTracks().forEach(track => track.stop()); stream = null; video.srcObject = null; video.classList.add('hidden'); capture.classList.add('hidden'); stop.classList.add('hidden'); start.classList.remove('hidden'); };
+        const showFile = (file) => { if (!file) return; image.src = URL.createObjectURL(file); image.classList.remove('hidden'); placeholder.classList.add('hidden'); name.textContent = file.name || 'Captured photo'; };
+        input.addEventListener('change', () => showFile(input.files?.[0]));
+        start.addEventListener('click', async () => {
+            if (!navigator.mediaDevices?.getUserMedia) { input.click(); return; }
+            try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); video.srcObject = stream; await video.play(); video.classList.remove('hidden'); image.classList.add('hidden'); placeholder.classList.add('hidden'); start.classList.add('hidden'); capture.classList.remove('hidden'); stop.classList.remove('hidden'); }
+            catch (error) { input.click(); }
+        });
+        capture.addEventListener('click', () => { if (!stream || !video.videoWidth) return; const size = Math.min(video.videoWidth, video.videoHeight); canvas.width = 1280; canvas.height = 1280; canvas.getContext('2d').drawImage(video, (video.videoWidth-size)/2, (video.videoHeight-size)/2, size, size, 0, 0, 1280, 1280); canvas.toBlob(blob => { if (!blob || blob.size > 10 * 1024 * 1024) return; const file = new File([blob], 'maintenance-photo.jpg', { type: 'image/jpeg' }); const transfer = new DataTransfer(); transfer.items.add(file); input.files = transfer.files; showFile(file); stopCamera(); }, 'image/jpeg', 0.9); });
+        stop.addEventListener('click', stopCamera);
+    }
+    document.addEventListener('DOMContentLoaded', initChecklistCamera);
+    document.addEventListener('livewire:navigated', initChecklistCamera);
+    document.addEventListener('livewire:navigating', function () {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    });
+    initChecklistCamera();
+})();
+</script>
+@endpush
 @endsection

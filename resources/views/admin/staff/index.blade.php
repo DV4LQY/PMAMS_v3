@@ -87,6 +87,7 @@
 
             Alpine.data('staffManager', () => ({
                 addOpen: {{ ($addBag->any() || ($openAddStaff ?? false)) ? 'true' : 'false' }},
+                returnTo: @js(request('return_to', '')),
                 editOpen: {{ $editBag->any() ? 'true' : 'false' }},
                 deleteOpen: false,
                 bulkEnabled: {{ old('staff') !== null ? 'true' : 'false' }},
@@ -153,6 +154,17 @@
                     this.bulkEnabled = false;
                     this.addSingle = this.blankRow();
                     this.bulkRows = [this.blankRow(), this.blankRow()];
+                },
+
+                closeAdd() {
+                    this.addOpen = false;
+                    if (this.returnTo) {
+                        if (window.Livewire && typeof window.Livewire.navigate === 'function') {
+                            window.Livewire.navigate(this.returnTo);
+                        } else {
+                            window.location.href = this.returnTo;
+                        }
+                    }
                 },
 
                 addBulkRow() {
@@ -426,7 +438,7 @@
         </div>
 
         {{-- Add modal --}}
-        <x-modal show="addOpen" title="Add Staff">
+        <x-modal id="add-staff-modal" show="addOpen" title="Add Staff" x-on:pmams-modal-close.window="if ($event.detail.id === 'add-staff-modal') closeAdd()">
             <form method="POST" action="{{ route('admin.staff.store', $office) }}" class="space-y-3">
                 @csrf
                 @if(request()->filled('return_to'))
@@ -628,7 +640,7 @@
                 <div class="flex gap-2 pt-2">
                     <button class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">Save</button>
                     <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200"
-                        @click="addOpen=false">Cancel</button>
+                        @click="closeAdd()">Cancel</button>
                 </div>
             </form>
         </x-modal>

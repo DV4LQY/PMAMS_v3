@@ -13,6 +13,7 @@
 <div
     x-data="{
         addOpen: {{ (old('form_context') === 'add_equipment' || ($openAddEquipment ?? false)) ? 'true' : 'false' }},
+        returnTo: @js($returnTo ?? request('return_to', '')),
         editOpen: false,
         issueOpen: false,
         deleteOpen: false,
@@ -112,6 +113,17 @@
             this.addOpen = true;
             window.pmamsOpenModal?.('add-equipment-modal');
             this.$nextTick(() => this.syncAddEquipmentType());
+        },
+
+        closeAddEquipment() {
+            this.addOpen = false;
+            if (this.returnTo) {
+                if (window.Livewire && typeof window.Livewire.navigate === 'function') {
+                    window.Livewire.navigate(this.returnTo);
+                } else {
+                    window.location.href = this.returnTo;
+                }
+            }
         },
 
         getTypeName(typeId) {
@@ -1044,11 +1056,12 @@
     </datalist>
 
     {{-- Add modal --}}
-    <x-modal id="add-equipment-modal" show="addOpen" title="Add Equipment" max-width="max-w-4xl">
+    <x-modal id="add-equipment-modal" show="addOpen" title="Add Equipment" max-width="max-w-4xl" x-on:pmams-modal-close.window="if ($event.detail.id === 'add-equipment-modal') closeAddEquipment()">
         <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             <input type="hidden" name="form_context" value="add_equipment">
             <input type="hidden" name="status" value="available">
+            @if(request()->filled('return_to'))<input type="hidden" name="return_to" value="{{ request('return_to') }}">@endif
 
             @include('admin.devices._add-equipment-fields')
 
@@ -1060,7 +1073,7 @@
                     type="button"
                     data-native-modal-close="add-equipment-modal"
                     class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                    x-on:click="addOpen = false"
+                    x-on:click="closeAddEquipment()"
                 >
                     Cancel
                 </button>

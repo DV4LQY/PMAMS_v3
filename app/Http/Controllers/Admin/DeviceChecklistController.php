@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\Device;
 use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
+use App\Models\SystemSetting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -140,8 +141,9 @@ class DeviceChecklistController extends Controller
         // three-month maintenance window. Every submission remains a new
         // maintenance record; this query is only used for the warning.
         $date = Carbon::parse($dateChecked);
+        $windowMonths = max(1, min(36, (int) SystemSetting::getValue('maintenance_checklist_duplicate_window_months', 3)));
         $duplicateRecords = $device->maintenanceRecords()
-            ->whereDate('maintenance_date', '>=', $date->copy()->subMonthsNoOverflow(3)->toDateString())
+            ->whereDate('maintenance_date', '>=', $date->copy()->subMonthsNoOverflow($windowMonths)->toDateString())
             ->whereDate('maintenance_date', '<=', $date->toDateString())
             ->orderByDesc('maintenance_date')
             ->orderByDesc('id')
@@ -155,6 +157,7 @@ class DeviceChecklistController extends Controller
                 ->with('duplicate_warning', [
                     'date' => $duplicateRecord->maintenance_date?->format('F j, Y'),
                     'record_id' => $duplicateRecord->id,
+                    'window_months' => $windowMonths,
                 ]);
         }
 
@@ -166,6 +169,7 @@ class DeviceChecklistController extends Controller
                 ->with('duplicate_warning', [
                     'date' => $duplicateRecord->maintenance_date?->format('F j, Y'),
                     'record_id' => $duplicateRecord->id,
+                    'window_months' => $windowMonths,
                 ]);
         }
 
@@ -199,8 +203,8 @@ class DeviceChecklistController extends Controller
         $office = $assignment?->office ?: $staff?->office;
         $location = $assignment?->location ?: $office?->location;
         $historicalCondition = match ($parentDisposition) {
-            'condemn' => 'condemned',
-            'repair' => 'unserviceable',
+            'repair', 'condemn' => 'unserviceable',
+            'not_in_use' => 'serviceable',
             default => $device->condition ?? 'serviceable',
         };
 
@@ -264,7 +268,7 @@ class DeviceChecklistController extends Controller
                 'duplicate_check' => [
                     'matched_record_id' => $duplicateRecord?->id,
                     'matches_in_three_months' => $duplicateRecords->count(),
-                    'window_months' => 3,
+                    'window_months' => $windowMonths,
                 ],
             ],
             'checked_by' => Auth::id(),
@@ -297,8 +301,9 @@ class DeviceChecklistController extends Controller
             $deviceUpdates['condition'] = 'unserviceable';
         } elseif ($parentDisposition === 'not_in_use') {
             $deviceUpdates['status'] = 'not_in_use';
+            $deviceUpdates['condition'] = 'serviceable';
         } elseif ($parentDisposition === 'condemn') {
-            $deviceUpdates['condition'] = 'condemned';
+            $deviceUpdates['condition'] = 'unserviceable';
         }
 
         $device->update($deviceUpdates);
@@ -319,8 +324,9 @@ class DeviceChecklistController extends Controller
                     $targetUpdates['condition'] = 'unserviceable';
                 } elseif ($rowDisposition === 'not_in_use') {
                     $targetUpdates['status'] = 'not_in_use';
+                    $targetUpdates['condition'] = 'serviceable';
                 } elseif ($rowDisposition === 'condemn') {
-                    $targetUpdates['condition'] = 'condemned';
+                    $targetUpdates['condition'] = 'unserviceable';
                 }
 
                 $targetDevice->update($targetUpdates);

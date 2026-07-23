@@ -27,6 +27,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Remarks</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Corrective Action</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Checked By</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Report</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -54,9 +55,10 @@
                             <td class="max-w-md px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->remarks ?: '-' }}</td>
                             <td class="max-w-md px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->corrective_action ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->checkedBy?->name ?? $record->checkedBy?->email ?? '-' }}</td>
+                            <td class="px-4 py-3"><a href="{{ route('admin.reports.checkedEquipment.preview', $record) }}" class="rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">Preview</a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No maintenance records yet.</td></tr>
+                        <tr><td colspan="8" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No maintenance records yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

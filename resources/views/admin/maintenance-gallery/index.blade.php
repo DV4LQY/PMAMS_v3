@@ -273,7 +273,7 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
+        function initMaintenanceGalleryCamera() {
             const mainInput = document.getElementById('gallery-photo');
             const cameraInput = document.getElementById('gallery-camera');
             const name = document.getElementById('gallery-photo-name');
@@ -283,7 +283,10 @@
             const cameraPreview = document.getElementById('gallery-camera-preview');
             const cameraCanvas = document.getElementById('gallery-camera-canvas');
             const cameraControls = document.getElementById('gallery-camera-controls');
-            let cameraStream = null;
+            const form = mainInput?.form;
+            let cameraStream = window.__maintenanceGalleryCameraStream || null;
+            if (!mainInput || !form || form.dataset.cameraReady === '1') return;
+            form.dataset.cameraReady = '1';
 
             function setMainPhoto(file, sourceInput = null) {
                 if (!file) return;
@@ -313,6 +316,7 @@
                 if (cameraStream) {
                     cameraStream.getTracks().forEach((track) => track.stop());
                     cameraStream = null;
+                    window.__maintenanceGalleryCameraStream = null;
                 }
                 cameraPreview.srcObject = null;
                 cameraPreview.classList.add('hidden');
@@ -335,6 +339,7 @@
                         audio: false,
                     });
                     cameraPreview.srcObject = cameraStream;
+                    window.__maintenanceGalleryCameraStream = cameraStream;
                     placeholder?.classList.add('hidden');
                     preview.classList.add('hidden');
                     cameraPreview.classList.remove('hidden');
@@ -362,6 +367,38 @@
             takePhotoButton?.addEventListener('click', openCamera);
             document.getElementById('gallery-camera-capture')?.addEventListener('click', capturePhoto);
             document.getElementById('gallery-camera-cancel')?.addEventListener('click', closeCamera);
+        }
+        document.addEventListener('DOMContentLoaded', initMaintenanceGalleryCamera, { once: true });
+        document.addEventListener('livewire:navigated', initMaintenanceGalleryCamera);
+        document.addEventListener('livewire:navigating', function () {
+            const stream = window.__maintenanceGalleryCameraStream;
+            if (stream) stream.getTracks().forEach((track) => track.stop());
+            window.__maintenanceGalleryCameraStream = null;
         });
+        initMaintenanceGalleryCamera();
+
+        if (!window.__maintenanceGallerySpaReady) {
+            window.__maintenanceGallerySpaReady = true;
+            document.addEventListener('submit', async function (event) {
+                const form = event.target;
+                if (!(form instanceof HTMLFormElement) || form.method.toUpperCase() !== 'POST' || form.dataset.noSpa === 'true') return;
+                const action = new URL(form.action || window.location.href, window.location.href);
+                if (!action.pathname.includes('/admin/maintenance-gallery') || action.pathname.includes('bulk-download')) return;
+                event.preventDefault();
+                const submitter = event.submitter;
+                if (submitter) submitter.disabled = true;
+                try {
+                    const response = await fetch(action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' } });
+                    if (!response.ok) throw new Error('Request failed');
+                    const next = new URL(response.url, window.location.href);
+                    const path = (window.adminLocalNavigatePath ? window.adminLocalNavigatePath(next) : next.pathname) + next.search;
+                    if (window.Livewire?.navigate) window.Livewire.navigate(path); else window.location.href = path;
+                } catch (error) {
+                    window.location.reload();
+                } finally {
+                    if (submitter) submitter.disabled = false;
+                }
+            });
+        }
     </script>
 @endsection

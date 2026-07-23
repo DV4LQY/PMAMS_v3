@@ -154,6 +154,20 @@ class ReportController extends Controller
         return $pdf->stream("maintenance-checklist-{$propertyNumber}-{$date}.pdf");
     }
 
+    public function checkedEquipmentPreview(DeviceMaintenanceRecord $record)
+    {
+        abort_unless($this->canViewCheckedRecord($record), 403);
+        $record->load(['device.type', 'staff', 'office', 'location', 'checkedBy', 'photos']);
+        abort_if(! $record->device, 404);
+
+        return view('admin.reports.checked-equipment-preview', [
+            'record' => $record,
+            'device' => $record->device,
+            'checklistItems' => $this->checklistItems(),
+            'softwareItems' => $this->softwareItems(),
+        ]);
+    }
+
     public function checkedEquipmentFilteredPdf(Request $request)
     {
         $records = $this->checkedEquipmentQuery($request)

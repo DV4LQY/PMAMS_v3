@@ -15,7 +15,7 @@
     <div
         class="fixed inset-0 bg-black/40"
         data-native-modal-close="{{ $attributes->get('id') }}"
-        @click="{{ $show }} = false"
+        @click="$dispatch('pmams-modal-close', { id: '{{ $attributes->get('id') }}' }); {{ $show }} = false"
     ></div>
 
     <div class="flex min-h-full items-start justify-center p-3 sm:items-center sm:p-6">
@@ -30,7 +30,7 @@
                     type="button"
                     class="rounded-lg px-2 py-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
                     data-native-modal-close="{{ $attributes->get('id') }}"
-                    @click="{{ $show }} = false"
+                    @click="$dispatch('pmams-modal-close', { id: '{{ $attributes->get('id') }}' }); {{ $show }} = false"
                 >
                     ✕
                 </button>
