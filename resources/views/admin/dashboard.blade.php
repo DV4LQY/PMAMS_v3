@@ -253,15 +253,17 @@
         data-chart-data="{{ json_encode([
             'condition' => ['labels' => array_keys($devicesByCondition ?? []), 'values' => array_values($devicesByCondition ?? [])],
             'availability' => ['labels' => array_keys($devicesByAvailability ?? []), 'values' => array_values($devicesByAvailability ?? [])],
+            'status' => ['labels' => array_keys($devicesByStatus ?? []), 'values' => array_values($devicesByStatus ?? [])],
             'type' => ['labels' => ($devicesByType ?? collect())->keys()->values()->all(), 'values' => ($devicesByType ?? collect())->values()->all()],
             'office' => ['labels' => ($devicesByOffice ?? collect())->keys()->values()->all(), 'values' => ($devicesByOffice ?? collect())->values()->all()],
+            'end_users' => ['labels' => ($endUsersByLocation ?? collect())->keys()->values()->all(), 'values' => ($endUsersByLocation ?? collect())->values()->all()],
             'maintenance' => ['labels' => ($maintenanceSemiannually ?? collect())->keys()->values()->all(), 'values' => ($maintenanceSemiannually ?? collect())->values()->all()]
         ]) }}"
     >
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 class="text-base font-semibold text-gray-900">Equipment Status</h2>
-            <p class="mt-1 mb-4 text-sm text-gray-500">Current condition breakdown.</p>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Condition, repair, and not-in-use breakdown.</p>
             <div style="position:relative; height:250px;">
                 <canvas id="statusChart"></canvas>
             </div>
@@ -284,13 +286,21 @@
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 class="text-base font-semibold text-gray-900">End Users by Location</h2>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Active end-user population assigned to each location.</p>
+            <div style="position:relative; height:250px;">
+                <canvas id="endUsersLocationChart"></canvas>
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 class="text-base font-semibold text-gray-900">Total Equipment Registered</h2>
             <p class="mt-1 mb-4 text-sm text-gray-500">Available and issued equipment breakdown.</p>
             <div style="position:relative; height:250px;"><canvas id="totalEquipmentChart"></canvas></div>
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 class="text-base font-semibold text-gray-900">Equipment Maintained Semiannually</h2>
+            <h2 class="text-base font-semibold text-gray-900">Equipment Maintained</h2>
             <p class="mt-1 mb-4 text-sm text-gray-500">Number of completed maintenance checklists per six-month period.</p>
             <div style="position:relative; height:250px;"><canvas id="maintenanceChart"></canvas></div>
         </div>
@@ -419,11 +429,11 @@
     new Chart(document.getElementById('statusChart'), {
         type: 'bar',
         data: {
-            labels: @json(array_keys($devicesByCondition ?? [])),
+            labels: @json(array_keys($devicesByStatus ?? [])),
             datasets: [{
                 label: 'Equipment',
-                data: @json(array_values($devicesByCondition ?? [])),
-                backgroundColor: ['#22c55e', '#ef4444', '#6b7280'],
+                data: @json(array_values($devicesByStatus ?? [])),
+                backgroundColor: ['#22c55e', '#ef4444', '#6b7280', '#f59e0b', '#64748b'],
                 borderRadius: 6,
                 borderSkipped: false,
             }]
@@ -478,6 +488,27 @@
                 label: 'Issued Equipment',
                 data: @json(($devicesByOffice ?? collect())->values()),
                 backgroundColor: '#6366f1',
+                borderRadius: 6,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+
+    new Chart(document.getElementById('endUsersLocationChart'), {
+        type: 'bar',
+        data: {
+            labels: @json(($endUsersByLocation ?? collect())->keys()),
+            datasets: [{
+                label: 'Active End Users',
+                data: @json(($endUsersByLocation ?? collect())->values()),
+                backgroundColor: '#0ea5e9',
                 borderRadius: 6,
                 borderSkipped: false,
             }]

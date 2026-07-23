@@ -478,6 +478,19 @@
                         </a>
                     @endif
 
+                    <a
+                        href="{{ route('admin.scanner', ['start' => 1]) }}"
+                        aria-label="Scan QR code"
+                        title="Open QR scanner"
+                        class="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600"
+                    >
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+                            <path d="M7 8h1M11 8h1M16 8h1M7 12h1M11 12h5M7 16h5M16 16h1"/>
+                        </svg>
+                        Scan QR
+                    </a>
+
                     <button type="button" x-on:click="openReissue()" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
                         Reissue
                     </button>

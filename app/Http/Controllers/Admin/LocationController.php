@@ -64,20 +64,19 @@ class LocationController extends Controller
                 $locationStats[$locationId] ??= [
                     'assigned' => 0,
                     'issued_to_users' => 0,
-                    'shared' => 0,
+                    'linked_peripherals' => 0,
                 ];
 
                 $locationStats[$locationId]['assigned']++;
-                // A peripheral linked to another property number is shared
-                // equipment within that asset group, even when it is issued
-                // alongside the same end user as the main system unit.
-                $isSharedEquipment = ! $assignment->staff_id
-                    || filled($assignment->device?->part_of_property_number);
+                // A linked peripheral is counted separately from equipment
+                // issued directly to an end user. This is based on the
+                // parent-property link, not merely on a missing staff ID.
+                $isLinkedPeripheral = filled($assignment->device?->part_of_property_number);
 
-                if (! $isSharedEquipment) {
+                if (! $isLinkedPeripheral && $assignment->staff_id) {
                     $locationStats[$locationId]['issued_to_users']++;
-                } else {
-                    $locationStats[$locationId]['shared']++;
+                } elseif ($isLinkedPeripheral) {
+                    $locationStats[$locationId]['linked_peripherals']++;
                 }
             }
         }

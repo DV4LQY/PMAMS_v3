@@ -546,11 +546,11 @@ import './bootstrap';
             };
 
             create('statusChart', 'bar', {
-                labels: data.condition?.labels || [],
+                labels: data.status?.labels || data.condition?.labels || [],
                 datasets: [{
                     label: 'Equipment',
-                    data: data.condition?.values || [],
-                    backgroundColor: ['#22c55e', '#ef4444', '#6b7280'],
+                    data: data.status?.values || data.condition?.values || [],
+                    backgroundColor: ['#22c55e', '#ef4444', '#6b7280', '#f59e0b', '#64748b'],
                     borderRadius: 6,
                     borderSkipped: false,
                 }],
@@ -590,6 +590,22 @@ import './bootstrap';
                     label: 'Issued Equipment',
                     data: data.office?.values || [],
                     backgroundColor: '#6366f1',
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }],
+            }, {
+                ...common,
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            });
+
+            create('endUsersLocationChart', 'bar', {
+                labels: data.end_users?.labels || [],
+                datasets: [{
+                    label: 'Active End Users',
+                    data: data.end_users?.values || [],
+                    backgroundColor: '#0ea5e9',
                     borderRadius: 6,
                     borderSkipped: false,
                 }],

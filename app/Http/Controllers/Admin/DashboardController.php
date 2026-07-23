@@ -5,6 +5,7 @@ use App\Models\Device;
 use App\Models\DeviceAssignment;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\DeviceType;
+use App\Models\Staff;
 use Carbon\Carbon;
 class DashboardController extends Controller
 {
@@ -73,6 +74,16 @@ class DashboardController extends Controller
             'Issued' => $issuedDevices,
         ];
 
+        // The dashboard status chart includes both condition values and the
+        // operational statuses that affect an item's availability.
+        $devicesByStatus = [
+            'Serviceable' => $serviceableDevices,
+            'Unserviceable' => $unserviceableDevices,
+            'Condemned' => $condemnedDevices,
+            'Repair' => $repairDevices,
+            'Not in Use' => $notInUseDevices,
+        ];
+
         $devicesByType = Device::selectRaw('device_type_id, count(*) as total')
             ->with('type')
             ->groupBy('device_type_id')
@@ -85,6 +96,24 @@ class DashboardController extends Controller
             ->get()
             ->groupBy(fn($a) => ($a->office ?: $a->staff?->office)?->name ?? 'No Office')
             ->map->count();
+
+        $endUsersByLocation = Staff::query()
+            ->where('is_active', true)
+            ->with('office.location')
+            ->get()
+            ->groupBy(function (Staff $staff) {
+                $location = $staff->office?->location;
+
+                if (! $location) {
+                    return 'No Location';
+                }
+
+                return $location->code
+                    ? $location->code . ' - ' . $location->name
+                    : $location->name;
+            })
+            ->map->count()
+            ->sortDesc();
 
         $maintenanceSemiannually = DeviceMaintenanceRecord::query()
             ->whereNotNull('maintenance_date')
@@ -113,8 +142,10 @@ class DashboardController extends Controller
             'types',
             'devicesByCondition',
             'devicesByAvailability',
+            'devicesByStatus',
             'devicesByType',
             'devicesByOffice',
+            'endUsersByLocation',
             'maintenanceSemiannually',
         ));
     }

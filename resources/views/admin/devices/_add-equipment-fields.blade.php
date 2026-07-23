@@ -36,7 +36,7 @@
             placeholder="e.g. PN-2026-0001"
         >
         @error('property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank to generate a TYPE-COLLEGE-YYYYMMDD-#### number, or use a parent property number for a linked peripheral.</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank to generate an EQUIPMENTTYPE-TempID-YYYYMMDD-#### number, or use a parent property number for a linked peripheral.</p>
     </div>
 
     <div x-data="{

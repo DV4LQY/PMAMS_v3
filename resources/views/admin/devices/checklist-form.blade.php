@@ -36,9 +36,6 @@
 @endphp
 
 <div class="space-y-6">
-    @if(session('success'))
-        <div class="rounded-xl border border-green-700/40 bg-green-900/20 px-4 py-3 text-sm text-green-300">{{ session('success') }}</div>
-    @endif
     <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -60,8 +57,10 @@
     </div>
 
     <form
+        id="maintenance-checklist-form"
         method="POST"
         action="{{ route('admin.devices.checklist.save', $device) }}"
+        enctype="multipart/form-data"
         target="_self"
         x-data="{
             remarks: @js(old('remarks', '')),
@@ -73,6 +72,55 @@
             duplicateReasonOpen: {{ session('duplicate_warning') ? 'true' : 'false' }},
             verificationReason: @js(old('verification_reason', '')),
             notOkRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [$key => old("hardware.$key") === 'Not OK'])->all()),
+            conditionRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [
+                $key => old("condition.$key", old("hardware.$key") === 'Not OK' ? 'unserviceable' : ''),
+            ])->all()),
+            statusRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [$key => old("disposition.$key", '')])->all()),
+            checklistStateKey() {
+                return `pmams-checklist-state:${window.location.pathname}`;
+            },
+            restoreChecklistState() {
+                let stored = null;
+                try {
+                    stored = JSON.parse(window.sessionStorage.getItem(this.checklistStateKey()) || 'null');
+                } catch (error) {
+                    stored = null;
+                }
+
+                if (!stored?.fields) return;
+
+                const controls = Array.from(this.$root.elements || []);
+                stored.fields.forEach((saved) => {
+                    controls
+                        .filter((control) => control.name === saved.name)
+                        .forEach((control) => {
+                            if (control.type === 'radio' || control.type === 'checkbox') {
+                                control.checked = Boolean(saved.checked);
+                            } else if (typeof saved.value === 'string') {
+                                control.value = saved.value;
+                            }
+                        });
+                });
+
+                // Replay the same events used by normal user interaction so
+                // Alpine rebuilds notOkRows, conditionRows, and statusRows.
+                controls.forEach((control) => {
+                    if (!control.name || control.name === '_token' || control.name === '_method') return;
+                    if (control.type === 'radio' || control.type === 'checkbox') {
+                        if (control.checked) control.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (['date', 'text', 'textarea', 'search'].includes(control.type || control.tagName?.toLowerCase())) {
+                        control.dispatchEvent(new Event('input', { bubbles: true }));
+                        control.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+
+                try {
+                    window.sessionStorage.removeItem(this.checklistStateKey());
+                } catch (error) {
+                    // Storage can be unavailable in private browsing; the
+                    // checklist remains usable without state restoration.
+                }
+            },
             allChecklistAnswered() {
                 const selectedRows = new Set(
                     Array.from(this.$root.querySelectorAll('input[type=radio]:checked'))
@@ -87,37 +135,49 @@
             },
             setNotOkRow(key, enabled) {
                 this.notOkRows[key] = enabled;
+
+                if (!enabled) {
+                    this.conditionRows[key] = '';
+                    this.statusRows[key] = '';
+                } else if (!this.conditionRows[key]) {
+                    // Not OK rows start as unserviceable, while still allowing
+                    // the reviewer to change the condition immediately.
+                    this.conditionRows[key] = 'unserviceable';
+                }
+
                 this.$root.querySelectorAll('input').forEach((input) => {
                     if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) {
                         input.disabled = !enabled;
-                        if (!enabled) input.checked = false;
+                        input.checked = enabled
+                            ? input.value === (input.name.startsWith('condition[')
+                                ? this.conditionRows[key]
+                                : this.statusRows[key])
+                            : false;
                     }
                 });
 
-                if (enabled && !this.$root.querySelector(`input[name='condition[${key}]']:checked`)) {
-                    const defaultCondition = this.$root.querySelector(`input[name='condition[${key}]'][value='unserviceable']`);
-                    if (defaultCondition) defaultCondition.checked = true;
-                }
+                this.refreshChecklistState();
             },
             isNotOkSelected(key) {
                 return Array.from(this.$root.querySelectorAll('input'))
                     .some((input) => input.name === `hardware[${key}]` && input.value === 'Not OK' && input.checked);
             },
             isUnserviceableSelected(key) {
-                // Include the version counter so Alpine reevaluates this
-                // after a checkbox is changed by code.
-                return this.checklistVersion >= 0
-                    && Boolean(this.$root.querySelector(`input[name='condition[${key}]'][value='unserviceable']:checked`));
+                return this.conditionRows[key] === 'unserviceable';
             },
-            syncCondition(key) {
-                const selected = this.$root.querySelector(`input[name='condition[${key}]']:checked`);
+            syncCondition(key, event) {
+                const selectedValue = event?.target?.checked
+                    ? event.target.value
+                    : (this.$root.querySelector(`input[name='condition[${key}]']:checked`)?.value || '');
+                this.conditionRows[key] = selectedValue;
                 this.$root.querySelectorAll(`input[name='condition[${key}]']`).forEach((input) => {
-                    input.checked = selected === input;
+                    input.checked = input.value === selectedValue;
                 });
 
                 // Repair/Not in Use is only valid for an explicitly
                 // unserviceable row. Remove stale status choices otherwise.
-                if (!selected || selected.value !== 'unserviceable') {
+                if (selectedValue !== 'unserviceable') {
+                    this.statusRows[key] = '';
                     this.$root.querySelectorAll(`input[name='disposition[${key}]']`).forEach((input) => {
                         input.checked = false;
                     });
@@ -126,13 +186,18 @@
                 this.refreshChecklistState();
             },
             syncStatus(key, event) {
+                const selectedValue = event?.target?.checked ? event.target.value : '';
+                this.statusRows[key] = selectedValue;
                 this.$root.querySelectorAll(`input[name='disposition[${key}]']`).forEach((input) => {
-                    input.checked = input.checked && input === event?.target;
+                    input.checked = input.value === selectedValue;
                 });
                 this.refreshChecklistState();
             },
             clearDisposition(key) {
                 if (this.isNotOkSelected(key)) return;
+
+                this.conditionRows[key] = '';
+                this.statusRows[key] = '';
 
                 this.$root.querySelectorAll('input').forEach((input) => {
                     if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) input.checked = false;
@@ -188,7 +253,7 @@
                 }
             }
         }"
-        x-init="$nextTick(() => { $data.applyChecklistDefaults(); $data.refreshChecklistState() })"
+        x-init="$nextTick(() => { $data.restoreChecklistState(); $data.applyChecklistDefaults(); $data.refreshChecklistState() })"
         class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
     >
         @csrf
@@ -401,7 +466,7 @@
                                                 value="unserviceable"
                                                 class="h-3.5 w-3.5 accent-red-600"
                                                 x-bind:disabled="!notOkRows['{{ $key }}']"
-                                                x-on:change="syncCondition('{{ $key }}')"
+                                                x-on:change="syncCondition('{{ $key }}', $event)"
                                                 @checked(old("condition.$key", old("hardware.$key") === 'Not OK' ? 'unserviceable' : null) === 'unserviceable')
                                             >
                                             <span>Unserviceable</span>
@@ -413,7 +478,7 @@
                                                 value="condemned"
                                                 class="h-3.5 w-3.5 accent-red-700"
                                                 x-bind:disabled="!notOkRows['{{ $key }}']"
-                                                x-on:change="syncCondition('{{ $key }}')"
+                                                x-on:change="syncCondition('{{ $key }}', $event)"
                                                 @checked(old("condition.$key") === 'condemned')
                                             >
                                             <span>Condemned</span>
@@ -659,6 +724,76 @@
                 equipmentAddUrl: @js(route('admin.devices.index', ['open_add' => 1])),
                 returnTo: @js($checklistReturnPath),
                 linkablePeripherals: @js($linkablePeripheralOptions),
+                linkSubmitting: false,
+                linkError: '',
+                checklistStateKey() {
+                    return `pmams-checklist-state:${window.location.pathname}`;
+                },
+                rememberChecklistState() {
+                    const form = document.getElementById('maintenance-checklist-form');
+                    if (!form) return;
+
+                    const fields = Array.from(form.elements || [])
+                        .filter((control) => control.name && control.type !== 'file' && !['_token', '_method'].includes(control.name))
+                        .map((control) => ({
+                            name: control.name,
+                            type: control.type || control.tagName?.toLowerCase(),
+                            value: control.value ?? '',
+                            checked: control.type === 'radio' || control.type === 'checkbox' ? control.checked : undefined,
+                        }));
+
+                    try {
+                        window.sessionStorage.setItem(this.checklistStateKey(), JSON.stringify({ fields }));
+                    } catch (error) {
+                        // State restoration is best effort only.
+                    }
+                },
+                async submitLink(event) {
+                    if (!this.selectedPeripheral || this.linkSubmitting) return;
+
+                    this.linkSubmitting = true;
+                    this.linkError = '';
+                    this.rememberChecklistState();
+
+                    try {
+                        const response = await fetch(event.target.action, {
+                            method: 'POST',
+                            body: new FormData(event.target),
+                            redirect: 'manual',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                Accept: 'text/html',
+                            },
+                        });
+
+                        const redirected = response.type === 'opaqueredirect'
+                            || (response.status >= 300 && response.status < 400);
+                        if (!response.ok && !redirected) {
+                            throw new Error('The peripheral could not be linked. Please try again.');
+                        }
+
+                        const target = new URL(window.location.href);
+                        // Linking is complete, so return to the checklist
+                        // itself with the modal closed. The saved checklist
+                        // snapshot is restored by the form's x-init hook.
+                        target.searchParams.delete('open_link');
+                        target.searchParams.delete('peripheral_type');
+                        target.searchParams.delete('allow_linked');
+                        target.searchParams.delete('link_refresh');
+                        const path = window.adminLocalNavigatePath
+                            ? window.adminLocalNavigatePath(target)
+                            : `${target.pathname}${target.search}`;
+
+                        if (window.Livewire?.navigate) {
+                            window.Livewire.navigate(path);
+                        } else {
+                            window.location.assign(path);
+                        }
+                    } catch (error) {
+                        this.linkSubmitting = false;
+                        this.linkError = error.message || 'The peripheral could not be linked. Please try again.';
+                    }
+                },
                 openLink(type, allowLinked = false) {
                     this.peripheralType = type;
                     this.allowLinked = allowLinked;
@@ -697,9 +832,18 @@
                     returnUrl.searchParams.set('peripheral_type', this.peripheralType);
                     returnUrl.searchParams.set('allow_linked', this.allowLinked ? '1' : '0');
                     url.searchParams.set('return_to', returnUrl.pathname + returnUrl.search);
-                    window.location.assign(url.toString());
+                    this.rememberChecklistState();
+                    const path = window.adminLocalNavigatePath
+                        ? window.adminLocalNavigatePath(url)
+                        : `${url.pathname}${url.search}`;
+                    if (window.Livewire?.navigate) {
+                        window.Livewire.navigate(path);
+                    } else {
+                        window.location.assign(url.toString());
+                    }
                 },
                 selectPeripheral(peripheral) {
+                    this.linkError = '';
                     this.selectedPeripheral = peripheral;
                 }
             }"
@@ -710,6 +854,7 @@
                 <form
                     method="POST"
                     x-bind:action="selectedPeripheral ? `${linkBaseUrl}/${selectedPeripheral.id}/link-parent` : '#'"
+                    x-on:submit.prevent="submitLink($event)"
                     class="space-y-4"
                 >
                     @csrf
@@ -780,11 +925,12 @@
                         <button
                             type="submit"
                             class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-600"
-                            x-bind:disabled="!selectedPeripheral"
+                            x-bind:disabled="!selectedPeripheral || linkSubmitting"
                         >
-                            Link Peripheral
+                            <span x-text="linkSubmitting ? 'Linking…' : 'Link Peripheral'"></span>
                         </button>
                     </div>
+                    <p x-show="linkError" x-cloak class="text-sm text-red-600 dark:text-red-400" x-text="linkError"></p>
                 </form>
             </x-modal>
         </div>

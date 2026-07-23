@@ -293,8 +293,8 @@ document.addEventListener('livewire:navigated', () => {
                             <div class="text-gray-500 dark:text-gray-400">Issued users</div>
                         </div>
                         <div class="rounded-lg bg-gray-50 px-2 py-2 dark:bg-gray-700/60">
-                            <div class="font-semibold text-gray-900 dark:text-white">{{ $locationStats[$c->id]['shared'] ?? 0 }}</div>
-                            <div class="text-gray-500 dark:text-gray-400">Shared</div>
+                            <div class="font-semibold text-gray-900 dark:text-white">{{ $locationStats[$c->id]['linked_peripherals'] ?? 0 }}</div>
+                            <div class="text-gray-500 dark:text-gray-400">Linked Peripherals</div>
                         </div>
                     </div>
 
@@ -363,7 +363,7 @@ document.addEventListener('livewire:navigated', () => {
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Offices</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Equipment</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Issued Users</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Shared</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Linked Peripherals</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                 </thead>
@@ -387,7 +387,7 @@ document.addEventListener('livewire:navigated', () => {
 
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $locationStats[$c->id]['issued_to_users'] ?? 0 }}</td>
 
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $locationStats[$c->id]['shared'] ?? 0 }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $locationStats[$c->id]['linked_peripherals'] ?? 0 }}</td>
 
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex items-center gap-2">
