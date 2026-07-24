@@ -1,4 +1,13 @@
-@php($lockEquipmentType = $lockEquipmentType ?? false)
+@php
+    $lockEquipmentType = $lockEquipmentType ?? false;
+    // The same partial is used by create/add modals and the standalone edit
+    // page. When an edit model is supplied, seed every field from the saved
+    // record so generated and linked property numbers are visible immediately.
+    $formDevice = $formDevice ?? null;
+    $formDeviceSpecs = is_array($formDevice?->specs) ? $formDevice->specs : [];
+    $formDeviceDateAcquired = $formDevice?->date_acquired?->format('Y-m-d');
+    $formDeviceLastMaintenanceDate = $formDevice?->last_maintenance_date?->format('Y-m-d');
+@endphp
 
 <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
     <div>
@@ -28,7 +37,7 @@
         </label>
         <input
             name="property_number"
-            value="{{ old('property_number') }}"
+            value="{{ old('property_number', $formDevice?->property_number) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="50"
             pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"
@@ -37,6 +46,11 @@
         >
         @error('property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank to generate an EQUIPMENTTYPE-TempID-YYYYMMDD-#### number, or use a parent property number for a linked peripheral.</p>
+        @if($formDevice?->property_number)
+            <p class="mt-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
+                Current property number: <span class="font-semibold">{{ $formDevice->property_number }}</span>
+            </p>
+        @endif
     </div>
 
     <div x-data="{
@@ -57,7 +71,7 @@
                     .trim()
                     .toLowerCase();
 
-                this.visible = ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'].includes(name);
+                this.visible = ['printer', 'monitor', 'avr', 'ups', 'scanner', 'network device', 'other'].includes(name);
             },
             searchUrl: '{{ route('admin.devices.lookup.property') }}',
             async search() {
@@ -111,19 +125,24 @@
             <input
                 x-ref="partPropertyInput"
                 name="part_of_property_number"
-            value="{{ old('part_of_property_number', $addParentPropertyNumber ?? '') }}"
+            value="{{ old('part_of_property_number', $formDevice?->part_of_property_number ?? ($addParentPropertyNumber ?? '')) }}"
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 maxlength="50"
                 pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"
                 title="Letters, numbers, hyphens, and slashes only"
-            placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Scanner/Other)"
+            placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Scanner/Network Device/Other)"
             autocomplete="off"
             :disabled="!visible"
                 @input="if ($event.isTrusted) queueSearch()"
                 @focus="if ($refs.partPropertyInput.value.trim()) queueSearch()"
             >
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this for Printer, Monitor, AVR, UPS, Scanner, or Other equipment belonging to another property-number group.</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this for Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other equipment belonging to another property-number group.</p>
+        @if($formDevice?->part_of_property_number)
+            <p class="mt-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
+                Currently linked to parent property #: <span class="font-semibold">{{ $formDevice->part_of_property_number }}</span>
+            </p>
+        @endif
         @error('part_of_property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 
         <div
@@ -151,7 +170,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Serial Number</label>
         <input
             name="serial_number"
-            value="{{ old('serial_number') }}"
+            value="{{ old('serial_number', $formDevice?->serial_number) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             pattern="[A-Za-z0-9\-]*"
@@ -165,7 +184,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Computer Name</label>
         <input
             name="computer_name"
-            value="{{ old('computer_name', old('specs.computer_name')) }}"
+            value="{{ old('computer_name', $formDevice?->computer_name ?? data_get($formDeviceSpecs, 'computer_name')) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             placeholder="Enter computer name"
@@ -178,7 +197,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Brand</label>
         <input
             name="brand"
-            value="{{ old('brand') }}"
+            value="{{ old('brand', $formDevice?->brand) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             pattern="[A-Za-zÑñ0-9][A-Za-zÑñ0-9.\-\s]*"
@@ -192,7 +211,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Model</label>
         <input
             name="model"
-            value="{{ old('model') }}"
+            value="{{ old('model', $formDevice?->model) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*"
@@ -206,7 +225,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">MAC Address</label>
         <input
             name="mac_address"
-            value="{{ old('mac_address') }}"
+            value="{{ old('mac_address', $formDevice?->mac_address) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
@@ -221,7 +240,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Memory</label>
         <input
             name="specs[memory]"
-            value="{{ old('specs.memory') }}"
+            value="{{ old('specs.memory', data_get($formDeviceSpecs, 'memory')) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="50"
             placeholder="Example: 8GB RAM"
@@ -234,7 +253,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Storage</label>
         <input
             name="specs[storage]"
-            value="{{ old('specs.storage') }}"
+            value="{{ old('specs.storage', data_get($formDeviceSpecs, 'storage')) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-700 dark:text-white"
             maxlength="50"
             placeholder="Example: 256GB SSD"
@@ -251,10 +270,10 @@
             :disabled="!isDesktopType(addTypeId)"
         >
             <option value="">-- Select Form Factor --</option>
-            <option value="Tower Desktop" @selected(old('specs.form_factor') === 'Tower Desktop')>Tower Desktop</option>
-            <option value="Small Form Factor (SFF) Desktop" @selected(old('specs.form_factor') === 'Small Form Factor (SFF) Desktop')>Small Form Factor (SFF) Desktop</option>
-            <option value="All-in-One (AIO) Desktop" @selected(old('specs.form_factor') === 'All-in-One (AIO) Desktop')>All-in-One (AIO) Desktop</option>
-            <option value="Mini PC" @selected(old('specs.form_factor') === 'Mini PCs')>Mini PC</option>
+            <option value="Tower Desktop" @selected(old('specs.form_factor', data_get($formDeviceSpecs, 'form_factor')) === 'Tower Desktop')>Tower Desktop</option>
+            <option value="Small Form Factor (SFF) Desktop" @selected(old('specs.form_factor', data_get($formDeviceSpecs, 'form_factor')) === 'Small Form Factor (SFF) Desktop')>Small Form Factor (SFF) Desktop</option>
+            <option value="All-in-One (AIO) Desktop" @selected(old('specs.form_factor', data_get($formDeviceSpecs, 'form_factor')) === 'All-in-One (AIO) Desktop')>All-in-One (AIO) Desktop</option>
+            <option value="Mini PC" @selected(old('specs.form_factor', data_get($formDeviceSpecs, 'form_factor')) === 'Mini PC')>Mini PC</option>
             
         </select>
         @error('specs.form_factor')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -287,9 +306,9 @@
             :disabled="!isComputerType(addTypeId) || !addOsVersion"
         >
             <option value="">-- Select License --</option>
-            <option value="Cracked" @selected(old('os_license') === 'Cracked')>Cracked</option>
-            <option value="OEM Licensed" @selected(old('os_license') === 'OEM Licensed')>OEM Licensed</option>
-            <option value="Open Source" @selected(old('os_license') === 'Open Source')>Open Source</option>
+            <option value="Cracked" @selected(old('os_license', $formDevice?->os_license) === 'Cracked')>Cracked</option>
+            <option value="OEM Licensed" @selected(old('os_license', $formDevice?->os_license) === 'OEM Licensed')>OEM Licensed</option>
+            <option value="Open Source" @selected(old('os_license', $formDevice?->os_license) === 'Open Source')>Open Source</option>
         </select>
         @error('os_license')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
@@ -322,8 +341,8 @@
             :disabled="!isComputerType(addTypeId) || !addMsVersion"
         >
             <option value="">-- Select License --</option>
-            <option value="Cracked" @selected(old('ms_office_license') === 'Cracked')>Cracked</option>
-            <option value="OEM Licensed" @selected(old('ms_office_license') === 'OEM Licensed')>OEM Licensed</option>
+            <option value="Cracked" @selected(old('ms_office_license', $formDevice?->ms_office_license) === 'Cracked')>Cracked</option>
+            <option value="OEM Licensed" @selected(old('ms_office_license', $formDevice?->ms_office_license) === 'OEM Licensed')>OEM Licensed</option>
         </select>
         @error('ms_office_license')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
@@ -332,7 +351,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Unit Price</label>
         <input
             name="unit_price"
-            value="{{ old('unit_price') }}"
+            value="{{ old('unit_price', $formDevice?->unit_price) }}"
             type="text"
             inputmode="decimal"
             placeholder="e.g. 25,000.00"
@@ -346,7 +365,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Date Acquired</label>
         <input
             name="date_acquired"
-            value="{{ old('date_acquired') }}"
+            value="{{ old('date_acquired', $formDeviceDateAcquired) }}"
             type="date"
             max="{{ now()->format('Y-m-d') }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -380,7 +399,7 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Last Maintenance Date</label>
         <input
             name="last_maintenance_date"
-            value="{{ old('last_maintenance_date') }}"
+            value="{{ old('last_maintenance_date', $formDeviceLastMaintenanceDate) }}"
             type="date"
             max="{{ now()->format('Y-m-d') }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -398,6 +417,6 @@
         maxlength="1000"
         class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
         placeholder="Example: Initial check, cleaned, inspected"
-    >{{ old('maintenance_remarks') }}</textarea>
+    >{{ old('maintenance_remarks', $formDevice?->maintenance_remarks) }}</textarea>
     @error('maintenance_remarks')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 </div>

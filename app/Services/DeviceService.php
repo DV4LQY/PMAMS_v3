@@ -56,6 +56,7 @@ class DeviceService
             'UPS',
             'AVR',
             'Scanner',
+            'Network Device',
             'Other',
         ];
 

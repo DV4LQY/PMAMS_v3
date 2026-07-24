@@ -44,7 +44,7 @@ class DashboardController extends Controller
 
         $allowedTypes = [
             'Desktop', 'Laptop', 'Printer',
-            'Monitor', 'UPS', 'AVR', 'Scanner', 'Other',
+            'Monitor', 'UPS', 'AVR', 'Scanner', 'Network Device', 'Other',
         ];
 
         foreach ($allowedTypes as $typeName) {

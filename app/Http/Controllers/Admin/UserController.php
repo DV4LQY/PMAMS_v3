@@ -49,6 +49,15 @@ class UserController extends Controller
         return view('admin.users.index', compact('users'));
     }
 
+    public function recycleBin()
+    {
+        $deletedUsers = User::onlyTrashed()
+            ->orderByDesc('deleted_at')
+            ->paginate(15);
+
+        return view('admin.users.recycle-bin', compact('deletedUsers'));
+    }
+
     public function store(Request $request)
     {
         $data = $request->validateWithBag('add', [
@@ -200,6 +209,39 @@ class UserController extends Controller
 
         $user->delete();
 
-        return back()->with('success', 'User deleted.');
+        return back()->with('success', 'User moved to the recycle bin.');
+    }
+
+    public function restore(int $user)
+    {
+        $deletedUser = User::onlyTrashed()->findOrFail($user);
+        $deletedUser->restore();
+
+        ActivityLog::record(
+            'restored',
+            "Restored user account \"{$deletedUser->name}\"",
+            $deletedUser,
+            ActivityLog::makePayload($this->buildSummary($deletedUser))
+        );
+
+        return back()->with('success', 'User restored.');
+    }
+
+    public function forceDestroy(int $user)
+    {
+        $deletedUser = User::onlyTrashed()->findOrFail($user);
+
+        $summary = $this->buildDeleteSummary($deletedUser);
+        $name = $deletedUser->name;
+        ActivityLog::record(
+            'force_deleted',
+            "Permanently deleted user account \"{$name}\"",
+            null,
+            ActivityLog::makePayload($summary)
+        );
+
+        $deletedUser->forceDelete();
+
+        return back()->with('success', 'User permanently deleted.');
     }
 }

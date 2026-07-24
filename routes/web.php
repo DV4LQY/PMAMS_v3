@@ -346,8 +346,11 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
     // User accounts and role management are restricted to Super Admin.
     Route::middleware('role:super_admin')->group(function () {
         Route::get('admin/users', [UserController::class, 'index'])->name('admin.users.index');
+        Route::get('admin/users/recycle-bin', [UserController::class, 'recycleBin'])->name('admin.users.recycleBin');
         Route::post('admin/users', [UserController::class, 'store'])->name('admin.users.store');
         Route::put('admin/users/{user}', [UserController::class, 'update'])->name('admin.users.update');
         Route::delete('admin/users/{user}', [UserController::class, 'destroy'])->name('admin.users.destroy');
+        Route::patch('admin/users/{user}/restore', [UserController::class, 'restore'])->name('admin.users.restore');
+        Route::delete('admin/users/{user}/force-delete', [UserController::class, 'forceDestroy'])->name('admin.users.forceDestroy');
     });
 });

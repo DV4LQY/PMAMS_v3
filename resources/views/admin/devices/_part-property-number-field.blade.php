@@ -18,7 +18,7 @@
                 .trim()
                 .toLowerCase();
 
-                this.visible = ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'].includes(name);
+                this.visible = ['printer', 'monitor', 'avr', 'ups', 'scanner', 'network device', 'other'].includes(name);
         },
         searchUrl: '{{ route('admin.devices.lookup.property') }}',
         async search() {
@@ -79,7 +79,7 @@
             @input="if ($event.isTrusted) queueSearch()"
         >
     </div>
-    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Link a Printer, Monitor, AVR, UPS, Scanner, or Other item to the main system-unit property number.</p>
+    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Link a Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other item to the main system-unit property number.</p>
     @error('part_of_property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 
     <div x-show="open" x-cloak @click.outside="open = false" class="absolute inset-x-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">

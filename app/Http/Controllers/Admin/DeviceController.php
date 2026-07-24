@@ -593,12 +593,13 @@ class DeviceController extends Controller
             ActivityLog::makePayload($summary)
         );
 
+        $successMessage = "Equipment added successfully. Property number: {$device->property_number}.";
         $returnTo = trim((string) $request->input('return_to', ''));
         if ($returnTo !== '' && str_starts_with($returnTo, '/') && ! str_starts_with($returnTo, '//')) {
-            return redirect()->to($returnTo)->with('success', 'Equipment added successfully.');
+            return redirect()->to($returnTo)->with('success', $successMessage);
         }
 
-        return redirect()->back()->with('success', 'Equipment added successfully.');
+        return redirect()->back()->with('success', $successMessage);
     }
 
     public function show(Device $device)
@@ -937,14 +938,15 @@ class DeviceController extends Controller
             )
         );
 
+        $successMessage = "Equipment updated. Property number: {$device->property_number}.";
         $returnTo = trim((string) $request->input('return_to', ''));
         if ($returnTo !== '' && str_starts_with($returnTo, '/') && ! str_starts_with($returnTo, '//')) {
-            return redirect()->to($returnTo)->with('success', 'Equipment updated.');
+            return redirect()->to($returnTo)->with('success', $successMessage);
         }
 
         return redirect()
             ->route('admin.devices.index')
-            ->with('success', 'Equipment updated.');
+            ->with('success', $successMessage);
     }
 
     /**
@@ -1443,7 +1445,7 @@ class DeviceController extends Controller
             'equipment_type', 'device_type', 'type',
         ])));
 
-        if (! in_array($type, ['monitor', 'avr', 'ups', 'printer', 'scanner', 'other'], true)) {
+        if (! in_array($type, ['monitor', 'avr', 'ups', 'printer', 'scanner', 'network device', 'other'], true)) {
             return false;
         }
 
@@ -1774,7 +1776,10 @@ class DeviceController extends Controller
      */
     private function generateAutoPropertyNumber(?string $equipmentType): string
     {
-        $typeSegment = $this->propertyNumberSegment($equipmentType, 'EQUIPMENT', 30);
+        $typeKey = strtolower(trim((string) $equipmentType));
+        $typeSegment = $typeKey === 'network device'
+            ? 'NET'
+            : $this->propertyNumberSegment($equipmentType, 'EQUIPMENT', 30);
         $dateSegment = now()->format('Ymd');
         $prefix = "{$typeSegment}-TempID-{$dateSegment}-";
 
@@ -1844,7 +1849,7 @@ class DeviceController extends Controller
 
             if (! $type) {
                 $allowedTypeNames = [
-                    'Desktop', 'Laptop', 'Printer', 'Monitor', 'UPS', 'AVR', 'Scanner', 'Other',
+                    'Desktop', 'Laptop', 'Printer', 'Monitor', 'UPS', 'AVR', 'Scanner', 'Network Device', 'Other',
                 ];
                 $canonicalTypeName = collect($allowedTypeNames)
                     ->first(fn (string $allowedType) => strtolower($allowedType) === $typeKey);
@@ -2569,8 +2574,8 @@ class DeviceController extends Controller
         }
 
         if ($partOfPropertyNumber !== ''
-            && !in_array(strtolower($equipmentType), ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'], true)) {
-            throw new \RuntimeException('part_of_property_number is only supported for Printer, Monitor, AVR, UPS, Scanner, or Other equipment.');
+            && !in_array(strtolower($equipmentType), ['printer', 'monitor', 'avr', 'ups', 'scanner', 'network device', 'other'], true)) {
+            throw new \RuntimeException('part_of_property_number is only supported for Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other equipment.');
         }
 
         if ($propertyNumber !== ''
@@ -3131,7 +3136,7 @@ class DeviceController extends Controller
             )
         );
 
-        return back()->with('success', 'Equipment updated.');
+        return back()->with('success', "Equipment updated. Property number: {$device->property_number}.");
     }
 
     /**
@@ -3372,7 +3377,7 @@ class DeviceController extends Controller
         $typeName = strtolower($type?->name ?? '');
 
         $isComputerType = in_array($typeName, ['desktop', 'laptop']);
-        $isPartPropertyType = in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'scanner', 'other'], true);
+        $isPartPropertyType = in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'scanner', 'network device', 'other'], true);
 
         if (!$isPartPropertyType) {
             $data['part_of_property_number'] = null;
@@ -3443,7 +3448,7 @@ class DeviceController extends Controller
 
     private function peripheralTypeNames(): array
     {
-        return ['Printer', 'Monitor', 'UPS', 'AVR', 'Scanner', 'Other'];
+        return ['Printer', 'Monitor', 'UPS', 'AVR', 'Scanner', 'Network Device', 'Other'];
     }
 
     private function isPeripheralDevice(?string $deviceType): bool
@@ -3505,6 +3510,7 @@ class DeviceController extends Controller
             'UPS',
             'AVR',
             'Scanner',
+            'Network Device',
             'Other',
         ];
 

@@ -219,6 +219,7 @@
         request()->routeIs('admin.maintenance-gallery.*') => 'gallery',
         request()->routeIs('admin.scanner') => 'scanner',
         request()->routeIs('admin.support') => 'support',
+        request()->routeIs('admin.users.recycleBin') => 'user-recycle-bin',
         request()->routeIs('admin.users.*') => 'users',
         request()->routeIs('admin.logs.*') => 'logs',
         default => '',
@@ -401,6 +402,18 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-4a4 4 0 100-8 4 4 0 000 8zm6 4a4 4 0 10-8 0v2h8v-2z"/>
                         </svg>
                         <span>Users</span>
+                    </a>
+                    <a
+                        href="{{ route('admin.users.recycleBin') }}"
+                        data-nav-group="user-recycle-bin"
+                        data-active="{{ $currentNavGroup === 'user-recycle-bin' ? 'true' : 'false' }}"
+                        @if($currentNavGroup === 'user-recycle-bin') aria-current="page" @endif
+                        class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition {{ $currentNavGroup === 'user-recycle-bin' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
+                    >
+                        <svg class="w-5 h-5 {{ $currentNavGroup === 'user-recycle-bin' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 6h18M8 6V4h8v2m-9 4v8m5-8v8m5-8v8M5 6l1 15h12l1-15"/>
+                        </svg>
+                        <span>User Recycle Bin</span>
                     </a>
                     <a
                         href="{{ route('admin.maintenance-cleanup.index') }}"

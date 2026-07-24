@@ -97,13 +97,22 @@ document.addEventListener('livewire:navigated', registerUserManager);
             </p>
         </div>
 
-        <button
-            type="button"
-            class="shrink-0 inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-            @click="openAdd()"
-        >
-            + Add User
-        </button>
+        <div class="flex flex-wrap items-center gap-2">
+            <a
+                href="{{ route('admin.users.recycleBin') }}"
+                wire:navigate
+                class="inline-flex items-center rounded-xl bg-gray-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-600"
+            >
+                Recycle Bin
+            </a>
+            <button
+                type="button"
+                class="shrink-0 inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                @click="openAdd()"
+            >
+                + Add User
+            </button>
+        </div>
     </div>
 
     {{-- Mobile cards --}}

@@ -22,6 +22,7 @@ class DeviceTypeSeeder extends Seeder
             ['name' => 'UPS', 'slug' => 'ups'],
             ['name' => 'AVR', 'slug' => 'avr'],
             ['name' => 'Scanner', 'slug' => 'scanner'],
+            ['name' => 'Network Device', 'slug' => 'network-device'],
         ];
 
         foreach ($types as $t) {

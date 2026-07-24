@@ -402,6 +402,11 @@
                                             Property #: {{ implode(', ', $sectionProperties) }}
                                             <span aria-hidden="true">&#128279;</span>
                                         </button>
+                                        @if($sectionKey !== 'system unit')
+                                            <div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                                Linked to parent property #: {{ $device->property_number }}
+                                            </div>
+                                        @endif
                                         @foreach($sectionDevices as $sectionDevice)
                                             <a
                                                 href="{{ route('admin.devices.edit', ['device' => $sectionDevice, 'return_to' => $checklistPath]) }}"
