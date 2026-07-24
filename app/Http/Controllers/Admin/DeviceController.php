@@ -351,12 +351,26 @@ class DeviceController extends Controller
             ->first();
 
         if (! $parent || ! $this->isComputerDevice($parent->type?->name)) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'The selected property number must belong to a standalone Desktop or Laptop.',
+                    'errors' => ['parent_property_number' => ['The selected property number must belong to a standalone Desktop or Laptop.']],
+                ], 422);
+            }
+
             return back()
                 ->withInput()
                 ->withErrors(['parent_property_number' => 'The selected property number must belong to a standalone Desktop or Laptop.']);
         }
 
         if ((int) $parent->id === (int) $device->id) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'A peripheral cannot be linked to itself.',
+                    'errors' => ['parent_property_number' => ['A peripheral cannot be linked to itself.']],
+                ], 422);
+            }
+
             return back()->withErrors(['parent_property_number' => 'A peripheral cannot be linked to itself.']);
         }
 
@@ -381,10 +395,18 @@ class DeviceController extends Controller
                 $slotLabel = strtolower($device->type?->name) === 'avr' || strtolower($device->type?->name) === 'ups'
                     ? 'AVR/UPS'
                     : $device->type?->name;
+                $message = "This system unit already has a linked {$slotLabel}. Use the Change link shortcut to replace it.";
+
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'message' => $message,
+                        'errors' => ['parent_property_number' => [$message]],
+                    ], 422);
+                }
 
                 return back()
                     ->withInput()
-                    ->withErrors(['parent_property_number' => "This system unit already has a linked {$slotLabel}. Use the Change link shortcut to replace it."]);
+                    ->withErrors(['parent_property_number' => $message]);
             }
         }
 
@@ -425,7 +447,72 @@ class DeviceController extends Controller
             ])
         );
 
-        return back()->with('success', "{$device->type?->name} {$device->property_number} linked to {$parent->property_number}.");
+        $message = "{$device->type?->name} {$device->property_number} linked to {$parent->property_number}.";
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'device_id' => $device->id,
+                'parent_property_number' => $parent->property_number,
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Remove a peripheral's parent relationship without changing its inventory
+     * specifications. This is intentionally limited to administrators because
+     * it changes the equipment hierarchy used by maintenance checklists.
+     */
+    public function unlinkPeripheral(Request $request, Device $device)
+    {
+        abort_unless(Auth::user()?->isAdmin(), 403);
+
+        $device->load('type');
+        abort_unless($this->isPeripheralDevice($device->type?->name), 404);
+
+        $previousParent = $device->part_of_property_number;
+        if (blank($previousParent)) {
+            $message = "{$device->type?->name} {$device->property_number} is already unlinked.";
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => $message,
+                    'device_id' => $device->id,
+                    'unlinked' => false,
+                ]);
+            }
+
+            return back()->with('success', $message);
+        }
+
+        $device->update(['part_of_property_number' => null]);
+
+        ActivityLog::record(
+            'updated',
+            "Unlinked {$device->type?->name} \"{$device->property_number}\" from \"{$previousParent}\"",
+            $device,
+            ActivityLog::makePayload([
+                'property_number' => $device->property_number,
+                'device_type' => $device->type?->name,
+                'previous_parent_property_number' => $previousParent,
+                'linked_by' => Auth::user()?->name,
+            ])
+        );
+
+        $message = "{$device->type?->name} {$device->property_number} was unlinked from {$previousParent}.";
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'device_id' => $device->id,
+                'previous_parent_property_number' => $previousParent,
+                'unlinked' => true,
+            ]);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function create()
@@ -737,6 +824,11 @@ class DeviceController extends Controller
             );
         }
 
+        if ($this->importValueIsEmpty($data['property_number'] ?? null)) {
+            $typeName = DeviceType::whereKey((int) ($data['device_type_id'] ?? $device->device_type_id))->value('name');
+            $data['property_number'] = $device->property_number ?: $this->generateAutoPropertyNumber($typeName);
+        }
+
         $before = [
             'property_number' => $device->property_number,
             'device_type' => optional($device->type)->name,
@@ -844,6 +936,11 @@ class DeviceController extends Controller
                 ) ?? []
             )
         );
+
+        $returnTo = trim((string) $request->input('return_to', ''));
+        if ($returnTo !== '' && str_starts_with($returnTo, '/') && ! str_starts_with($returnTo, '//')) {
+            return redirect()->to($returnTo)->with('success', 'Equipment updated.');
+        }
 
         return redirect()
             ->route('admin.devices.index')
@@ -1194,8 +1291,12 @@ class DeviceController extends Controller
         $message = "{$result['created']} equipment added, {$result['updated']} equipment updated"
             . ($result['issued'] ? ", {$result['issued']} issuance record(s) created." : '.');
 
+        if (($result['skipped'] ?? 0) > 0) {
+            $message .= " {$result['skipped']} unlinked peripheral row(s) skipped.";
+        }
+
         if (($result['warning_count'] ?? 0) > 0) {
-            $message .= " {$result['warning_count']} assignment warning(s) were recorded.";
+            $message .= " {$result['warning_count']} import note(s) were recorded.";
         }
 
         if (($result['staff_created'] ?? 0) > 0 || ($result['staff_updated'] ?? 0) > 0) {
@@ -1215,6 +1316,7 @@ class DeviceController extends Controller
             'created' => 0,
             'updated' => 0,
             'issued' => 0,
+            'skipped' => 0,
             'error_count' => 0,
             'errors' => [],
             'warning_count' => 0,
@@ -1264,6 +1366,17 @@ class DeviceController extends Controller
             $row = $this->normalizeImportRow($rawRow);
 
             if ($this->importRowIsEmpty($row)) {
+                continue;
+            }
+
+            if ($this->shouldSkipUnlinkedPeripheralImportRow($row)) {
+                $result['skipped']++;
+                $equipmentType = trim((string) $this->importValue($row, ['equipment_type', 'device_type', 'type']));
+                $this->addImportRowWarning(
+                    $result,
+                    $rowNumber,
+                    "Skipped {$equipmentType} because part_of_property_number is blank or zero."
+                );
                 continue;
             }
 
@@ -1317,6 +1430,26 @@ class DeviceController extends Controller
         $result['staff_updated'] = $this->importStaffChanges['updated'];
 
         return $result;
+    }
+
+    /**
+     * Peripheral inventory rows must be linked to a parent system-unit
+     * property during import. Standalone parent equipment (Desktop/Laptop)
+     * remains importable without this value.
+     */
+    private function shouldSkipUnlinkedPeripheralImportRow(array $row): bool
+    {
+        $type = strtolower(trim((string) $this->importValue($row, [
+            'equipment_type', 'device_type', 'type',
+        ])));
+
+        if (! in_array($type, ['monitor', 'avr', 'ups', 'printer', 'scanner', 'other'], true)) {
+            return false;
+        }
+
+        return $this->importValueIsEmpty($this->importValue($row, [
+            'part_of_property_number', 'parent_property_number', 'parent_property_no',
+        ]));
     }
 
     private function addImportRowError(array &$result, int $rowNumber, string $message): void
@@ -1381,6 +1514,7 @@ class DeviceController extends Controller
             'created' => 0,
             'updated' => 0,
             'issued' => 0,
+            'skipped' => 0,
             'error_count' => 1,
             'errors' => [$message],
             'warning_count' => 0,
@@ -1400,6 +1534,7 @@ class DeviceController extends Controller
             'created' => $result['created'],
             'updated' => $result['updated'],
             'issued' => $result['issued'],
+            'skipped' => $result['skipped'] ?? 0,
             'error_count' => $result['error_count'],
             'errors' => $result['errors'],
             'warning_count' => $result['warning_count'] ?? 0,
@@ -1425,6 +1560,7 @@ class DeviceController extends Controller
                     'created' => $result['created'],
                     'updated' => $result['updated'],
                     'issuance_records' => $result['issued'],
+                    'skipped' => $result['skipped'] ?? 0,
                     'errors' => $result['error_count'],
                     'warnings' => $result['warning_count'] ?? 0,
                     'staff_created' => $result['staff_created'] ?? 0,
@@ -2809,7 +2945,6 @@ class DeviceController extends Controller
                 'string',
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
-                'required_without:part_of_property_number',
                 'unique:devices,property_number,' . $device->id,
             ],
 
@@ -2818,7 +2953,6 @@ class DeviceController extends Controller
                 'string',
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
-                'required_without:property_number',
                 Rule::exists('devices', 'property_number')->where(function ($query) use ($device) {
                     $query
                         ->where('id', '!=', $device->id)
@@ -2855,9 +2989,9 @@ class DeviceController extends Controller
             'ms_office_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
         ], [
             'property_number.regex' => 'Property number may only contain letters, numbers, hyphens, and slashes.',
-            'property_number.required_without' => 'Enter a property number, or select a parent property number for this linked equipment.',
+            'property_number.required_without' => 'A generated property number will be assigned when this field is blank.',
             'part_of_property_number.exists' => 'The selected parent property number does not exist.',
-            'part_of_property_number.required_without' => 'Select a parent property number when the equipment property number is blank.',
+            'part_of_property_number.required_without' => 'A parent property number is optional.',
             'serial_number.regex' => 'Serial number may only contain letters, numbers, and hyphens.',
             'brand.regex' => 'Brand may only contain letters and numbers.',
             'model.regex' => 'Model may only contain letters and numbers.',
@@ -2883,6 +3017,11 @@ class DeviceController extends Controller
                 (string) $data['part_of_property_number'],
                 (int) $data['device_type_id']
             );
+        }
+
+        if ($this->importValueIsEmpty($data['property_number'] ?? null)) {
+            $typeName = DeviceType::whereKey((int) ($data['device_type_id'] ?? $device->device_type_id))->value('name');
+            $data['property_number'] = $device->property_number ?: $this->generateAutoPropertyNumber($typeName);
         }
 
         if (!array_key_exists('status', $data)) {

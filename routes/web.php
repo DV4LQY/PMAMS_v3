@@ -90,6 +90,8 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::view('/support', 'admin.support')->name('admin.support');
         Route::get('/maintenance-gallery', [MaintenancePhotoController::class, 'index'])
             ->name('admin.maintenance-gallery.index');
+        Route::get('/maintenance-gallery/photo/{photo}', [MaintenancePhotoController::class, 'photo'])
+            ->name('admin.maintenance-gallery.photo');
         Route::post('/maintenance-gallery', [MaintenancePhotoController::class, 'store'])
             ->name('admin.maintenance-gallery.store');
         Route::post('/maintenance-gallery/bulk-delete', [MaintenancePhotoController::class, 'bulkDestroy'])
@@ -181,6 +183,9 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
 
         Route::patch('/devices/{device}/link-parent', [DeviceController::class, 'linkPeripheral'])
             ->name('admin.devices.linkParent');
+
+        Route::patch('/devices/{device}/unlink-parent', [DeviceController::class, 'unlinkPeripheral'])
+            ->name('admin.devices.unlinkParent');
 
         Route::get('/devices/lookup/available', [DeviceController::class, 'availableLookup'])
             ->name('admin.devices.lookup.available');

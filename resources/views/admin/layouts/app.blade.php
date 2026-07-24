@@ -214,7 +214,7 @@
         request()->routeIs('admin.devices.*') => 'devices',
         request()->routeIs('admin.issuance.*') => 'reports',
         request()->routeIs('admin.reports.*') => 'reports',
-        request()->routeIs('admin.maintenance-cleanup.*') => 'reports',
+        request()->routeIs('admin.maintenance-cleanup.*') => 'maintenance-cleanup',
         request()->routeIs('admin.database.*') => 'database',
         request()->routeIs('admin.maintenance-gallery.*') => 'gallery',
         request()->routeIs('admin.scanner') => 'scanner',
@@ -404,7 +404,9 @@
                     </a>
                     <a
                         href="{{ route('admin.maintenance-cleanup.index') }}"
-                        data-nav-group="reports"
+                        data-nav-group="maintenance-cleanup"
+                        data-active="{{ $currentNavGroup === 'maintenance-cleanup' ? 'true' : 'false' }}"
+                        @if($currentNavGroup === 'maintenance-cleanup') aria-current="page" @endif
                         class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition {{ request()->routeIs('admin.maintenance-cleanup.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
                     >
                         <svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7H5m12 0v12H7V7m3-3h4l1 3H9l1-3Zm-1 7v5m4-5v5"/></svg>

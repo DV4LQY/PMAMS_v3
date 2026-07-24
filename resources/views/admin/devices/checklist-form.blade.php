@@ -30,6 +30,7 @@
     $openLink = request()->boolean('open_link');
     $requestedPeripheralType = request()->query('peripheral_type', '');
     $requestedAllowLinked = request()->boolean('allow_linked');
+    $checklistPath = parse_url(route('admin.devices.checklist.form', $device), PHP_URL_PATH);
     $checklistReturnPath = parse_url(route('admin.devices.checklist.form', $device), PHP_URL_PATH)
         . '?open_link=1&peripheral_type=' . rawurlencode($requestedPeripheralType ?: 'monitor')
         . '&allow_linked=' . ($requestedAllowLinked ? '1' : '0');
@@ -156,6 +157,26 @@
                     }
                 });
 
+                this.refreshChecklistState();
+            },
+            setNotAvailableRow(key) {
+                // Not Available is a completed hardware response, but it is
+                // intentionally outside the condition/disposition workflow.
+                // Clear and disable those controls immediately so a previous
+                // Not OK selection cannot keep a stale Repair/Condemn value
+                // or make the linked property appear required.
+                this.notOkRows[key] = false;
+                this.conditionRows[key] = '';
+                this.statusRows[key] = '';
+
+                this.$root.querySelectorAll('input').forEach((input) => {
+                    if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) {
+                        input.disabled = true;
+                        input.checked = false;
+                    }
+                });
+
+                this.applyChecklistDefaults();
                 this.refreshChecklistState();
             },
             isNotOkSelected(key) {
@@ -352,14 +373,18 @@
                         @php
                             $sectionName = $item['group'] ?? '-';
                             $sectionKey = strtolower($sectionName);
+                            $sectionDevices = match ($sectionKey) {
+                                'system unit' => collect([$device]),
+                                'monitor' => $linkedByType->get('monitor', collect()),
+                                'avr/ups' => $linkedByType->get('avr', collect())
+                                    ->merge($linkedByType->get('ups', collect()))
+                                    ->values(),
+                                'printer' => $linkedByType->get('printer', collect()),
+                                default => collect(),
+                            };
                             $sectionProperties = match ($sectionKey) {
-                                'system unit' => [$device->property_number],
-                                'monitor' => $linkedByType->get('monitor', collect())->pluck('property_number')->all(),
-                                'avr/ups' => $linkedByType->get('avr', collect())->pluck('property_number')
-                                    ->merge($linkedByType->get('ups', collect())->pluck('property_number'))
-                                    ->values()
-                                    ->all(),
-                                'printer' => $linkedByType->get('printer', collect())->pluck('property_number')->all(),
+                                'system unit' => $sectionDevices->pluck('property_number')->all(),
+                                'monitor', 'avr/ups', 'printer' => $sectionDevices->pluck('property_number')->all(),
                                 default => [],
                             };
                         @endphp
@@ -370,12 +395,37 @@
                                     @if(auth()->user()?->isAdmin() && in_array($sectionKey, ['monitor', 'avr/ups', 'printer'], true))
                                         <button
                                             type="button"
-                                            class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 underline decoration-dotted underline-offset-2 hover:text-indigo-800 dark:text-indigo-300 dark:hover:text-indigo-200"
+                                            title="Change linked equipment"
+                                            class="mt-1 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-indigo-600 underline decoration-dotted underline-offset-2 hover:text-indigo-800 dark:text-indigo-300 dark:hover:text-indigo-200"
                                             x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: true })"
                                         >
                                             Property #: {{ implode(', ', $sectionProperties) }}
                                             <span aria-hidden="true">&#128279;</span>
                                         </button>
+                                        @foreach($sectionDevices as $sectionDevice)
+                                            <a
+                                                href="{{ route('admin.devices.edit', ['device' => $sectionDevice, 'return_to' => $checklistPath]) }}"
+                                                wire:navigate
+                                                title="Edit specs for {{ $sectionDevice->property_number }}"
+                                                aria-label="Edit specs for {{ $sectionDevice->property_number }}"
+                                                class="mt-1 inline-flex items-center justify-center rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-300"
+                                            >
+                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                    <path d="M12 20h9" />
+                                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                                </svg>
+                                                <span class="sr-only">Edit Specs</span>
+                                            </a>
+                                            <button
+                                                type="button"
+                                                class="mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-red-600 underline decoration-dotted underline-offset-2 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200"
+                                                data-unlink-url="{{ route('admin.devices.unlinkParent', $sectionDevice) }}"
+                                                data-unlink-label="{{ $sectionDevice->property_number }}"
+                                                onclick="if (!window.confirm('Unlink this peripheral (' + this.dataset.unlinkLabel + ') from the system unit?')) return; const form = document.createElement('form'); form.method = 'POST'; form.action = this.dataset.unlinkUrl; const token = document.querySelector('#maintenance-checklist-form input[name=_token]')?.value || ''; const add = (name, value) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; form.appendChild(input); }; add('_token', token); add('_method', 'PATCH'); document.body.appendChild(form); form.submit();"
+                                            >
+                                                Unlink {{ $sectionDevice->property_number }}
+                                            </button>
+                                        @endforeach
                                     @else
                                         <div class="mt-1 text-xs text-indigo-600 dark:text-indigo-300">
                                             Property #: {{ implode(', ', $sectionProperties) }}
@@ -385,11 +435,12 @@
                                     @if(auth()->user()?->isAdmin())
                                         <button
                                             type="button"
-                                            class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-amber-600 underline decoration-dotted underline-offset-2 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200"
-                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: false })"
+                                            title="Link equipment"
+                                            class="mt-1 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-amber-600 underline decoration-dotted underline-offset-2 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200"
+                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: true })"
                                         >
                                             Property #: Not linked
-                                            <span aria-hidden="true">&#128279;</span>
+                                            <span aria-hidden="true" title="Link equipment">&#128279;</span>
                                         </button>
                                     @else
                                         <div class="mt-1 text-xs text-amber-600 dark:text-amber-300">Property #: Not linked</div>
@@ -440,7 +491,7 @@
                                             name="hardware[{{ $key }}]"
                                             value="Not Available"
                                             class="peer sr-only"
-                                            x-on:change="setNotOkRow('{{ $key }}', $event.target.value === 'Not OK'); clearDisposition('{{ $key }}'); applyChecklistDefaults(); refreshChecklistState()"
+                                            x-on:change="setNotAvailableRow('{{ $key }}')"
                                             @checked(old("hardware.$key") === 'Not Available')
                                         >
                                        <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
@@ -720,7 +771,8 @@
                 candidates: [],
                 selectedPeripheral: null,
                 parentPropertyNumber: @js($device->property_number),
-                linkBaseUrl: @js(url('/admin/devices')),
+                linkBaseUrl: `${window.adminBasePath || window.location.pathname.split('/admin')[0]}/admin/devices`,
+                editReturnTo: @js($checklistPath),
                 equipmentAddUrl: @js(route('admin.devices.index', ['open_add' => 1])),
                 returnTo: @js($checklistReturnPath),
                 linkablePeripherals: @js($linkablePeripheralOptions),
@@ -901,15 +953,29 @@
                                 </div>
                             </template>
                             <template x-for="peripheral in filteredCandidates()" :key="peripheral.id">
-                                <button
-                                    type="button"
-                                    class="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-amber-50 dark:border-gray-700 dark:hover:bg-gray-700"
-                                    x-bind:class="selectedPeripheral?.id === peripheral.id ? 'bg-amber-100 dark:bg-amber-900/40' : ''"
-                                    x-on:click="selectPeripheral(peripheral)"
-                                >
-                                    <span class="font-semibold text-gray-900 dark:text-white" x-text="`${peripheral.type} ${peripheral.property_number || ''}`"></span>
-                                    <span class="block text-xs text-gray-500 dark:text-gray-400" x-text="[peripheral.serial_number, peripheral.computer_name, peripheral.parent_property_number ? `Linked to ${peripheral.parent_property_number}` : 'Not linked'].filter(Boolean).join(' / ') || 'No serial or computer name'"></span>
-                                </button>
+                                <div class="flex items-stretch border-b border-gray-100 last:border-b-0 dark:border-gray-700">
+                                    <button
+                                        type="button"
+                                        class="min-w-0 flex-1 px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-gray-700"
+                                        x-bind:class="selectedPeripheral?.id === peripheral.id ? 'bg-amber-100 dark:bg-amber-900/40' : ''"
+                                        x-on:click="selectPeripheral(peripheral)"
+                                    >
+                                        <span class="font-semibold text-gray-900 dark:text-white" x-text="`${peripheral.type} ${peripheral.property_number || ''}`"></span>
+                                        <span class="block truncate text-xs text-gray-500 dark:text-gray-400" x-text="[peripheral.serial_number, peripheral.computer_name, peripheral.parent_property_number ? `Linked to ${peripheral.parent_property_number}` : 'Not linked'].filter(Boolean).join(' / ') || 'No serial or computer name'"></span>
+                                    </button>
+                                    <a
+                                        x-bind:href="`${linkBaseUrl}/${peripheral.id}/edit?return_to=${encodeURIComponent(editReturnTo)}`"
+                                        wire:navigate
+                                        title="Edit specs"
+                                        aria-label="Edit specs"
+                                        class="inline-flex shrink-0 items-center justify-center px-3 text-gray-500 hover:bg-gray-100 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-300"
+                                    >
+                                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <path d="M12 20h9" />
+                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                        </svg>
+                                    </a>
+                                </div>
                             </template>
                         </div>
                     </div>

@@ -121,7 +121,7 @@
                                 <input type="checkbox" value="{{ $photo->id }}" x-model.number="selectedPhotoIds" aria-label="Select photo {{ $photo->id }}" class="absolute left-3 top-3 z-10 h-5 w-5 rounded border-gray-300 bg-white/90 text-blue-600 shadow focus:ring-blue-500 dark:border-gray-600">
                                 <button type="button" x-bind:class="viewMode === 'list' ? 'group flex min-w-0 flex-1 text-left sm:flex-row' : 'group block w-full text-left'" x-on:click="startSlideshow({{ $index }})">
                                     <div x-bind:class="viewMode === 'list' ? 'h-48 w-full shrink-0 overflow-hidden bg-gray-200 dark:bg-gray-700 sm:h-auto sm:w-56' : 'aspect-[4/3] overflow-hidden bg-gray-200 dark:bg-gray-700'">
-                                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($photo->photo_path) }}" alt="{{ $photo->caption ?: 'Preventive maintenance photo' }}" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
+                                        <img src="{{ route('admin.maintenance-gallery.photo', $photo) }}" alt="{{ $photo->caption ?: 'Preventive maintenance photo' }}" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
                                     </div>
                                     <div class="space-y-1 p-3">
                                         <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ $photo->device?->property_number ?: 'Equipment' }}</div>
@@ -138,7 +138,7 @@
                                         @else
                                             <span class="truncate text-[11px] text-gray-500 dark:text-gray-400">No checklist linked</span>
                                         @endif
-                                        <a href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($photo->photo_path) }}" download="maintenance-photo-{{ $photo->id }}" class="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">Download</a>
+                                        <a href="{{ route('admin.maintenance-gallery.photo', $photo) }}" download="maintenance-photo-{{ $photo->id }}" class="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">Download</a>
                                     </div>
                                     @if((int) $photo->uploaded_by === (int) auth()->id())
                                         <form method="POST" action="{{ route('admin.maintenance-gallery.destroy', $photo) }}" onsubmit="return window.confirm('Delete this maintenance photo?')">

@@ -24,7 +24,6 @@ class UpdateDeviceRequest extends FormRequest
                 'string',
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
-                'required_without:part_of_property_number',
                 'unique:devices,property_number,' . $this->route('device')->id,
             ],
 
@@ -33,7 +32,6 @@ class UpdateDeviceRequest extends FormRequest
                 'string',
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
-                'required_without:property_number',
                 Rule::exists('devices', 'property_number')->where(function ($query) {
                     $query
                         ->where('id', '!=', $this->route('device')->id)
@@ -137,9 +135,9 @@ class UpdateDeviceRequest extends FormRequest
     {
         return [
             'property_number.regex' => 'Property number may only contain letters, numbers, hyphens, and slashes.',
-            'property_number.required_without' => 'Enter a property number, or select a parent property number for this linked equipment.',
+            'property_number.required_without' => 'A generated property number will be assigned when this field is blank.',
             'part_of_property_number.exists' => 'The selected parent property number does not exist.',
-            'part_of_property_number.required_without' => 'Select a parent property number when the equipment property number is blank.',
+            'part_of_property_number.required_without' => 'A parent property number is optional.',
             'part_of_property_number.regex' => 'Part of property number may only contain letters, numbers, hyphens, and slashes.',
             'serial_number.regex'   => 'Serial number may only contain letters, numbers, and hyphens.',
             'brand.regex'           => 'Brand may only contain letters and numbers.',

@@ -32,6 +32,11 @@ import './bootstrap';
         return `${pathname}${url.search}${url.hash}`;
     };
     window.adminLocalNavigatePath = localNavigatePath;
+    // Build admin API/form URLs from the URL currently open in the browser.
+    // This keeps AJAX actions working when the same build is served from
+    // Laravel's root, /public, or an XAMPP subdirectory even if APP_URL still
+    // points at a different local host/port.
+    window.adminBasePath = currentBasePath();
 
     document.addEventListener('click', (event) => {
         if (!canNavigate() || event.defaultPrevented || event.button !== 0) return;
@@ -328,7 +333,8 @@ import './bootstrap';
             path.startsWith('/admin/org-browser')) return 'locations';
         if (path.startsWith('/admin/devices')) return 'devices';
         if (path.startsWith('/admin/issuance')) return 'issuance';
-        if (path.startsWith('/admin/reports') || path.startsWith('/admin/maintenance-cleanup')) return 'reports';
+        if (path.startsWith('/admin/maintenance-cleanup')) return 'maintenance-cleanup';
+        if (path.startsWith('/admin/reports')) return 'reports';
         if (path.startsWith('/admin/database')) return 'database';
         if (path.startsWith('/admin/maintenance-gallery')) return 'gallery';
         if (path.startsWith('/admin/scanner')) return 'scanner';

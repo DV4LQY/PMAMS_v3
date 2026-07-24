@@ -55,7 +55,7 @@ class MaintenancePhotoController extends Controller
             ->get(['id', 'device_id', 'maintenance_date', 'maintenance_type']);
 
         $slides = $photos->getCollection()->map(fn (DeviceMaintenancePhoto $photo) => [
-            'url' => Storage::disk('public')->url($photo->photo_path),
+            'url' => route('admin.maintenance-gallery.photo', $photo),
             'caption' => $photo->caption ?: 'Preventive maintenance photo',
             'property_number' => $photo->device?->property_number,
             'captured_at' => $photo->captured_at?->format('M j, Y g:i A'),
@@ -70,6 +70,21 @@ class MaintenancePhotoController extends Controller
             'search',
             'slides',
         ));
+    }
+
+    /**
+     * Serve a gallery image through Laravel instead of relying on a storage
+     * symlink. This keeps photos viewable when the project is moved from
+     * Laragon to XAMPP, where `public/storage` may not have been recreated.
+     */
+    public function photo(DeviceMaintenancePhoto $photo)
+    {
+        $disk = Storage::disk('public');
+        abort_unless($disk->fileExists($photo->photo_path), 404);
+
+        return $disk->response($photo->photo_path, basename($photo->photo_path), [
+            'Cache-Control' => 'public, max-age=86400',
+        ], 'inline');
     }
 
     public function store(Request $request)

@@ -130,6 +130,15 @@ class DeviceChecklistController extends Controller
             }
         }
 
+        // A Not Available row is intentionally outside the linked-property
+        // disposition workflow. Ignore stale browser values so an old
+        // condition/disposition cannot make the property number required.
+        foreach ($hardwareResponses as $key => $response) {
+            if ($response === 'Not Available') {
+                unset($dispositionResponses[$key], $conditionResponses[$key]);
+            }
+        }
+
         // OK rows are always serviceable. A Not OK row defaults to
         // unserviceable unless the checker explicitly selects Condemned.
         foreach ($this->dispositionItems() as $key => $item) {
@@ -144,6 +153,14 @@ class DeviceChecklistController extends Controller
             $conditionResponses[$key] = $disposition === 'repair' ? 'unserviceable' : 'serviceable';
         }
 
+        // Resolve each checklist section before any Not Available row can
+        // unlink its peripheral. The same snapshot is then used for
+        // validation, history, and current-property updates.
+        $targetDevicesByKey = [];
+        foreach (array_keys($this->dispositionItems()) as $key) {
+            $targetDevicesByKey[$key] = $this->checklistTargetDevices($device, $key)->values();
+        }
+
         foreach ($dispositionResponses as $key => $disposition) {
             if (($hardwareResponses[$key] ?? null) !== 'Not OK') {
                 return redirect()
@@ -152,7 +169,7 @@ class DeviceChecklistController extends Controller
                     ->withErrors(["disposition.{$key}" => 'Repair or Not in Use can only be selected for a Not OK checklist item.']);
             }
 
-            if ($key !== 'system_unit_power_on' && $this->checklistTargetDevices($device, $key)->isEmpty()) {
+            if ($key !== 'system_unit_power_on' && ($targetDevicesByKey[$key] ?? collect())->isEmpty()) {
                 return redirect()
                     ->back()
                     ->withInput()
@@ -163,7 +180,7 @@ class DeviceChecklistController extends Controller
         foreach ($conditionResponses as $key => $condition) {
             if ($key !== 'system_unit_power_on'
                 && ($hardwareResponses[$key] ?? null) === 'Not OK'
-                && $this->checklistTargetDevices($device, $key)->isEmpty()) {
+                && ($targetDevicesByKey[$key] ?? collect())->isEmpty()) {
                 return redirect()
                     ->back()
                     ->withInput()
@@ -276,7 +293,7 @@ class DeviceChecklistController extends Controller
                 ->mapWithKeys(fn ($disposition, $key) => [
                     $key => [
                         'disposition' => $disposition,
-                        'property_numbers' => $this->checklistTargetDevices($device, $key)
+                        'property_numbers' => ($targetDevicesByKey[$key] ?? collect())
                             ->pluck('property_number')
                             ->values()
                             ->all(),
@@ -287,7 +304,7 @@ class DeviceChecklistController extends Controller
                 ->mapWithKeys(fn ($condition, $key) => [
                     $key => [
                         'condition' => $condition,
-                        'property_numbers' => $this->checklistTargetDevices($device, $key)
+                        'property_numbers' => ($targetDevicesByKey[$key] ?? collect())
                             ->pluck('property_number')
                             ->values()
                             ->all(),
@@ -328,6 +345,37 @@ class DeviceChecklistController extends Controller
             ],
             'checked_by' => Auth::id(),
         ]);
+
+        // A peripheral marked Not Available is no longer part of this
+        // system-unit grouping. This happens after the checklist snapshot is
+        // written so historical reports retain the property number that was
+        // linked at the time of the check.
+        foreach ($hardwareResponses as $key => $response) {
+            if ($response !== 'Not Available') {
+                continue;
+            }
+
+            foreach (($targetDevicesByKey[$key] ?? collect()) as $targetDevice) {
+                $previousParent = $targetDevice->part_of_property_number;
+                if (blank($previousParent)) {
+                    continue;
+                }
+
+                $targetDevice->update(['part_of_property_number' => null]);
+                ActivityLog::record(
+                    'updated',
+                    "Unlinked {$targetDevice->type?->name} \"{$targetDevice->property_number}\" because the checklist marked it Not Available",
+                    $targetDevice,
+                    ActivityLog::makePayload([
+                        'property_number' => $targetDevice->property_number,
+                        'device_type' => $targetDevice->type?->name,
+                        'previous_parent_property_number' => $previousParent,
+                        'reason' => 'Checklist marked Not Available',
+                        'maintenance_date' => $dateChecked,
+                    ])
+                );
+            }
+        }
 
         if ($request->hasFile('maintenance_photo')) {
             $photoPath = $request->file('maintenance_photo')->store('maintenance-photos', 'public');
@@ -373,7 +421,13 @@ class DeviceChecklistController extends Controller
                 continue;
             }
 
-            foreach ($this->checklistTargetDevices($device, $key) as $targetDevice) {
+            // Not Available rows were deliberately unlinked above and must
+            // not receive a current-property update after being detached.
+            if (($hardwareResponses[$key] ?? null) === 'Not Available') {
+                continue;
+            }
+
+            foreach (($targetDevicesByKey[$key] ?? collect()) as $targetDevice) {
                 $rowCondition = $conditionResponses[$key] ?? 'serviceable';
                 $targetUpdates = [
                     'last_maintenance_date' => $dateChecked,

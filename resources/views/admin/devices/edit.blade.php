@@ -10,6 +10,14 @@
 @endsection
 
 @section('content')
+@php
+    $requestedReturnTo = trim((string) request()->query('return_to', ''));
+    $safeReturnTo = $requestedReturnTo !== ''
+        && str_starts_with($requestedReturnTo, '/')
+        && ! str_starts_with($requestedReturnTo, '//')
+        ? $requestedReturnTo
+        : null;
+@endphp
 <div class="bg-white rounded shadow-sm p-6 max-w-4xl">
     <div
         x-data="{
@@ -57,9 +65,13 @@
                 'lockEquipmentType' => true,
             ])
 
+            @if($safeReturnTo)
+                <input type="hidden" name="return_to" value="{{ $safeReturnTo }}">
+            @endif
+
             <div class="flex gap-2">
                 <button class="rounded bg-blue-600 px-4 py-2 text-white">Save Changes</button>
-                <a href="{{ route('admin.devices.index') }}" class="rounded bg-gray-100 px-4 py-2">Cancel</a>
+                <a href="{{ $safeReturnTo ?: route('admin.devices.index') }}" wire:navigate class="rounded bg-gray-100 px-4 py-2">Cancel</a>
             </div>
         </form>
     </div>

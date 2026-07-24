@@ -514,6 +514,23 @@
                         Edit Specs
                     </button>
 
+                    @if(auth()->user()->isAdmin() && $device->part_of_property_number)
+                        <form
+                            method="POST"
+                            action="{{ route('admin.devices.unlinkParent', $device) }}"
+                            onsubmit="return confirm('Unlink this peripheral from {{ $device->part_of_property_number }}?')"
+                        >
+                            @csrf
+                            @method('PATCH')
+                            <button
+                                type="submit"
+                                class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                            >
+                                Unlink
+                            </button>
+                        </form>
+                    @endif
+
                     @if(auth()->user()->isAdmin())
                         <form
                             method="POST"
