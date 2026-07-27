@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Device;
 use App\Models\SystemSetting;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -26,6 +28,8 @@ class DatabaseBackupController extends Controller
             'database' => DB::getDatabaseName(),
             'backupDay' => (int) SystemSetting::getValue(self::BACKUP_DAY_KEY, 1),
             'backupTime' => (string) SystemSetting::getValue(self::BACKUP_TIME_KEY, '02:00'),
+            'deletedUsersCount' => User::onlyTrashed()->count(),
+            'deletedDevicesCount' => Device::onlyTrashed()->count(),
         ]);
     }
 

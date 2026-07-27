@@ -712,6 +712,19 @@
                 </div>
             @endif
 
+            @if (session('recycle_bin_notice'))
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                    <span>{{ session('recycle_bin_notice') }}</span>
+                    @if (auth()->user()?->isSuperAdmin())
+                        <a href="{{ route('admin.users.recycleBin') }}" class="inline-flex items-center rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">
+                            Open Recycle Bin
+                        </a>
+                    @else
+                        <span class="text-xs font-medium">A Super Admin can restore or permanently delete it.</span>
+                    @endif
+                </div>
+            @endif
+
             @if (session('error'))
                 <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
                     {{ session('error') }}

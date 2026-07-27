@@ -9,13 +9,13 @@
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Recycle Bin</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Restore deleted users, equipment, and checklist history. Permanent deletion is available only to Super Admins.
+                Restore deleted users and equipment. Permanent deletion is available only to Super Admins.
             </p>
         </div>
 
         <div class="flex flex-wrap gap-2">
             <button type="button" onclick="emptyRecycleBin()" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
-                Empty Recycle Bin
+                Permanently Delete All
             </button>
             <a href="{{ route('admin.users.index') }}" wire:navigate class="inline-flex items-center justify-center rounded-xl bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600">
                 Back to Users
@@ -24,8 +24,17 @@
     </div>
 
     <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-        Restoring returns the record to the active list. Permanent deletion cannot be undone. Checklist and equipment photos are retained until their parent record is permanently deleted.
+        Restoring returns the record to the active list. Permanent deletion cannot be undone. Equipment photos and checklist history are retained until their parent equipment record is permanently deleted.
     </div>
+
+    @php($deletedUserCount = $deletedUsers->total())
+    @php($deletedDeviceCount = $deletedDevices->total())
+    @if($deletedUserCount + $deletedDeviceCount > 0)
+        <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200" role="status">
+            <p class="font-semibold">Deleted records are still present in the database.</p>
+            <p class="mt-1">{{ number_format($deletedUserCount) }} user(s) and {{ number_format($deletedDeviceCount) }} equipment record(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to erase them and their retained equipment history.</p>
+        </div>
+    @endif
 
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Deleted Users</h2>
     <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -119,55 +128,6 @@
     </div>
     {{ $deletedDevices->links() }}
 
-    <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted Checklist History</h2>
-    <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-sm">
-                <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
-                    <tr>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Select</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Date</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Property</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Equipment</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Checked By</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Photos</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
-                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                    @forelse($deletedChecklists as $record)
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="checklists" value="{{ $record->id }}" class="h-4 w-4"></td>
-                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $record->maintenance_date?->format('M d, Y') }}</td>
-                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $record->device?->property_number ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->device?->type?->name ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->checkedBy?->name ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $record->photos_count }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $record->deleted_at?->format('M d, Y h:i A') }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <form method="POST" action="{{ route('admin.maintenance-cleanup.restore', $record->id) }}">
-                                        @csrf @method('PATCH')
-                                        <button type="submit" class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Restore</button>
-                                    </form>
-                                    <button type="button" onclick="permanentDeleteSingle('checklists', {{ $record->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Delete Permanently</button>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="8" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted checklist history found.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-3">
-        <button type="button" onclick="permanentDeleteSelected('checklists')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Checklist History</button>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-checklists" type="checkbox" class="h-4 w-4"> Delete all checklist history in recycle bin</label>
-    </div>
-    {{ $deletedChecklists->links() }}
-
     <form id="recycle-bin-permanent-delete-form" method="POST" action="{{ route('admin.recycle-bin.permanentDelete') }}" class="hidden">
         @csrf
         <input type="hidden" name="type" id="recycle-bin-delete-type">
@@ -206,7 +166,7 @@ function openRecycleBinRemarks(action) {
     const error = document.getElementById('recycle-bin-remarks-error');
     const message = document.getElementById('recycle-bin-remarks-message');
     if (message) message.textContent = action.empty
-        ? 'This will permanently delete every user, equipment, and checklist record in the recycle bin.'
+        ? 'This will permanently delete every user and equipment record in the recycle bin.'
         : 'This action permanently deletes the selected recycle-bin records and cannot be undone.';
     if (textarea) textarea.value = '';
     if (error) error.classList.add('hidden');

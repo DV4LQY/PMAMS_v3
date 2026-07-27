@@ -120,14 +120,6 @@ class UserController extends Controller
             ->paginate(15, ['*'], 'users_page')
             ->withQueryString();
 
-        $deletedChecklists = DeviceMaintenanceRecord::onlyTrashed()
-            ->with(['device.type', 'checkedBy'])
-            ->withCount('photos')
-            ->orderByDesc('deleted_at')
-            ->orderByDesc('id')
-            ->paginate(15, ['*'], 'checklists_page')
-            ->withQueryString();
-
         $deletedDevices = Device::onlyTrashed()
             ->with('type')
             ->withCount(['assignments', 'maintenanceRecordsIncludingTrashed', 'maintenancePhotos'])
@@ -136,7 +128,7 @@ class UserController extends Controller
             ->paginate(15, ['*'], 'devices_page')
             ->withQueryString();
 
-        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedChecklists', 'deletedDevices'));
+        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedDevices'));
     }
 
     public function permanentDelete(Request $request)
@@ -144,7 +136,7 @@ class UserController extends Controller
         abort_unless($request->user()?->isSuperAdmin(), 403);
 
         $data = $request->validate([
-            'type' => ['required', Rule::in(['users', 'devices', 'checklists', 'all'])],
+            'type' => ['required', Rule::in(['users', 'devices', 'all'])],
             'ids' => ['nullable', 'array'],
             'ids.*' => ['integer', 'distinct'],
             'select_all' => ['nullable', 'boolean'],
@@ -169,7 +161,7 @@ class UserController extends Controller
             return back()->withErrors(['ids' => 'Select at least one recycle-bin record or choose the empty-bin action.']);
         }
 
-        $types = $type === 'all' ? ['users', 'devices', 'checklists'] : [$type];
+        $types = $type === 'all' ? ['users', 'devices'] : [$type];
         $deletedCounts = [];
 
         DB::transaction(function () use ($types, $selectAll, $ids, $data, &$deletedCounts) {
@@ -177,7 +169,6 @@ class UserController extends Controller
                 $deletedCounts[$currentType] = match ($currentType) {
                     'users' => $this->permanentlyDeleteUsers($selectAll, $ids),
                     'devices' => $this->permanentlyDeleteDevices($selectAll, $ids),
-                    'checklists' => $this->permanentlyDeleteChecklists($selectAll, $ids),
                 };
             }
         });
@@ -253,27 +244,6 @@ class UserController extends Controller
         }
 
         return $devices->count();
-    }
-
-    private function permanentlyDeleteChecklists(bool $selectAll, $ids): int
-    {
-        $query = DeviceMaintenanceRecord::onlyTrashed();
-        if (! $selectAll) {
-            $query->whereIn('id', $ids);
-        }
-
-        $records = $query->with('photos')->get();
-        foreach ($records as $record) {
-            foreach ($record->photos as $photo) {
-                if (filled($photo->photo_path)) {
-                    Storage::disk('public')->delete($photo->photo_path);
-                }
-                $photo->delete();
-            }
-            $record->forceDelete();
-        }
-
-        return $records->count();
     }
 
     public function store(Request $request)
@@ -446,7 +416,9 @@ class UserController extends Controller
 
         $user->delete();
 
-        return back()->with('success', 'User moved to the recycle bin.');
+        return back()
+            ->with('success', 'User moved to the recycle bin.')
+            ->with('recycle_bin_notice', 'The deleted user is retained in the recycle bin and has not been permanently erased.');
     }
 
     public function restore(int $user)

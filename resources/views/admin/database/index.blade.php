@@ -74,6 +74,18 @@
                 <p class="mt-1">Restoring can replace current data and MySQL/MariaDB DDL is not fully transactional. Download a fresh backup first. In XAMPP, create/select the target database in phpMyAdmin, then use its Import tab with this SQL file.</p>
             </div>
 
+            @if(($deletedUsersCount ?? 0) + ($deletedDevicesCount ?? 0) > 0)
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200" role="alert">
+                    <div>
+                        <p class="font-semibold">Recycle Bin records detected before a database restore.</p>
+                        <p class="mt-1">{{ number_format($deletedUsersCount ?? 0) }} user(s) and {{ number_format($deletedDevicesCount ?? 0) }} equipment record(s) were moved to the recycle bin and still exist in the database. Review them before replacing tables with a restore.</p>
+                    </div>
+                    <a href="{{ route('admin.users.recycleBin') }}" class="inline-flex shrink-0 items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">
+                        Review / Permanently Delete
+                    </a>
+                </div>
+            @endif
+
             <div class="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800/70 dark:bg-blue-900/20 dark:text-blue-200" role="note">
                 <p class="font-semibold">Automatic monthly local backup</p>
                 <p class="mt-1">The scheduler runs <code>database:backup-monthly</code> on the configured day and time each month and saves a portable file under <code>storage/app/private/backups</code>. On Windows/XAMPP, keep <code>php artisan schedule:work</code> running or register <code>php artisan schedule:run</code> in Windows Task Scheduler.</p>

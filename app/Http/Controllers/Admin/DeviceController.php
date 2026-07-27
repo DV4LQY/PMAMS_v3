@@ -1183,7 +1183,8 @@ class DeviceController extends Controller
         $device->delete();
         return redirect()
             ->route('admin.devices.index')
-            ->with('success', 'Equipment moved to the recycle bin.');
+            ->with('success', 'Equipment moved to the recycle bin.')
+            ->with('recycle_bin_notice', 'The deleted equipment is retained in the recycle bin and has not been permanently erased.');
     }
 
     /**
@@ -1263,7 +1264,8 @@ class DeviceController extends Controller
 
         return redirect()
             ->route('admin.devices.index')
-            ->with('success', count($items) . ' equipment record(s) moved to the recycle bin.');
+            ->with('success', count($items) . ' equipment record(s) moved to the recycle bin.')
+            ->with('recycle_bin_notice', count($items) . ' deleted equipment record(s) are retained in the recycle bin. Use Permanent Delete there only when the records and their history should be erased.');
     }
 
     public function restore(int $device)
@@ -1443,7 +1445,7 @@ class DeviceController extends Controller
             . ($result['issued'] ? ", {$result['issued']} issuance record(s) created." : '.');
 
         if (($result['skipped'] ?? 0) > 0) {
-            $message .= " {$result['skipped']} unlinked peripheral row(s) skipped.";
+            $message .= " {$result['skipped']} row(s) skipped because the property number was blank/zero or a required peripheral parent link was missing.";
         }
 
         if (($result['warning_count'] ?? 0) > 0) {
@@ -1527,6 +1529,19 @@ class DeviceController extends Controller
                     $result,
                     $rowNumber,
                     "Skipped {$equipmentType} because part_of_property_number is blank or zero."
+                );
+                continue;
+            }
+
+            if ($this->importValueIsEmpty($this->importValue($row, [
+                'property_number', 'property_no', 'asset_number', 'asset_no',
+            ]))) {
+                $result['skipped']++;
+                $equipmentType = trim((string) $this->importValue($row, ['equipment_type', 'device_type', 'type']));
+                $this->addImportRowWarning(
+                    $result,
+                    $rowNumber,
+                    "Skipped {$equipmentType} because property_number is blank or zero."
                 );
                 continue;
             }
@@ -1950,7 +1965,10 @@ class DeviceController extends Controller
         $dateSegment = now()->format('Ymd');
         $prefix = "{$typeSegment}-TempID-{$dateSegment}-";
 
-        $usedNumbers = Device::query()
+        // Soft-deleted equipment still owns its unique property number. Include
+        // recycle-bin records so a newly generated number cannot collide with
+        // a record that has only been moved out of the active inventory list.
+        $usedNumbers = Device::withTrashed()
             ->where('property_number', 'like', $prefix . '%')
             ->pluck('property_number')
             ->map(fn ($number) => strtoupper((string) $number))
@@ -2740,8 +2758,9 @@ class DeviceController extends Controller
 
         $propertyNumber = trim((string) $this->importValue($row, ['property_number']));
         $partOfPropertyNumber = trim((string) $this->importValue($row, ['part_of_property_number']));
-        // A missing property number is valid: persistence assigns a readable
-        // EQUIPMENTTYPE-TempID-YYYYMMDD-#### number so inventory rows remain unique.
+        if ($this->importValueIsEmpty($propertyNumber)) {
+            throw new \RuntimeException('property_number is required; rows with a blank or zero value are skipped.');
+        }
 
         $equipmentType = trim((string) $this->importValue($row, ['equipment_type']));
         if ($equipmentType === '') {

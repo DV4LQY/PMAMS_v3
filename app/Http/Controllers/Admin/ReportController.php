@@ -397,27 +397,27 @@ class ReportController extends Controller
         return [
             'system_unit_power_on' => [
                 'group' => 'System Unit',
-                'label' => 'Check for<br>power on',
+                'label' => 'Check for power on',
             ],
             'monitor_display' => [
                 'group' => 'Monitor',
-                'label' => 'Check<br>display',
+                'label' => 'Check display',
             ],
             'keyboard_keys' => [
                 'group' => 'Keyboard',
-                'label' => 'Check for<br>keys',
+                'label' => 'Check for keys',
             ],
             'mouse_buttons' => [
                 'group' => 'Mouse',
-                'label' => 'Check<br>mouse<br>left/right<br>buttons',
+                'label' => 'Check mouse left/right buttons',
             ],
             'avr_ups_power_recovery' => [
                 'group' => 'AVR/UPS',
-                'label' => 'Check for<br>power<br>recovery',
+                'label' => 'Check for power recovery',
             ],
             'printer_printout' => [
                 'group' => 'Printer',
-                'label' => 'Check<br>printout',
+                'label' => 'Check printout',
             ],
         ];
     }
