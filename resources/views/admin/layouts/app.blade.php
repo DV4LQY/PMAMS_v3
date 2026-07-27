@@ -301,6 +301,7 @@
 
         <div class="px-3 py-4 overflow-y-auto h-[calc(100vh-4rem)] flex flex-col">
             <nav class="space-y-1 flex-1" @click="if ($event.target.closest('a')) closeSidebar()">
+                @if(auth()->user()?->canMenu('dashboard'))
                 <a
                     href="{{ route('admin.dashboard') }}"
                     data-nav-group="dashboard"
@@ -314,7 +315,9 @@
                     </svg>
                     <span>Dashboard</span>
                 </a>
+                @endif
 
+                @if(auth()->user()?->canMenu('locations'))
                 <a
                     href="{{ route('admin.locations.index') }}"
                     data-nav-group="locations"
@@ -330,7 +333,9 @@
                     </svg>
                     <span>Locations</span>
                 </a>
+                @endif
 
+                @if(auth()->user()?->canMenu('equipment'))
                 <a
                     href="{{ route('admin.devices.index') }}"
                     data-nav-group="devices"
@@ -344,6 +349,8 @@
                     </svg>
                     <span>Equipment</span>
                 </a>
+                @endif
+                @if(auth()->user()?->canMenu('reports'))
                 <a
                     href="{{ route('admin.reports.index') }}"
                     data-nav-group="reports"
@@ -357,7 +364,9 @@
                     </svg>
                     <span>Reports</span>
                 </a>
+                @endif
 
+                @if(auth()->user()?->canMenu('scanner'))
                 <a
                     href="{{ route('admin.scanner') }}"
                     data-nav-group="scanner"
@@ -371,7 +380,9 @@
                     </svg>
                     <span>QR Scanner</span>
                 </a>
+                @endif
 
+                @if(auth()->user()?->canMenu('maintenance_gallery'))
                 <a
                     href="{{ route('admin.maintenance-gallery.index') }}"
                     data-nav-group="gallery"
@@ -385,11 +396,13 @@
                     </svg>
                     <span>PM Gallery</span>
                 </a>
+                @endif
 
 
 
                 @if(auth()->user() && (auth()->user()->isAdmin() || auth()->user()->isUnitHead()))
                     @if(auth()->user()?->isSuperAdmin())
+                    @if(auth()->user()?->canMenu('maintenance_cleanup'))
                     <a
                         href="{{ route('admin.users.index') }}"
                         data-nav-group="users"
@@ -425,6 +438,8 @@
                         <svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7H5m12 0v12H7V7m3-3h4l1 3H9l1-3Zm-1 7v5m4-5v5"/></svg>
                         <span>Checklist Cleanup</span>
                     </a>
+                    @endif
+                    @if(auth()->user()?->canMenu('database'))
                     <a
                         href="{{ route('admin.database.index') }}"
                         data-nav-group="database"
@@ -438,7 +453,9 @@
                         <span>Backup &amp; Restore</span>
                     </a>
                     @endif
+                    @endif
 
+                    @if(auth()->user()?->canMenu('activity_logs'))
                     <a
                         href="{{ route('admin.logs.index') }}"
                         data-nav-group="logs"
@@ -452,9 +469,10 @@
                         </svg>
                         <span>Activity Logs</span>
                     </a>
+                    @endif
                     
                 @endif
-                @if(auth()->user())
+                @if(auth()->user() && auth()->user()->canMenu('support'))
                     <a
                     href="{{ route('admin.support') }}"
                     data-nav-group="support"
@@ -634,30 +652,42 @@
                             </div>
 
                             <div class="py-2">
+                                @if(auth()->user()?->canMenu('dashboard'))
                                 <a href="{{ route('admin.dashboard') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Dashboard
                                 </a>
+                                @endif
+                                @if(auth()->user()?->canMenu('equipment'))
                                 <a href="{{ route('admin.devices.index') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Equipment
                                 </a>
+                                @endif
+                                @if(auth()->user()?->canMenu('reports'))
                                 <a href="{{ route('admin.reports.index') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Reports
                                 </a>
                                 <a href="{{ route('admin.reports.checklist') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Checklist
                                 </a>
+                                @endif
+                                @if(auth()->user()?->canMenu('maintenance_gallery'))
                                 <a href="{{ route('admin.maintenance-gallery.index') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     PM Gallery
                                 </a>
+                                @endif
                                 <a href="{{ route('admin.change-password') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Change Password
                                 </a>
+                                @if(auth()->user()?->canMenu('scanner'))
                                 <a href="{{ route('admin.scanner') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     QR Scanner
                                 </a>
+                                @endif
+                                @if(auth()->user()?->canMenu('support'))
                                 <a href="{{ route('admin.support') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Support
                                 </a>
+                                @endif
 
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf

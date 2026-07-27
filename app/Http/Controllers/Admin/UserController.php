@@ -8,6 +8,7 @@ use App\Models\Device;
 use App\Models\DeviceAssignment;
 use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
+use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,12 +19,68 @@ use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
 {
+    private function permissionRules(): array
+    {
+        return [
+            'permissions_present' => ['nullable', 'boolean'],
+            'permissions_changed' => ['nullable', 'boolean'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.menus' => ['nullable', 'array'],
+            'permissions.menus.*' => [Rule::in(array_keys(User::PERMISSION_MENUS))],
+            'permissions.actions' => ['nullable', 'array'],
+            'permissions.actions.*' => ['array'],
+            'permissions.actions.*.*' => [Rule::in(array_keys(User::PERMISSION_ACTIONS))],
+        ];
+    }
+
+    private function permissionsFromRequest(Request $request, string $role, ?array $fallback = null): ?array
+    {
+        // Super Admin is intentionally unrestricted and cannot be accidentally
+        // locked out by a custom permission set.
+        if ($role === User::ROLE_SUPER_ADMIN) {
+            return null;
+        }
+
+        // Keep legacy accounts working when an older form is submitted.
+        if (! $request->boolean('permissions_present')) {
+            return $fallback ?? User::permissionsForRole($role);
+        }
+
+        $menuKeys = array_keys(User::PERMISSION_MENUS);
+        $actionKeys = array_keys(User::PERMISSION_ACTIONS);
+        $menus = array_values(array_intersect((array) $request->input('permissions.menus', []), $menuKeys));
+        $actions = [];
+
+        foreach (array_keys(User::PERMISSION_RESOURCES) as $resource) {
+            $selected = $request->input("permissions.actions.{$resource}");
+            $actions[$resource] = is_array($selected)
+                ? array_values(array_intersect($selected, $actionKeys))
+                : [];
+        }
+
+        return ['menus' => $menus, 'actions' => $actions];
+    }
+
+    private function saveRolePermissions(string $role, ?array $permissions, bool $changed): void
+    {
+        if (! $changed || $role === User::ROLE_SUPER_ADMIN || ! is_array($permissions)) {
+            return;
+        }
+
+        $profiles = User::allRolePermissions();
+        $profiles[$role] = $permissions;
+        SystemSetting::putValue(User::ROLE_PERMISSIONS_KEY, json_encode($profiles, JSON_THROW_ON_ERROR));
+        User::forgetRolePermissionsCache();
+    }
+
     private function buildSummary(User $user): array
     {
         return [
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->roleLabel(),
+            'permission_menus' => User::permissionsForRole((string) $user->role)['menus'] ?? [],
+            'permission_actions' => User::permissionsForRole((string) $user->role)['actions'] ?? [],
         ];
     }
 
@@ -51,8 +108,9 @@ class UserController extends Controller
     public function index()
     {
         $users = User::orderBy('name')->paginate(15);
+        $rolePermissions = User::allRolePermissions();
 
-        return view('admin.users.index', compact('users'));
+        return view('admin.users.index', compact('users', 'rolePermissions'));
     }
 
     public function recycleBin()
@@ -220,7 +278,7 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validateWithBag('add', [
+        $data = $request->validateWithBag('add', array_merge([
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'role' => ['required', Rule::in(array_keys(User::ROLES))],
@@ -231,7 +289,7 @@ class UserController extends Controller
                     ->mixedCase()
                     ->symbols(),
             ],
-        ], [
+        ], $this->permissionRules()), [
             'email.unique' => 'This email is already registered.',
             'password.confirmed' => 'The password confirmation does not match.',
         ]);
@@ -243,11 +301,17 @@ class UserController extends Controller
                 ], 'add');
         }
 
+        $rolePermissions = $this->permissionsFromRequest($request, $data['role']);
+        $this->saveRolePermissions($data['role'], $rolePermissions, $request->boolean('permissions_changed'));
+
         $newUser = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'role' => $data['role'],
             'password' => Hash::make($data['password']),
+            // Permissions are role profiles and apply to every account with
+            // this role, rather than being stored on one account.
+            'permissions' => null,
         ]);
 
         ActivityLog::record(
@@ -263,7 +327,7 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
-        $rules = [
+        $rules = array_merge([
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'role' => ['required', Rule::in(array_keys(User::ROLES))],
@@ -274,7 +338,7 @@ class UserController extends Controller
                     ->mixedCase()
                     ->symbols(),
             ],
-        ];
+        ], $this->permissionRules());
 
         $data = $request->validateWithBag('edit', $rules, [
             'email.unique' => 'This email is already registered.',
@@ -305,10 +369,19 @@ class UserController extends Controller
 
         $passwordChanged = !empty($data['password']);
 
+        $rolePermissions = $this->permissionsFromRequest(
+            $request,
+            $data['role'],
+            User::permissionsForRole($data['role'])
+        );
+        $this->saveRolePermissions($data['role'], $rolePermissions, $request->boolean('permissions_changed'));
+
         $before = [
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->roleLabel(),
+            'permission_menus' => User::permissionsForRole((string) $user->role)['menus'] ?? [],
+            'permission_actions' => User::permissionsForRole((string) $user->role)['actions'] ?? [],
         ];
 
         if ($passwordChanged) {
@@ -318,6 +391,8 @@ class UserController extends Controller
         $user->name = $data['name'];
         $user->email = $data['email'];
         $user->role = $data['role'];
+        // Role profiles are shared by every account with this role.
+        $user->permissions = null;
 
         if (!empty($data['password'])) {
             $user->password = Hash::make($data['password']);
@@ -338,6 +413,8 @@ class UserController extends Controller
                             'name' => $user->name,
                             'email' => $user->email,
                             'role' => $user->roleLabel(),
+            'permission_menus' => User::permissionsForRole((string) $user->role)['menus'] ?? [],
+            'permission_actions' => User::permissionsForRole((string) $user->role)['actions'] ?? [],
                         ],
                         $passwordChanged
                         ? ['password' => 'New Password']

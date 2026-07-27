@@ -42,6 +42,7 @@
         </a>
 
         {{-- Issuance --}}
+        @if(auth()->user()?->canMenu('issuance'))
         <a href="{{ route('admin.reports.issuance') }}"
            class="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-amber-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:hover:border-amber-500">
 
@@ -57,6 +58,7 @@
                 Review active equipment issued to registered end users and export issuance reports.
             </p>
         </a>
+        @endif
 
         {{-- Accounts --}}
         @if(auth()->user()?->isSuperAdmin())

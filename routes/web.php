@@ -76,7 +76,7 @@ Route::post('/reset-password', [ResetPasswordController::class, 'reset'])
 | 'role:admin' group further below.
 */
 
-Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
+Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------

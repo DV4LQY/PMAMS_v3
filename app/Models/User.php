@@ -50,6 +50,127 @@ class User extends Authenticatable
     ];
 
     /**
+     * Menu keys shown in the Super Admin permission editor. A null permissions
+     * value keeps the role's existing defaults; saved arrays are explicit.
+     */
+    public const PERMISSION_MENUS = [
+        'dashboard' => 'Dashboard',
+        'equipment' => 'Equipment',
+        'locations' => 'Locations',
+        'reports' => 'Reports',
+        'issuance' => 'Issuance',
+        'maintenance_gallery' => 'PM Gallery',
+        'scanner' => 'QR Scanner',
+        'support' => 'Support',
+        'activity_logs' => 'Activity Logs',
+        'database' => 'Backup & Restore',
+        'maintenance_cleanup' => 'Checklist Cleanup',
+    ];
+
+    /** Resources whose add/edit/delete abilities can be assigned separately. */
+    public const PERMISSION_RESOURCES = [
+        'equipment' => 'Equipment',
+        'locations' => 'Locations',
+        'offices' => 'Offices',
+        'staff' => 'Staff',
+        'issuance' => 'Issuance',
+        'maintenance_gallery' => 'PM Gallery',
+        'checklist' => 'Maintenance Checklist',
+    ];
+
+    public const PERMISSION_ACTIONS = [
+        'add' => 'Add',
+        'edit' => 'Edit',
+        'delete' => 'Delete',
+    ];
+
+    public const ROLE_PERMISSIONS_KEY = 'role_permissions';
+
+    /** Cached for the lifetime of the request so every authorization check
+     * reads one role profile instead of querying system_settings repeatedly. */
+    protected static ?array $rolePermissionsCache = null;
+
+    /**
+     * Baseline permissions are derived from the selected role. A saved
+     * permissions JSON value can fine-tune one account, while accounts with
+     * no override always follow this role profile.
+     */
+    public static function defaultPermissionsForRole(string $role): array
+    {
+        $allMenus = array_keys(self::PERMISSION_MENUS);
+        $allActions = array_fill_keys(array_keys(self::PERMISSION_RESOURCES), array_keys(self::PERMISSION_ACTIONS));
+
+        return match ($role) {
+            self::ROLE_SUPER_ADMIN => ['menus' => $allMenus, 'actions' => $allActions],
+            self::ROLE_ADMIN, self::ROLE_UNIT_HEAD => [
+                'menus' => array_values(array_diff($allMenus, ['database', 'maintenance_cleanup'])),
+                'actions' => $allActions,
+            ],
+            self::ROLE_CUSTODIAN => [
+                'menus' => ['dashboard', 'equipment', 'locations', 'reports', 'issuance', 'maintenance_gallery', 'scanner', 'support'],
+                'actions' => [
+                    'equipment' => ['add', 'edit'],
+                    'locations' => [],
+                    'offices' => [],
+                    'staff' => [],
+                    'issuance' => ['add', 'edit'],
+                    'maintenance_gallery' => ['add', 'edit'],
+                    'checklist' => ['edit'],
+                ],
+            ],
+            default => ['menus' => [], 'actions' => []],
+        };
+    }
+
+    public static function allRolePermissions(): array
+    {
+        if (static::$rolePermissionsCache !== null) {
+            return static::$rolePermissionsCache;
+        }
+
+        $profiles = [];
+        $raw = SystemSetting::getValue(self::ROLE_PERMISSIONS_KEY);
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+        $raw = is_array($raw) ? $raw : [];
+
+        foreach (array_keys(self::ROLES) as $role) {
+            $defaults = self::defaultPermissionsForRole($role);
+            $candidate = is_array($raw[$role] ?? null) ? $raw[$role] : [];
+            $menus = array_key_exists('menus', $candidate)
+                ? array_values(array_intersect((array) $candidate['menus'], array_keys(self::PERMISSION_MENUS)))
+                : $defaults['menus'];
+            $actions = $defaults['actions'];
+
+            if (array_key_exists('actions', $candidate) && is_array($candidate['actions'])) {
+                foreach (array_keys(self::PERMISSION_RESOURCES) as $resource) {
+                    if (array_key_exists($resource, $candidate['actions'])) {
+                        $actions[$resource] = array_values(array_intersect(
+                            (array) $candidate['actions'][$resource],
+                            array_keys(self::PERMISSION_ACTIONS)
+                        ));
+                    }
+                }
+            }
+
+            $profiles[$role] = ['menus' => $menus, 'actions' => $actions];
+        }
+
+        return static::$rolePermissionsCache = $profiles;
+    }
+
+    public static function permissionsForRole(string $role): array
+    {
+        return static::allRolePermissions()[$role] ?? static::defaultPermissionsForRole($role);
+    }
+
+    public static function forgetRolePermissionsCache(): void
+    {
+        static::$rolePermissionsCache = null;
+    }
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -59,6 +180,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'permissions',
     ];
 
     /**
@@ -82,7 +204,32 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'deleted_at' => 'datetime',
+            'permissions' => 'array',
         ];
+    }
+
+    public function canMenu(string $menu): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        // Existing accounts have no custom permissions yet. Keep their current
+        // role-based access until a Super Admin explicitly saves a permission set.
+        $menus = self::permissionsForRole((string) $this->role)['menus'];
+
+        return in_array($menu, (array) $menus, true);
+    }
+
+    public function canAction(string $resource, string $action): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $actions = self::permissionsForRole((string) $this->role)['actions'][$resource] ?? [];
+
+        return in_array($action, (array) $actions, true);
     }
 
     public function isAdmin(): bool

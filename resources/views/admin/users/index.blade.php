@@ -9,6 +9,18 @@
     $editBag = $errors->getBag('edit');
     $roles = \App\Models\User::ROLES;
     $hasUnitHead = \App\Models\User::where('role', 'unit_head')->exists();
+    $permissionMenus = \App\Models\User::PERMISSION_MENUS;
+    $permissionResources = \App\Models\User::PERMISSION_RESOURCES;
+    $permissionActions = \App\Models\User::PERMISSION_ACTIONS;
+    $defaultPermissionMenus = array_keys($permissionMenus);
+    $defaultPermissionActions = collect(array_keys($permissionResources))
+        ->mapWithKeys(fn ($resource) => [$resource => array_keys($permissionActions)])
+        ->all();
+    $rolePermissionDefaults = \App\Models\User::allRolePermissions();
+    $initialAddRole = old('role', 'custodian');
+    $initialAddPermissions = old('permissions', $rolePermissionDefaults[$initialAddRole] ?? $rolePermissionDefaults['custodian']);
+    $initialEditRole = old('role', '');
+    $initialEditPermissions = old('permissions', $initialEditRole && isset($rolePermissionDefaults[$initialEditRole]) ? $rolePermissionDefaults[$initialEditRole] : $rolePermissionDefaults['custodian']);
 @endphp
 <script>
 function registerUserManager() {
@@ -23,13 +35,41 @@ function registerUserManager() {
         showEditPassword: false,
         showEditConfirmPassword: false,
         hasUnitHead: @js($hasUnitHead),
+        rolePermissionDefaults: @js($rolePermissionDefaults),
+        allPermissionMenus: @js($defaultPermissionMenus),
+        defaultPermissionActions: @js($defaultPermissionActions),
+
+        defaultPermissions(role = 'custodian') {
+            const profile = this.rolePermissionDefaults[role] || {
+                menus: this.allPermissionMenus,
+                actions: this.defaultPermissionActions
+            };
+            return JSON.parse(JSON.stringify(profile));
+        },
+
+        normalizePermissions(value, role = 'custodian') {
+            const defaults = this.defaultPermissions(role);
+            if (!value || typeof value !== 'object') return defaults;
+            return {
+                menus: Array.isArray(value.menus) ? value.menus : defaults.menus,
+                actions: Object.fromEntries(Object.keys(defaults.actions).map((resource) => [
+                    resource,
+                    Array.isArray(value.actions?.[resource]) ? value.actions[resource] : defaults.actions[resource]
+                ]))
+            };
+        },
 
         addSingle: {
             name: @js(old('name', '')),
             email: @js(old('email', '')),
-            role: @js(old('role', 'custodian')),
+            role: @js($initialAddRole),
             password: '',
             password_confirmation: '',
+            permissions: {
+                menus: @js($initialAddPermissions['menus'] ?? $defaultPermissionMenus),
+                actions: @js($initialAddPermissions['actions'] ?? $defaultPermissionActions),
+            },
+            permissionsChanged: @js((bool) old('permissions_changed', false)),
             nameError: @js($addBag->first('name')),
             emailError: @js($addBag->first('email')),
             roleError: @js($addBag->first('role')),
@@ -40,9 +80,14 @@ function registerUserManager() {
             id: @js(old('editing_id') !== null ? (int) old('editing_id') : null),
             name: @js(old('name', '')),
             email: @js(old('email', '')),
-            role: @js(old('role', '')),
+            role: @js($initialEditRole),
             password: '',
             password_confirmation: '',
+            permissions: {
+                menus: @js($initialEditPermissions['menus'] ?? $defaultPermissionMenus),
+                actions: @js($initialEditPermissions['actions'] ?? $defaultPermissionActions),
+            },
+            permissionsChanged: @js((bool) old('permissions_changed', false)),
             nameError: @js($editBag->first('name')),
             emailError: @js($editBag->first('email')),
             roleError: @js($editBag->first('role')),
@@ -55,6 +100,8 @@ function registerUserManager() {
             this.addOpen = true;
             this.addSingle = {
                 name: '', email: '', role: 'custodian', password: '', password_confirmation: '',
+                permissions: this.defaultPermissions('custodian'),
+                permissionsChanged: false,
                 nameError: '', emailError: '', roleError: '', passwordError: ''
             };
         },
@@ -69,6 +116,8 @@ function registerUserManager() {
                 role: user.role,
                 password: '',
                 password_confirmation: '',
+                permissions: this.normalizePermissions(user.permissions, user.role),
+                permissionsChanged: false,
                 nameError: '', emailError: '', roleError: '', passwordError: ''
             };
             this.editOpen = true;
@@ -93,7 +142,7 @@ document.addEventListener('livewire:navigated', registerUserManager);
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">User Accounts</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Manage who can sign in and what they're allowed to do.
+                Manage sign-in roles and shared permissions. Changes to a role's checkboxes apply to every account with that role.
             </p>
         </div>
 
@@ -138,7 +187,8 @@ document.addEventListener('livewire:navigated', registerUserManager);
                             id: {{ $u->id }},
                             name: @js($u->name),
                             email: @js($u->email),
-                            role: @js($u->role)
+                            role: @js($u->role),
+                            permissions: @js($rolePermissions[$u->role] ?? null)
                         })"
                     >
                         Edit
@@ -193,7 +243,8 @@ document.addEventListener('livewire:navigated', registerUserManager);
                                             id: {{ $u->id }},
                                             name: @js($u->name),
                                             email: @js($u->email),
-                                            role: @js($u->role)
+                                            role: @js($u->role),
+                                            permissions: @js($rolePermissions[$u->role] ?? null)
                                         })"
                                     >
                                         Edit
@@ -269,6 +320,7 @@ document.addEventListener('livewire:navigated', registerUserManager);
                 <select
                     name="role"
                     x-model="addSingle.role"
+                    x-on:change="addSingle.permissions = defaultPermissions(addSingle.role); addSingle.permissionsChanged = false"
                     class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     required
                 >
@@ -287,6 +339,44 @@ document.addEventListener('livewire:navigated', registerUserManager);
                     @endforeach
                 </select>
                 <div class="mt-1 text-sm text-red-600 dark:text-red-400" x-show="addSingle.roleError" x-text="addSingle.roleError"></div>
+            </div>
+
+            <input type="hidden" name="permissions_present" value="1">
+            <input type="hidden" name="permissions_changed" :value="addSingle.permissionsChanged ? 1 : 0">
+            <div x-show="addSingle.role !== 'super_admin'" x-cloak class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                <div class="mb-3">
+                    <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline menu permissions. Saving checkbox changes updates every account with this role.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    @foreach($permissionMenus as $key => $label)
+                        <label class="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                            <input type="checkbox" name="permissions[menus][]" value="{{ $key }}" x-model="addSingle.permissions.menus" x-on:change="addSingle.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                            <span>{{ $label }}</span>
+                        </label>
+                    @endforeach
+                </div>
+
+                <div class="mt-4 border-t border-gray-200 pt-3 dark:border-gray-700">
+                    <div class="text-sm font-semibold text-gray-900 dark:text-white">Add / Edit / Delete access</div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set which record actions this account may perform.</p>
+                    <div class="mt-2 space-y-2">
+                        @foreach($permissionResources as $resource => $label)
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                                <span class="w-40 font-medium text-gray-700 dark:text-gray-300">{{ $label }}</span>
+                                @foreach($permissionActions as $action => $actionLabel)
+                                    <label class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="addSingle.permissions.actions.{{ $resource }}" x-on:change="addSingle.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                                        {{ $actionLabel }}
+                                    </label>
+                                @endforeach
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+            <div x-show="addSingle.role === 'super_admin'" x-cloak class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
+                Super Admin has unrestricted access to every menu and action.
             </div>
 
             <div>
@@ -451,6 +541,7 @@ document.addEventListener('livewire:navigated', registerUserManager);
                 <select
                     name="role"
                     x-model="editUser.role"
+                    x-on:change="editUser.permissions = defaultPermissions(editUser.role); editUser.permissionsChanged = false"
                     class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     required
                 >
@@ -470,6 +561,44 @@ document.addEventListener('livewire:navigated', registerUserManager);
                     @endforeach
                 </select>
                 <div class="mt-1 text-sm text-red-600 dark:text-red-400" x-show="editUser.roleError" x-text="editUser.roleError"></div>
+            </div>
+
+            <input type="hidden" name="permissions_present" value="1">
+            <input type="hidden" name="permissions_changed" :value="editUser.permissionsChanged ? 1 : 0">
+            <div x-show="editUser.role !== 'super_admin'" x-cloak class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                <div class="mb-3">
+                    <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline menu permissions. Saving checkbox changes updates every account with this role.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    @foreach($permissionMenus as $key => $label)
+                        <label class="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                            <input type="checkbox" name="permissions[menus][]" value="{{ $key }}" x-model="editUser.permissions.menus" x-on:change="editUser.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                            <span>{{ $label }}</span>
+                        </label>
+                    @endforeach
+                </div>
+
+                <div class="mt-4 border-t border-gray-200 pt-3 dark:border-gray-700">
+                    <div class="text-sm font-semibold text-gray-900 dark:text-white">Add / Edit / Delete access</div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set which record actions this account may perform.</p>
+                    <div class="mt-2 space-y-2">
+                        @foreach($permissionResources as $resource => $label)
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                                <span class="w-40 font-medium text-gray-700 dark:text-gray-300">{{ $label }}</span>
+                                @foreach($permissionActions as $action => $actionLabel)
+                                    <label class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="editUser.permissions.actions.{{ $resource }}" x-on:change="editUser.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                                        {{ $actionLabel }}
+                                    </label>
+                                @endforeach
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+            <div x-show="editUser.role === 'super_admin'" x-cloak class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
+                Super Admin has unrestricted access to every menu and action.
             </div>
 
             <div>
