@@ -4,10 +4,15 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Device;
+use App\Models\DeviceAssignment;
+use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
@@ -65,19 +70,152 @@ class UserController extends Controller
             ->paginate(15, ['*'], 'checklists_page')
             ->withQueryString();
 
-        // Keep a central, read-only audit of every deletion action. This
-        // includes equipment, locations, offices, staff, photos, users, and
-        // checklist cleanup entries—even when the original record cannot be
-        // restored because it was hard-deleted by the existing workflow.
-        $deletedActions = ActivityLog::query()
-            ->whereIn('action', ['deleted', 'force_deleted'])
-            ->with('user')
-            ->orderByDesc('created_at')
+        $deletedDevices = Device::onlyTrashed()
+            ->with('type')
+            ->withCount(['assignments', 'maintenanceRecordsIncludingTrashed', 'maintenancePhotos'])
+            ->orderByDesc('deleted_at')
             ->orderByDesc('id')
-            ->paginate(25, ['*'], 'deleted_actions_page')
+            ->paginate(15, ['*'], 'devices_page')
             ->withQueryString();
 
-        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedChecklists', 'deletedActions'));
+        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedChecklists', 'deletedDevices'));
+    }
+
+    public function permanentDelete(Request $request)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'type' => ['required', Rule::in(['users', 'devices', 'checklists', 'all'])],
+            'ids' => ['nullable', 'array'],
+            'ids.*' => ['integer', 'distinct'],
+            'select_all' => ['nullable', 'boolean'],
+            'empty' => ['nullable', 'boolean'],
+            'remarks' => ['required', 'string', 'max:1000'],
+        ]);
+
+        if (trim($data['remarks']) === '') {
+            return back()->withErrors(['remarks' => 'Remarks are required before permanent deletion.']);
+        }
+
+        $type = $data['type'];
+        $empty = (bool) ($data['empty'] ?? false);
+        $selectAll = (bool) ($data['select_all'] ?? false) || $empty;
+        $ids = collect($data['ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();
+
+        if ($type === 'all' && ! $empty) {
+            return back()->withErrors(['type' => 'Use Empty Recycle Bin when permanently deleting all record types.']);
+        }
+
+        if (! $selectAll && $ids->isEmpty()) {
+            return back()->withErrors(['ids' => 'Select at least one recycle-bin record or choose the empty-bin action.']);
+        }
+
+        $types = $type === 'all' ? ['users', 'devices', 'checklists'] : [$type];
+        $deletedCounts = [];
+
+        DB::transaction(function () use ($types, $selectAll, $ids, $data, &$deletedCounts) {
+            foreach ($types as $currentType) {
+                $deletedCounts[$currentType] = match ($currentType) {
+                    'users' => $this->permanentlyDeleteUsers($selectAll, $ids),
+                    'devices' => $this->permanentlyDeleteDevices($selectAll, $ids),
+                    'checklists' => $this->permanentlyDeleteChecklists($selectAll, $ids),
+                };
+            }
+        });
+
+        ActivityLog::record(
+            'force_deleted',
+            'Permanently deleted recycle-bin records.',
+            null,
+            ActivityLog::makePayload([
+                'types' => $types,
+                'counts' => $deletedCounts,
+                'remarks' => trim($data['remarks']),
+                'empty_bin' => $empty,
+            ])
+        );
+
+        $total = array_sum($deletedCounts);
+        return back()->with('success', "{$total} recycle-bin record(s) permanently deleted.");
+    }
+
+    private function permanentlyDeleteUsers(bool $selectAll, $ids): int
+    {
+        $query = User::onlyTrashed();
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $users = $query->get();
+        foreach ($users as $user) {
+            $user->forceDelete();
+        }
+
+        return $users->count();
+    }
+
+    private function permanentlyDeleteDevices(bool $selectAll, $ids): int
+    {
+        $query = Device::onlyTrashed();
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $devices = $query->get();
+        foreach ($devices as $device) {
+            $records = DeviceMaintenanceRecord::withTrashed()
+                ->where('device_id', $device->id)
+                ->get();
+
+            foreach ($records as $record) {
+                $record->photos()->get()->each(function (DeviceMaintenancePhoto $photo) {
+                    if (filled($photo->photo_path)) {
+                        Storage::disk('public')->delete($photo->photo_path);
+                    }
+                    $photo->delete();
+                });
+                $record->forceDelete();
+            }
+
+            DeviceMaintenancePhoto::where('device_id', $device->id)
+                ->get()
+                ->each(function (DeviceMaintenancePhoto $photo) {
+                    if (filled($photo->photo_path)) {
+                        Storage::disk('public')->delete($photo->photo_path);
+                    }
+                    $photo->delete();
+                });
+
+            DeviceAssignment::where('device_id', $device->id)->delete();
+            if (filled($device->photo_path)) {
+                Storage::disk('public')->delete($device->photo_path);
+            }
+            $device->forceDelete();
+        }
+
+        return $devices->count();
+    }
+
+    private function permanentlyDeleteChecklists(bool $selectAll, $ids): int
+    {
+        $query = DeviceMaintenanceRecord::onlyTrashed();
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $records = $query->with('photos')->get();
+        foreach ($records as $record) {
+            foreach ($record->photos as $photo) {
+                if (filled($photo->photo_path)) {
+                    Storage::disk('public')->delete($photo->photo_path);
+                }
+                $photo->delete();
+            }
+            $record->forceDelete();
+        }
+
+        return $records->count();
     }
 
     public function store(Request $request)

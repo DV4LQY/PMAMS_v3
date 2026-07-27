@@ -71,6 +71,8 @@
             model: '',
             network_device_type: '',
             location_deployed: '',
+            location_deployed_id: '',
+            office_deployed_id: '',
             mac_address: '',
             unit_price: '',
             date_acquired: '',
@@ -327,6 +329,8 @@
             setValue('model', device.model);
             setValue('network_device_type', device.network_device_type);
             setValue('location_deployed', device.location_deployed);
+            setValue('location_deployed_id', device.location_deployed_id);
+            setValue('office_deployed_id', device.office_deployed_id);
             setValue('mac_address', device.mac_address);
             setValue('specs[memory]', specs.memory);
             setValue('specs[storage]', specs.storage);
@@ -361,6 +365,8 @@
             device.ms_office_license = device.ms_office_license ?? '';
             device.network_device_type = device.network_device_type ?? '';
             device.location_deployed = device.location_deployed ?? '';
+            device.location_deployed_id = device.location_deployed_id ?? '';
+            device.office_deployed_id = device.office_deployed_id ?? '';
 
             this.editDevice = device;
             this.editDevice.unit_price = this.formatUnitPriceValue(this.editDevice.unit_price);
@@ -843,6 +849,8 @@
                             model: @js($d->model ?? ''),
                             network_device_type: @js($d->network_device_type ?? ''),
                             location_deployed: @js($d->location_deployed ?? ''),
+                            location_deployed_id: @js($d->location_deployed_id ?? ''),
+                            office_deployed_id: @js($d->office_deployed_id ?? ''),
                             mac_address: @js($d->mac_address ?? ''),
                             unit_price: @js($d->unit_price ?? ''),
                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
@@ -1009,6 +1017,8 @@
                                             model: @js($d->model ?? ''),
                                             network_device_type: @js($d->network_device_type ?? ''),
                                             location_deployed: @js($d->location_deployed ?? ''),
+                                            location_deployed_id: @js($d->location_deployed_id ?? ''),
+                                            office_deployed_id: @js($d->office_deployed_id ?? ''),
                                             mac_address: @js($d->mac_address ?? ''),
                                             unit_price: @js($d->unit_price ?? ''),
                                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),

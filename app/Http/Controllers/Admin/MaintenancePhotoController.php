@@ -23,6 +23,9 @@ class MaintenancePhotoController extends Controller
 
         $photos = DeviceMaintenancePhoto::query()
             ->where(function ($query) {
+                $query->whereNull('device_id')->orWhereHas('device');
+            })
+            ->where(function ($query) {
                 $query->whereNull('maintenance_record_id')
                     ->orWhereHas('maintenanceRecord');
             })
@@ -83,6 +86,7 @@ class MaintenancePhotoController extends Controller
      */
     public function photo(DeviceMaintenancePhoto $photo)
     {
+        abort_unless(! $photo->device_id || $photo->device, 404);
         if ($photo->maintenance_record_id && ! $photo->maintenanceRecord) {
             abort(404);
         }
@@ -152,6 +156,9 @@ class MaintenancePhotoController extends Controller
 
         $photos = DeviceMaintenancePhoto::query()
             ->where(function ($query) {
+                $query->whereNull('device_id')->orWhereHas('device');
+            })
+            ->where(function ($query) {
                 $query->whereNull('maintenance_record_id')
                     ->orWhereHas('maintenanceRecord');
             })
@@ -189,6 +196,9 @@ class MaintenancePhotoController extends Controller
         ]);
 
         $photos = DeviceMaintenancePhoto::query()
+            ->where(function ($query) {
+                $query->whereNull('device_id')->orWhereHas('device');
+            })
             ->where(function ($query) {
                 $query->whereNull('maintenance_record_id')
                     ->orWhereHas('maintenanceRecord');

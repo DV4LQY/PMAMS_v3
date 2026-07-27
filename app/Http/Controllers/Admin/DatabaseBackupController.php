@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\SystemSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -11,6 +12,8 @@ use Throwable;
 class DatabaseBackupController extends Controller
 {
     private const SUPPORTED_DRIVERS = ['mysql', 'mariadb'];
+    public const BACKUP_DAY_KEY = 'database_backup_day';
+    public const BACKUP_TIME_KEY = 'database_backup_time';
     // Keep each INSERT comfortably below XAMPP's default max_allowed_packet.
     private const MAX_INSERT_BYTES = 262144;
 
@@ -21,7 +24,29 @@ class DatabaseBackupController extends Controller
         return view('admin.database.index', [
             'driver' => DB::connection()->getDriverName(),
             'database' => DB::getDatabaseName(),
+            'backupDay' => (int) SystemSetting::getValue(self::BACKUP_DAY_KEY, 1),
+            'backupTime' => (string) SystemSetting::getValue(self::BACKUP_TIME_KEY, '02:00'),
         ]);
+    }
+
+    public function updateSchedule(Request $request)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            // Days 1–28 exist in every month, so the backup is never skipped.
+            'backup_day' => ['required', 'integer', 'min:1', 'max:28'],
+            'backup_time' => ['required', 'date_format:H:i'],
+        ]);
+
+        SystemSetting::putValue(self::BACKUP_DAY_KEY, $data['backup_day']);
+        SystemSetting::putValue(self::BACKUP_TIME_KEY, $data['backup_time']);
+        ActivityLog::record('updated', 'Updated the automatic database backup schedule.', null, [
+            'day' => (int) $data['backup_day'],
+            'time' => $data['backup_time'],
+        ]);
+
+        return back()->with('success', 'Automatic backup schedule updated. Keep the Laravel scheduler running for the new setting to take effect.');
     }
 
     public function download(Request $request)
@@ -38,6 +63,18 @@ class DatabaseBackupController extends Controller
             'Content-Type' => 'application/sql; charset=UTF-8',
             'Cache-Control' => 'no-store, no-cache, must-revalidate',
         ]);
+    }
+
+    /**
+     * Generate a portable dump for the scheduled local backup command.
+     * This intentionally has no authentication check because the command is
+     * only registered with the server-side scheduler.
+     */
+    public function generateDumpForScheduler(): string
+    {
+        $this->ensureSupportedDriver();
+
+        return $this->buildDump();
     }
 
     public function restore(Request $request)
@@ -75,8 +112,14 @@ class DatabaseBackupController extends Controller
                     continue;
                 }
 
-                DB::unprepared($normalized);
-                $executed++;
+                $normalized = $this->makePortableStatement($normalized);
+                if (trim($normalized) === '') {
+                    continue;
+                }
+                foreach ($this->splitLargeInsert($normalized) as $insertStatement) {
+                    DB::unprepared($insertStatement);
+                    $executed++;
+                }
             }
         } catch (Throwable $exception) {
             report($exception);
@@ -250,13 +293,238 @@ class DatabaseBackupController extends Controller
 
     private function makePortableCreateStatement(string $createStatement): string
     {
-        $portable = preg_replace(
-            '/,\s*(?:CONSTRAINT\s+`?[^`\s]+`?\s+)?CHECK\s*\(\s*JSON_VALID\s*\([^)]*\)\s*\)/is',
-            '',
-            $createStatement
-        );
+        $open = strpos($createStatement, '(');
+        if ($open === false) {
+            return $createStatement;
+        }
 
-        return is_string($portable) ? $portable : $createStatement;
+        $close = $this->matchingParenthesis($createStatement, $open);
+        if ($close === null) {
+            return $createStatement;
+        }
+
+        $body = substr($createStatement, $open + 1, $close - $open - 1);
+        $portableClauses = [];
+        foreach ($this->splitTopLevelList($body) as $clause) {
+            if (preg_match('/^\s*(?:CONSTRAINT\s+[^\s]+\s+)?CHECK\b/i', $clause)) {
+                continue;
+            }
+            $portableClauses[] = $this->removeInlineCheck($clause);
+        }
+
+        return substr($createStatement, 0, $open + 1)
+            . implode(",\n", $portableClauses)
+            . substr($createStatement, $close);
+    }
+
+    private function makePortableStatement(string $statement): string
+    {
+        if (preg_match('/^\s*CREATE\s+TABLE\b/i', $statement)) {
+            return $this->makePortableCreateStatement($statement);
+        }
+
+        return preg_match('/\bCHECK\s*\(/i', $statement)
+            ? $this->removeInlineCheck($statement)
+            : $statement;
+    }
+
+    private function splitLargeInsert(string $statement): array
+    {
+        if (! preg_match('/^(INSERT(?:\s+IGNORE)?\s+INTO\s+.+?\s+VALUES\s+)(.+)$/is', $statement, $matches)) {
+            return [$statement];
+        }
+
+        $prefix = $matches[1];
+        $rows = $this->splitTopLevelList(trim($matches[2]));
+        if (count($rows) < 2) {
+            return [$statement];
+        }
+
+        $statements = [];
+        $chunk = [];
+        $bytes = strlen($prefix);
+
+        foreach ($rows as $row) {
+            $rowBytes = strlen($row) + 2;
+            if ($chunk !== [] && ($bytes + $rowBytes) > self::MAX_INSERT_BYTES) {
+                $statements[] = $prefix . implode(",\n", $chunk);
+                $chunk = [];
+                $bytes = strlen($prefix);
+            }
+
+            $chunk[] = $row;
+            $bytes += $rowBytes;
+        }
+
+        if ($chunk !== []) {
+            $statements[] = $prefix . implode(",\n", $chunk);
+        }
+
+        return $statements ?: [$statement];
+    }
+
+    private function removeInlineCheck(string $statement): string
+    {
+        $checkPosition = $this->findTokenOutsideQuotes($statement, 'CHECK');
+        if ($checkPosition === null) {
+            return $statement;
+        }
+
+        $open = strpos($statement, '(', $checkPosition);
+        if ($open === false) {
+            return $statement;
+        }
+
+        $close = $this->matchingParenthesis($statement, $open);
+        if ($close === null) {
+            return $statement;
+        }
+
+        $prefix = rtrim(substr($statement, 0, $checkPosition));
+        $suffix = ltrim(substr($statement, $close + 1));
+        $suffix = preg_replace('/^(?:NOT\s+ENFORCED|ENFORCED)\b\s*/i', '', $suffix) ?? $suffix;
+
+        if (preg_match('/\b(?:ADD\s+)?CONSTRAINT\b/i', $prefix)) {
+            return '';
+        }
+
+        return $prefix . ($suffix !== '' ? ' ' . $suffix : '');
+    }
+
+    private function findTokenOutsideQuotes(string $sql, string $token): ?int
+    {
+        $length = strlen($sql);
+        $tokenLength = strlen($token);
+        $single = false;
+        $double = false;
+        $backtick = false;
+
+        for ($i = 0; $i <= $length - $tokenLength; $i++) {
+            $char = $sql[$i];
+            $next = $i + 1 < $length ? $sql[$i + 1] : '';
+
+            if ($char === '\\' && ($single || $double)) {
+                $i++;
+                continue;
+            }
+            if ($char === "'" && ! $double && ! $backtick) {
+                $single = ! $single;
+                continue;
+            }
+            if ($char === '"' && ! $single && ! $backtick) {
+                $double = ! $double;
+                continue;
+            }
+            if (ord($char) === 96 && ! $single && ! $double) {
+                $backtick = ! $backtick;
+                continue;
+            }
+            if ($single || $double || $backtick) {
+                continue;
+            }
+
+            if (strtoupper(substr($sql, $i, $tokenLength)) === $token
+                && ($i === 0 || ! preg_match('/[A-Za-z0-9_]/', $sql[$i - 1]))
+                && ($i + $tokenLength >= $length || ! preg_match('/[A-Za-z0-9_]/', $sql[$i + $tokenLength]))) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private function matchingParenthesis(string $sql, int $open): ?int
+    {
+        $depth = 0;
+        $length = strlen($sql);
+        $single = false;
+        $double = false;
+        $backtick = false;
+
+        for ($i = $open; $i < $length; $i++) {
+            $char = $sql[$i];
+            $next = $i + 1 < $length ? $sql[$i + 1] : '';
+
+            if ($char === '\\' && ($single || $double)) {
+                $i++;
+                continue;
+            }
+            if ($char === "'" && ! $double && ! $backtick) {
+                $single = ! $single;
+                continue;
+            }
+            if ($char === '"' && ! $single && ! $backtick) {
+                $double = ! $double;
+                continue;
+            }
+            if (ord($char) === 96 && ! $single && ! $double) {
+                $backtick = ! $backtick;
+                continue;
+            }
+            if ($single || $double || $backtick) {
+                continue;
+            }
+
+            if ($char === '(') {
+                $depth++;
+            } elseif ($char === ')') {
+                $depth--;
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function splitTopLevelList(string $sql): array
+    {
+        $items = [];
+        $buffer = '';
+        $depth = 0;
+        $length = strlen($sql);
+        $single = false;
+        $double = false;
+        $backtick = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $sql[$i];
+            $next = $i + 1 < $length ? $sql[$i + 1] : '';
+
+            if ($char === '\\' && ($single || $double)) {
+                $buffer .= $char . $next;
+                $i++;
+                continue;
+            }
+            if ($char === "'" && ! $double && ! $backtick) {
+                $single = ! $single;
+            } elseif ($char === '"' && ! $single && ! $backtick) {
+                $double = ! $double;
+            } elseif (ord($char) === 96 && ! $single && ! $double) {
+                $backtick = ! $backtick;
+            } elseif (! $single && ! $double && ! $backtick && $char === '(') {
+                $depth++;
+            } elseif (! $single && ! $double && ! $backtick && $char === ')') {
+                $depth--;
+            }
+
+            if ($char === ',' && ! $single && ! $double && ! $backtick && $depth === 0) {
+                if (trim($buffer) !== '') {
+                    $items[] = trim($buffer);
+                }
+                $buffer = '';
+                continue;
+            }
+
+            $buffer .= $char;
+        }
+
+        if (trim($buffer) !== '') {
+            $items[] = trim($buffer);
+        }
+
+        return $items;
     }
 
     private function quoteIdentifier(string $identifier): string

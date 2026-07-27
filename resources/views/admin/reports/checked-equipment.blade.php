@@ -298,6 +298,12 @@
                             PDF
                         </th>
 
+                        @if(auth()->user()?->isSuperAdmin())
+                            <th class="px-4 py-3">
+                                Delete
+                            </th>
+                        @endif
+
                     </tr>
 
                 </thead>
@@ -434,6 +440,18 @@
 
                         </td>
 
+                        @if(auth()->user()?->isSuperAdmin())
+                            <td class="px-4 py-3">
+                                @if($device)
+                                    <button type="button"
+                                            onclick="deleteCheckedEquipmentRecord({{ $record->id }})"
+                                            class="rounded bg-red-600 px-3 py-1 text-white hover:bg-red-700">
+                                        Delete
+                                    </button>
+                                @endif
+                            </td>
+                        @endif
+
 
 
                     </tr>
@@ -444,7 +462,7 @@
 
                     <tr>
 
-                        <td colspan="9"
+                        <td colspan="{{ auth()->user()?->isSuperAdmin() ? 10 : 9 }}"
                             class="px-5 py-10 text-center">
 
                             No records found.
@@ -476,6 +494,40 @@
 
 
     </form>
+
+    @if(auth()->user()?->isSuperAdmin())
+        <form id="checked-equipment-delete-form"
+              method="POST"
+              action="{{ route('admin.maintenance-cleanup.destroy') }}"
+              class="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/20"
+              onsubmit="return submitCheckedEquipmentDeletion(this);">
+            @csrf
+            @method('DELETE')
+            <input type="hidden" name="filter_checker_id" value="{{ $checkerId }}">
+            <input type="hidden" name="filter_type_id" value="{{ $typeId }}">
+            <input type="hidden" name="filter_location_id" value="{{ $locationId }}">
+            <input type="hidden" name="filter_q" value="{{ $q }}">
+            <input type="hidden" name="date_from" value="{{ $dateFrom }}">
+            <input type="hidden" name="date_to" value="{{ $dateTo }}">
+            <input type="hidden" name="select_all" id="checked-equipment-delete-all" value="0">
+            <div id="checked-equipment-delete-ids"></div>
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <h2 class="font-semibold text-red-900 dark:text-red-200">Delete checklist history</h2>
+                    <p class="mt-1 text-sm text-red-800/80 dark:text-red-200/80">Select individual rows above, or delete every record matching the current report filters.</p>
+                    <label class="mt-3 inline-flex items-center gap-2 text-sm text-red-900 dark:text-red-200">
+                        <input id="checked-equipment-delete-all-toggle" type="checkbox" class="h-4 w-4">
+                        Delete all records matching these filters
+                    </label>
+                </div>
+                <div class="flex w-full flex-col gap-2 lg:w-auto lg:min-w-96">
+                    <label class="text-sm font-medium text-red-900 dark:text-red-200">Required deletion remarks</label>
+                    <textarea name="remarks" required maxlength="1000" rows="2" class="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-red-800 dark:bg-gray-900 dark:text-white" placeholder="Why is this checklist history being deleted?"></textarea>
+                    <button type="submit" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Move selected history to recycle bin</button>
+                </div>
+            </div>
+        </form>
+    @endif
 
 
 </div>
@@ -513,6 +565,61 @@ function validateCheckedEquipmentSelection(form)
 
     return true;
 
+}
+
+function deleteCheckedEquipmentRecord(recordId)
+{
+    const form = document.getElementById('checked-equipment-delete-form');
+    if (!form) return;
+
+    const reason = window.prompt('Enter the required deletion remarks:');
+    if (!reason || !reason.trim()) {
+        alert('Remarks are required before deletion.');
+        return;
+    }
+
+    form.querySelector('textarea[name="remarks"]').value = reason.trim();
+    document.getElementById('checked-equipment-delete-all').value = '0';
+    const ids = document.getElementById('checked-equipment-delete-ids');
+    ids.innerHTML = '';
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'record_ids[]';
+    input.value = recordId;
+    ids.appendChild(input);
+    form.submit();
+}
+
+function submitCheckedEquipmentDeletion(form)
+{
+    const deleteAll = document.getElementById('checked-equipment-delete-all-toggle')?.checked === true;
+    const ids = document.getElementById('checked-equipment-delete-ids');
+    ids.innerHTML = '';
+
+    if (deleteAll) {
+        document.getElementById('checked-equipment-delete-all').value = '1';
+    } else {
+        document.getElementById('checked-equipment-delete-all').value = '0';
+        document.querySelectorAll('.checked-equipment-checkbox:checked').forEach((checkbox) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'record_ids[]';
+            input.value = checkbox.value;
+            ids.appendChild(input);
+        });
+
+        if (!ids.children.length) {
+            alert('Select at least one checklist history row or choose delete all matching records.');
+            return false;
+        }
+    }
+
+    if (!form.querySelector('textarea[name="remarks"]').value.trim()) {
+        alert('Remarks are required before deletion.');
+        return false;
+    }
+
+    return confirm('Move the selected checklist history to the recycle bin?');
 }
 
 </script>

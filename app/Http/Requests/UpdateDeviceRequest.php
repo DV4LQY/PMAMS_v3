@@ -52,6 +52,8 @@ class UpdateDeviceRequest extends FormRequest
             'model'       => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
             'network_device_type' => ['nullable', 'string', 'max:50', Rule::in(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'])],
             'location_deployed' => ['nullable', 'string', 'max:255'],
+            'location_deployed_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'office_deployed_id' => ['nullable', 'integer', 'exists:offices,id'],
             'mac_address' => ['nullable', 'string', 'regex:' . StoreDeviceRequest::MAC_ADDRESS_REGEX],
 
             'unit_price'    => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],

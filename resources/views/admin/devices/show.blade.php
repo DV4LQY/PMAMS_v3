@@ -48,6 +48,8 @@
             model: @json(old('model', $device->model)),
             network_device_type: @json(old('network_device_type', $device->network_device_type)),
             location_deployed: @json(old('location_deployed', $device->location_deployed)),
+            location_deployed_id: @json(old('location_deployed_id', $device->location_deployed_id)),
+            office_deployed_id: @json(old('office_deployed_id', $device->office_deployed_id)),
             mac_address: @json(old('mac_address', $device->mac_address)),
             unit_price: @json(old('unit_price', $device->unit_price)),
             date_acquired: @json($editDateAcquired),
@@ -175,6 +177,8 @@
                 setValue('model', device.model);
                 setValue('network_device_type', device.network_device_type);
                 setValue('location_deployed', device.location_deployed);
+                setValue('location_deployed_id', device.location_deployed_id);
+                setValue('office_deployed_id', device.office_deployed_id);
                 setValue('mac_address', device.mac_address);
                 setValue('specs[memory]', specs.memory);
                 setValue('specs[storage]', specs.storage);
@@ -692,7 +696,7 @@
                     </div>
                     <div>
                         <div class="text-sm text-gray-500">Location Deployed</div>
-                        <div class="font-medium text-gray-900">{{ $device->location_deployed ?: '-' }}</div>
+                        <div class="font-medium text-gray-900">{{ $device->deployedOffice ? trim($device->deployedOffice->name . ' - ' . $device->deployedOffice->location?->name . ($device->deployedOffice->location?->code ? ' (' . $device->deployedOffice->location->code . ')' : '')) : ($device->deployedLocation ? trim($device->deployedLocation->name . ($device->deployedLocation->code ? ' (' . $device->deployedLocation->code . ')' : '')) : ($device->location_deployed ?: '-')) }}</div>
                     </div>
                 @endif
 
@@ -1082,7 +1086,10 @@
 
                         <div x-show="isNetworkDeviceType()" x-cloak>
                             <label class="text-sm font-medium dark:text-gray-300">Location Deployed</label>
-                            <input name="location_deployed" x-model="editDevice.location_deployed" maxlength="255" :disabled="!isNetworkDeviceType()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="e.g. Server Room, 2nd Floor">
+                            <input name="location_deployed" list="network-location-options-show" data-location-deployed-search-show x-model="editDevice.location_deployed" maxlength="255" :disabled="!isNetworkDeviceType()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="e.g. Server Room, 2nd Floor">
+                            <input type="hidden" name="location_deployed_id" x-model="editDevice.location_deployed_id">
+                            <input type="hidden" name="office_deployed_id" x-model="editDevice.office_deployed_id">
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose a registered Location or Office from the suggestions to save the reference.</p>
                         </div>
 
                         <div x-show="isComputerType() || isNetworkDeviceType()" x-cloak>
@@ -1284,5 +1291,70 @@
         </div>
     </div>
 </div>
+
+<datalist id="network-location-options-show"></datalist>
+<script>
+(function () {
+    const input = document.querySelector('input[data-location-deployed-search-show]');
+    const list = document.getElementById('network-location-options-show');
+    if (!input || !list || window.__pmamsShowLocationLookupInit) return;
+    window.__pmamsShowLocationLookupInit = true;
+    const lookupUrl = @js(route('admin.devices.lookup.location'));
+    const resultMap = new Map();
+    let timer = null;
+    let aborter = null;
+    const populate = (results) => {
+        resultMap.clear();
+        list.replaceChildren(...(Array.isArray(results) ? results : []).map((result) => {
+            const option = document.createElement('option');
+            option.value = result.label || result.name || result.code || '';
+            option.label = result.code ? `${result.name || ''} (${result.code})` : (result.name || '');
+            if (result.id) resultMap.set(option.value, {
+                locationId: result.location_id || (result.type === 'location' ? result.id : ''),
+                officeId: result.office_id || (result.type === 'office' ? result.id : '')
+            });
+            return option;
+        }));
+    };
+    const syncHidden = () => {
+        const selected = resultMap.get(input.value.trim());
+        const location = input.form?.querySelector('[name="location_deployed_id"]');
+        const office = input.form?.querySelector('[name="office_deployed_id"]');
+        if (location) location.value = selected?.locationId || '';
+        if (office) office.value = selected?.officeId || '';
+    };
+    const search = async () => {
+        const query = String(input.value || '').trim();
+        aborter?.abort();
+        if (!query) return populate([]);
+        aborter = new AbortController();
+        try {
+            const url = new URL(lookupUrl, window.location.origin);
+            url.searchParams.set('q', query);
+            const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: aborter.signal });
+            if (!response.ok) throw new Error('lookup failed');
+            populate((await response.json()).results || []);
+        } catch (error) {
+            if (error.name !== 'AbortError') populate([]);
+        }
+    };
+    input.addEventListener('input', () => {
+        if (!resultMap.has(input.value.trim())) {
+            const location = input.form?.querySelector('[name="location_deployed_id"]');
+            const office = input.form?.querySelector('[name="office_deployed_id"]');
+            if (location) location.value = '';
+            if (office) office.value = '';
+        }
+        clearTimeout(timer);
+        timer = setTimeout(search, 180);
+    });
+    input.addEventListener('change', () => {
+        syncHidden();
+    });
+    input.form?.addEventListener('submit', () => {
+        syncHidden();
+    });
+})();
+</script>
 
 @endsection

@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\DeviceType;
+use App\Models\Location;
+use App\Models\Office;
 
 class DeviceService
 {
@@ -26,6 +28,40 @@ class DeviceService
             if (! $isNetworkDevice) {
                 $data['network_device_type'] = null;
                 $data['location_deployed'] = null;
+                $data['location_deployed_id'] = null;
+                $data['office_deployed_id'] = null;
+            } else {
+                $location = null;
+                $office = null;
+                if (! empty($data['office_deployed_id'])) {
+                    $office = Office::with('location')->find((int) $data['office_deployed_id']);
+                    $location = $office?->location;
+                }
+                if (! empty($data['location_deployed_id'])) {
+                    $location ??= Location::find((int) $data['location_deployed_id']);
+                }
+                if (! $location && filled($data['location_deployed'] ?? null)) {
+                    $value = trim((string) $data['location_deployed']);
+                    $officeName = trim((string) preg_replace('/\s+-\s+.*$/', '', $value));
+                    $office = Office::with('location')
+                        ->whereRaw('LOWER(name) = ?', [strtolower($officeName)])
+                        ->first();
+                    $location = $office?->location ?: Location::whereRaw('LOWER(name) = ?', [strtolower($value)])
+                        ->orWhereRaw('LOWER(code) = ?', [strtolower($value)])
+                        ->first();
+                }
+                if ($location) {
+                    $data['location_deployed_id'] = $location->id;
+                    $data['office_deployed_id'] = $office?->id;
+                    $locationLabel = trim($location->name . ($location->code ? ' (' . $location->code . ')' : ''));
+                    $data['location_deployed'] = $office ? trim($office->name . ' - ' . $locationLabel) : $locationLabel;
+                } elseif (blank($data['location_deployed'] ?? null)) {
+                    $data['location_deployed_id'] = null;
+                    $data['office_deployed_id'] = null;
+                } else {
+                    $data['location_deployed_id'] = null;
+                    $data['office_deployed_id'] = null;
+                }
             }
 
             $data['specs'] = collect($data['specs'] ?? [])

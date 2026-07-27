@@ -106,8 +106,13 @@
 
             <div id="location_deployed_wrapper" style="display:none;">
                 <label class="text-sm font-medium">Location Deployed</label>
-                <input name="location_deployed" value="{{ old('location_deployed') }}" maxlength="255" class="mt-1 w-full border rounded px-3 py-2" placeholder="e.g. Server Room, 2nd Floor">
+                <input name="location_deployed" list="network-location-options" data-location-deployed-search data-location-deployed-input value="{{ old('location_deployed') }}" maxlength="255" class="mt-1 w-full border rounded px-3 py-2" placeholder="e.g. Server Room, 2nd Floor">
+                <input type="hidden" name="location_deployed_id" data-location-deployed-id value="{{ old('location_deployed_id') }}">
+                <input type="hidden" name="office_deployed_id" data-office-deployed-id value="{{ old('office_deployed_id') }}">
+                <p class="mt-1 text-xs text-gray-500">Choose a registered Location or Office from the suggestions to save the reference.</p>
                 @error('location_deployed')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+                @error('location_deployed_id')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+                @error('office_deployed_id')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
             {{-- Unit Price --}}
@@ -253,6 +258,7 @@
             <a href="{{ route('admin.devices.index') }}" class="px-4 py-2 rounded bg-gray-100">Cancel</a>
         </div>
     </form>
+    <datalist id="network-location-options"></datalist>
 </div>
 
 @push('scripts')
@@ -348,6 +354,74 @@
         // Run on page load
         updateFields();
         updateStatusField();
+    })();
+</script>
+<script>
+    (function () {
+        if (window.__pmamsLocationLookupInit) return;
+        window.__pmamsLocationLookupInit = true;
+        const lookupUrl = @js(route('admin.devices.lookup.location'));
+        const list = document.getElementById('network-location-options');
+        const timers = new WeakMap();
+        const aborters = new WeakMap();
+        const resultMap = new Map();
+        const populate = (results) => {
+            if (!list) return;
+            resultMap.clear();
+            list.replaceChildren(...(Array.isArray(results) ? results : []).map((result) => {
+                const option = document.createElement('option');
+                option.value = result.label || result.name || result.code || '';
+                if (result.id) resultMap.set(option.value, {
+                    locationId: result.location_id || (result.type === 'location' ? result.id : ''),
+                    officeId: result.office_id || (result.type === 'office' ? result.id : '')
+                });
+                return option;
+            }));
+        };
+        const syncHidden = (input) => {
+            const selected = resultMap.get(String(input.value || '').trim());
+            const location = input.form?.querySelector('[data-location-deployed-id]');
+            const office = input.form?.querySelector('[data-office-deployed-id]');
+            if (location) location.value = selected?.locationId || '';
+            if (office) office.value = selected?.officeId || '';
+        };
+        const search = async (input) => {
+            const query = String(input.value || '').trim();
+            aborters.get(input)?.abort();
+            if (!query) return populate([]);
+            const aborter = new AbortController();
+            aborters.set(input, aborter);
+            try {
+                const url = new URL(lookupUrl, window.location.origin);
+                url.searchParams.set('q', query);
+                const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: aborter.signal });
+                if (!response.ok) throw new Error('lookup failed');
+                populate((await response.json()).results || []);
+            } catch (error) {
+                if (error.name !== 'AbortError') populate([]);
+            }
+        };
+        document.addEventListener('input', (event) => {
+            const input = event.target.closest('input[data-location-deployed-search]');
+            if (!input) return;
+            if (!resultMap.has(String(input.value || '').trim())) {
+                const location = input.form?.querySelector('[data-location-deployed-id]');
+                const office = input.form?.querySelector('[data-office-deployed-id]');
+                if (location) location.value = '';
+                if (office) office.value = '';
+            }
+            clearTimeout(timers.get(input));
+            timers.set(input, setTimeout(() => search(input), 180));
+        });
+        document.addEventListener('change', (event) => {
+            const input = event.target.closest('input[data-location-deployed-input]');
+            if (!input) return;
+            syncHidden(input);
+        });
+        document.addEventListener('submit', (event) => {
+            const input = event.target.querySelector?.('input[data-location-deployed-input]');
+            if (input) syncHidden(input);
+        });
     })();
 </script>
 @endpush

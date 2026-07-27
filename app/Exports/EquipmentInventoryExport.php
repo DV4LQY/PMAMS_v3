@@ -27,6 +27,8 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
         return Device::query()
             ->with([
                 'type',
+                'deployedLocation',
+                'deployedOffice.location',
                 'currentAssignment.staff.office.location',
                 'currentAssignment.office.location',
                 'currentAssignment.location',
@@ -89,7 +91,11 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
             $device->brand,
             $device->model,
             $device->network_device_type,
-            $device->location_deployed,
+            $device->deployedOffice
+                ? trim($device->deployedOffice->name . ' - ' . $device->deployedOffice->location?->name . ($device->deployedOffice->location?->code ? ' (' . $device->deployedOffice->location->code . ')' : ''))
+                : ($device->deployedLocation
+                    ? trim($device->deployedLocation->name . ($device->deployedLocation->code ? ' (' . $device->deployedLocation->code . ')' : ''))
+                    : $device->location_deployed),
             $device->mac_address,
             data_get($device->specs, 'memory'),
             data_get($device->specs, 'storage'),

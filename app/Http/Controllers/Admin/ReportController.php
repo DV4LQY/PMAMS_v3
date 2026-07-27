@@ -218,6 +218,7 @@ class ReportController extends Controller
                 'location',
                 'checkedBy',
             ])
+            ->whereHas('device')
             ->whereNotNull('checked_by')
             ->when(! $this->canViewAllCheckedReports(), fn ($query) => $query->where('checked_by', auth()->id()))
             ->whereIn('id', $data['record_ids'])
@@ -276,6 +277,7 @@ class ReportController extends Controller
                 'location',
                 'checkedBy',
             ])
+            ->whereHas('device')
             ->whereNotNull('checked_by')
             ->when(! $this->canViewAllCheckedReports(), fn ($query) => $query->where('checked_by', auth()->id()))
             ->when($checkerId, fn ($query) => $query->where('checked_by', $checkerId))

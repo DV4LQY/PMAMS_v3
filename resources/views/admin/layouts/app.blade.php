@@ -732,11 +732,14 @@
                 .toLowerCase();
             const isComputer = typeName === 'desktop' || typeName === 'laptop';
             const isDesktop = typeName === 'desktop';
+            const isNetworkDevice = typeName === 'network device';
             const hasOsVersion = Boolean(modal.querySelector('[name="os_version"]')?.value);
             const hasMsVersion = Boolean(modal.querySelector('[name="ms_office_version"]')?.value);
             const visibleFields = {
                 computer: isComputer,
                 desktop: isDesktop,
+                'network-only': isNetworkDevice,
+                mac: isComputer || isNetworkDevice,
                 'os-license': isComputer && hasOsVersion,
                 'office-license': isComputer && hasMsVersion,
             };

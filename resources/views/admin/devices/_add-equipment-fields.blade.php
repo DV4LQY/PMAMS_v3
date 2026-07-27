@@ -221,7 +221,7 @@
         @error('model')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
-    <div x-show="isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-device">
+    <div x-show="isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-only">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Network Device Type</label>
         <select
             name="network_device_type"
@@ -236,20 +236,28 @@
         @error('network_device_type')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
-    <div x-show="isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-device">
+    <div x-show="isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-only">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Location Deployed</label>
         <input
             name="location_deployed"
+            list="network-location-options"
+            data-location-deployed-search
+            data-location-deployed-input
             value="{{ old('location_deployed', $formDevice?->location_deployed) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="255"
             placeholder="e.g. Server Room, 2nd Floor"
             :disabled="!isNetworkDeviceType(addTypeId)"
         >
+        <input type="hidden" name="location_deployed_id" data-location-deployed-id value="{{ old('location_deployed_id', $formDevice?->location_deployed_id) }}">
+        <input type="hidden" name="office_deployed_id" data-office-deployed-id value="{{ old('office_deployed_id', $formDevice?->office_deployed_id) }}">
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose a registered Location or Office from the suggestions to save the reference.</p>
         @error('location_deployed')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        @error('location_deployed_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        @error('office_deployed_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
-    <div x-show="isComputerType(addTypeId) || isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-device">
+    <div x-show="isComputerType(addTypeId) || isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="mac">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">MAC Address</label>
         <input
             name="mac_address"
@@ -436,6 +444,90 @@
     </div>
 
 </div>
+
+@once
+    <datalist id="network-location-options"></datalist>
+    @push('scripts')
+    <script>
+        (function () {
+            if (window.__pmamsLocationLookupInit) return;
+            window.__pmamsLocationLookupInit = true;
+            const lookupUrl = @js(route('admin.devices.lookup.location'));
+            const timers = new WeakMap();
+            const aborters = new WeakMap();
+            const list = document.getElementById('network-location-options');
+            const resultMap = new Map();
+
+            function populate(results) {
+                if (!list) return;
+                resultMap.clear();
+                list.replaceChildren(...(Array.isArray(results) ? results : []).map((result) => {
+                    const option = document.createElement('option');
+                    option.value = result.label || result.name || result.code || '';
+                    option.label = result.code ? `${result.name || ''} (${result.code})` : (result.name || '');
+                    if (result.id) resultMap.set(option.value, {
+                        locationId: result.location_id || (result.type === 'location' ? result.id : ''),
+                        officeId: result.office_id || (result.type === 'office' ? result.id : '')
+                    });
+                    return option;
+                }));
+            }
+
+            async function search(input) {
+                const query = String(input.value || '').trim();
+                aborters.get(input)?.abort();
+                if (!query) {
+                    populate([]);
+                    return;
+                }
+                const aborter = new AbortController();
+                aborters.set(input, aborter);
+                try {
+                    const url = new URL(lookupUrl, window.location.origin);
+                    url.searchParams.set('q', query);
+                    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: aborter.signal });
+                    if (!response.ok) throw new Error('Location lookup failed');
+                    populate((await response.json()).results || []);
+                } catch (error) {
+                    if (error.name !== 'AbortError') populate([]);
+                }
+            }
+
+            function syncHidden(input) {
+                const selected = resultMap.get(String(input.value || '').trim());
+                const location = input.form?.querySelector('[data-location-deployed-id]');
+                const office = input.form?.querySelector('[data-office-deployed-id]');
+                if (location) location.value = selected?.locationId || '';
+                if (office) office.value = selected?.officeId || '';
+            }
+
+            document.addEventListener('input', (event) => {
+                const input = event.target.closest('input[data-location-deployed-search]');
+                if (!input) return;
+                if (!resultMap.has(String(input.value || '').trim())) {
+                    const location = input.form?.querySelector('[data-location-deployed-id]');
+                    if (location) location.value = '';
+                    const office = input.form?.querySelector('[data-office-deployed-id]');
+                    if (office) office.value = '';
+                }
+                clearTimeout(timers.get(input));
+                timers.set(input, setTimeout(() => search(input), 180));
+            });
+
+            document.addEventListener('change', (event) => {
+                const input = event.target.closest('input[data-location-deployed-input]');
+                if (!input) return;
+                syncHidden(input);
+            });
+
+            document.addEventListener('submit', (event) => {
+                const input = event.target.querySelector?.('input[data-location-deployed-input]');
+                if (input) syncHidden(input);
+            });
+        })();
+    </script>
+    @endpush
+@endonce
 
 <div class="mt-5">
     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Maintenance Remarks</label>

@@ -12,6 +12,7 @@ use App\Http\Requests\StoreDeviceRequest;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Device;
 use App\Models\DeviceAssignment;
+use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\Location;
 use App\Models\DeviceType;
@@ -105,6 +106,8 @@ class DeviceController extends Controller
         $deviceQuery = Device::query()
             ->with([
                 'type',
+                'deployedLocation',
+                'deployedOffice.location',
                 'currentAssignment.staff.office.location',
                 'currentAssignment.office.location',
                 'currentAssignment.location',
@@ -269,6 +272,86 @@ class DeviceController extends Controller
             ->values();
 
         return response()->json(['results' => $devices]);
+    }
+
+    /**
+     * Fast lookup used by Network Device deployment fields. Results include
+     * registered Locations and their Offices; the selected IDs are stored while
+     * the combined label remains compatible with existing imported text.
+     */
+    public function locationLookup(Request $request)
+    {
+        $tokens = $this->searchTokens($request->string('q')->toString());
+
+        $locations = Location::query()
+            ->select(['id', 'name', 'code'])
+            ->when($tokens !== [], function ($query) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $like = "%{$token}%";
+                    $query->where(function ($sub) use ($like) {
+                        $sub->where('name', 'like', $like)
+                            ->orWhere('code', 'like', $like);
+                    });
+                }
+            })
+            ->orderBy('name')
+            ->limit(12)
+            ->get()
+            ->map(function (Location $location) {
+                $label = trim(collect([$location->name, $location->code ? "({$location->code})" : null])->filter()->join(' '));
+
+                return [
+                    'type' => 'location',
+                    'id' => $location->id,
+                    'location_id' => $location->id,
+                    'office_id' => null,
+                    'name' => $location->name,
+                    'code' => $location->code,
+                    'label' => $label,
+                ];
+            });
+
+        $offices = Office::query()
+            ->select(['id', 'location_id', 'name'])
+            ->with('location:id,name,code')
+            ->when($tokens !== [], function ($query) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $like = "%{$token}%";
+                    $query->where(function ($sub) use ($like) {
+                        $sub->where('name', 'like', $like)
+                            ->orWhereHas('location', function ($location) use ($like) {
+                                $location->where('name', 'like', $like)
+                                    ->orWhere('code', 'like', $like);
+                            });
+                    });
+                }
+            })
+            ->orderBy('name')
+            ->limit(20)
+            ->get()
+            ->map(function (Office $office) {
+                $location = $office->location;
+                $locationLabel = $location
+                    ? trim(collect([$location->name, $location->code ? "({$location->code})" : null])->filter()->join(' '))
+                    : null;
+
+                return [
+                    'type' => 'office',
+                    'id' => $office->id,
+                    'location_id' => $location?->id,
+                    'office_id' => $office->id,
+                    'name' => $office->name,
+                    'code' => $location?->code,
+                    'label' => trim($office->name . ($locationLabel ? " - {$locationLabel}" : '')),
+                ];
+            });
+
+        $results = $locations->concat($offices)
+            ->sortBy(fn (array $result) => strtolower((string) $result['label']))
+            ->take(25)
+            ->values();
+
+        return response()->json(['results' => $results]);
     }
 
     /**
@@ -610,6 +693,8 @@ class DeviceController extends Controller
     {
         $device->load([
             'type',
+            'deployedLocation',
+            'deployedOffice.location',
             'currentAssignment.staff.office.location',
             'currentAssignment.office.location',
             'currentAssignment.location',
@@ -1092,19 +1177,19 @@ class DeviceController extends Controller
             ActivityLog::makePayload($summary)
         );
 
-        DeviceAssignment::where('device_id', $device->id)->delete();
-        DeviceMaintenanceRecord::where('device_id', $device->id)->delete();
-        $this->deleteEquipmentPhoto($device->photo_path);
+        // Soft-delete the equipment only. Assignments, checklist history,
+        // maintenance photos, and the equipment photo remain recoverable
+        // until a Super Admin permanently removes the recycle-bin entry.
         $device->delete();
         return redirect()
             ->route('admin.devices.index')
-            ->with('success', 'Equipment deleted.');
+            ->with('success', 'Equipment moved to the recycle bin.');
     }
 
     /**
      * Delete several equipment records in one confirmed operation.
-     * Assignments and maintenance records are explicitly removed so the
-     * equipment history is removed together with the selected equipment.
+     * Equipment is soft-deleted so assignments, maintenance history, and
+     * photos remain recoverable for Super Admin restoration.
      */
     public function bulkDestroy(Request $request)
     {
@@ -1161,18 +1246,8 @@ class DeviceController extends Controller
 
         DB::transaction(function () use ($devices, $items) {
             $ids = $devices->modelKeys();
-            $photoPaths = $devices->pluck('photo_path')->filter()->values();
-
-            // Remove all history rows before deleting the equipment rows.
-            DeviceAssignment::whereIn('device_id', $ids)->delete();
-            DeviceMaintenanceRecord::whereIn('device_id', $ids)->delete();
-            ActivityLog::whereIn('subject_id', $ids)
-                ->whereIn('subject_type', ['Device', 'Equipment'])
-                ->delete();
 
             Device::whereIn('id', $ids)->delete();
-
-            $photoPaths->each(fn ($path) => $this->deleteEquipmentPhoto($path));
 
             ActivityLog::record(
                 'deleted',
@@ -1188,7 +1263,71 @@ class DeviceController extends Controller
 
         return redirect()
             ->route('admin.devices.index')
-            ->with('success', count($items) . ' equipment record(s) and their history were deleted.');
+            ->with('success', count($items) . ' equipment record(s) moved to the recycle bin.');
+    }
+
+    public function restore(int $device)
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+
+        $deletedDevice = Device::onlyTrashed()->findOrFail($device);
+        $deletedDevice->restore();
+
+        ActivityLog::record(
+            'restored',
+            "Restored equipment \"{$deletedDevice->property_number}\" from the recycle bin.",
+            $deletedDevice,
+            ActivityLog::makePayload([
+                'property_number' => $deletedDevice->property_number,
+                'device_type' => $deletedDevice->type?->name,
+            ])
+        );
+
+        return back()->with('success', 'Equipment restored.');
+    }
+
+    public function forceDestroy(int $device)
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+
+        $deletedDevice = Device::onlyTrashed()
+            ->with('type')
+            ->findOrFail($device);
+
+        $propertyNumber = $deletedDevice->property_number;
+        DB::transaction(function () use ($deletedDevice) {
+            $records = DeviceMaintenanceRecord::withTrashed()
+                ->where('device_id', $deletedDevice->id)
+                ->get();
+
+            foreach ($records as $record) {
+                $record->photos()->get()->each(function (DeviceMaintenancePhoto $photo) {
+                    $this->deleteEquipmentPhoto($photo->photo_path);
+                    $photo->delete();
+                });
+                $record->forceDelete();
+            }
+
+            DeviceMaintenancePhoto::where('device_id', $deletedDevice->id)
+                ->get()
+                ->each(function (DeviceMaintenancePhoto $photo) {
+                    $this->deleteEquipmentPhoto($photo->photo_path);
+                    $photo->delete();
+                });
+
+            DeviceAssignment::where('device_id', $deletedDevice->id)->delete();
+            $this->deleteEquipmentPhoto($deletedDevice->photo_path);
+            $deletedDevice->forceDelete();
+        });
+
+        ActivityLog::record(
+            'force_deleted',
+            "Permanently deleted equipment \"{$propertyNumber}\" from the recycle bin.",
+            null,
+            ActivityLog::makePayload(['property_number' => $propertyNumber])
+        );
+
+        return back()->with('success', 'Equipment permanently deleted.');
     }
 
     /**
@@ -1937,6 +2076,18 @@ class DeviceController extends Controller
             // explicitly clear a value.
             if (array_key_exists($field, $row) && filled($row[$field])) {
                 $device->{$field} = $row[$field];
+            }
+        }
+
+        if (strtolower($type->name ?? '') === 'network device' && filled($row['location_deployed'] ?? null)) {
+            [$location, $office] = $this->resolveDeployedReferences(null, null, (string) $row['location_deployed']);
+            if ($location) {
+                $device->location_deployed_id = $location->id;
+                $device->office_deployed_id = $office?->id;
+                $device->location_deployed = $this->deployedReferenceLabel($location, $office);
+            } else {
+                $device->location_deployed_id = null;
+                $device->office_deployed_id = null;
             }
         }
 
@@ -3014,6 +3165,8 @@ class DeviceController extends Controller
             'model' => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
             'network_device_type' => ['nullable', 'string', 'max:50', Rule::in(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'])],
             'location_deployed' => ['nullable', 'string', 'max:255'],
+            'location_deployed_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'office_deployed_id' => ['nullable', 'integer', 'exists:offices,id'],
             'mac_address' => ['nullable', 'string', 'regex:' . StoreDeviceRequest::MAC_ADDRESS_REGEX],
             'computer_name' => ['nullable', 'string', 'max:100'],
 
@@ -3431,6 +3584,28 @@ class DeviceController extends Controller
         if ($typeName !== 'network device') {
             $data['network_device_type'] = null;
             $data['location_deployed'] = null;
+            $data['location_deployed_id'] = null;
+            $data['office_deployed_id'] = null;
+        } else {
+            [$location, $office] = $this->resolveDeployedReferences(
+                isset($data['location_deployed_id']) ? (int) $data['location_deployed_id'] : null,
+                isset($data['office_deployed_id']) ? (int) $data['office_deployed_id'] : null,
+                $data['location_deployed'] ?? null
+            );
+
+            if ($location) {
+                $data['location_deployed_id'] = $location->id;
+                $data['office_deployed_id'] = $office?->id;
+                $data['location_deployed'] = $this->deployedReferenceLabel($location, $office);
+            } elseif (blank($data['location_deployed'] ?? null)) {
+                $data['location_deployed_id'] = null;
+                $data['office_deployed_id'] = null;
+            } else {
+                // Keep legacy free-text values, but do not retain a stale FK
+                // when the user has replaced a previously linked location.
+                $data['location_deployed_id'] = null;
+                $data['office_deployed_id'] = null;
+            }
         }
 
         if (!$isComputerType) {
@@ -3482,6 +3657,60 @@ class DeviceController extends Controller
 }
 
         return $data;
+    }
+
+    private function resolveDeployedReferences(?int $locationId, ?int $officeId, ?string $value): array
+    {
+        $office = $officeId ? Office::query()->with('location')->find($officeId) : null;
+        $location = $locationId ? Location::query()->find($locationId) : $office?->location;
+
+        if ($office) {
+            // An Office always belongs to its registered parent Location.
+            $location = $office->location ?: $location;
+        }
+
+        if ($location || $office) {
+            return [$location, $office];
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return [null, null];
+        }
+
+        $code = null;
+        if (preg_match('/\(([^()]+)\)\s*$/', $value, $matches)) {
+            $code = trim($matches[1]);
+            $value = trim(substr($value, 0, -strlen($matches[0])));
+        }
+
+        $officeName = trim((string) preg_replace('/\s+-\s+.*$/', '', $value));
+        $office = Office::query()
+            ->with('location')
+            ->whereRaw('LOWER(name) = ?', [strtolower($officeName)])
+            ->when($code, fn ($query) => $query->whereHas('location', fn ($location) => $location->whereRaw('LOWER(code) = ?', [strtolower($code)])))
+            ->first();
+
+        if ($office) {
+            return [$office->location, $office];
+        }
+
+        $location = Location::query()
+            ->when($code, fn ($query) => $query->whereRaw('LOWER(code) = ?', [strtolower($code)]))
+            ->when(!$code, fn ($query) => $query->where(function ($sub) use ($value) {
+                $sub->whereRaw('LOWER(name) = ?', [strtolower($value)])
+                    ->orWhereRaw('LOWER(code) = ?', [strtolower($value)]);
+            }))
+            ->first();
+
+        return [$location, null];
+    }
+
+    private function deployedReferenceLabel(Location $location, ?Office $office = null): string
+    {
+        $locationLabel = trim(collect([$location->name, $location->code ? "({$location->code})" : null])->filter()->join(' '));
+
+        return $office ? trim($office->name . " - {$locationLabel}") : $locationLabel;
     }
 
     /**

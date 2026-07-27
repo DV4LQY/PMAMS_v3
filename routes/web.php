@@ -113,6 +113,8 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
                 ->name('admin.maintenance-cleanup.forceDestroy');
             Route::get('/database', [DatabaseBackupController::class, 'index'])
                 ->name('admin.database.index');
+            Route::post('/database/schedule', [DatabaseBackupController::class, 'updateSchedule'])
+                ->name('admin.database.schedule');
             Route::get('/database/download', [DatabaseBackupController::class, 'download'])
                 ->name('admin.database.download');
             Route::post('/database/restore', [DatabaseBackupController::class, 'restore'])
@@ -193,6 +195,8 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
 
         Route::get('/devices/lookup/available', [DeviceController::class, 'availableLookup'])
             ->name('admin.devices.lookup.available');
+        Route::get('/devices/lookup/location', [DeviceController::class, 'locationLookup'])
+            ->name('admin.devices.lookup.location');
 
         Route::post('/devices/{device}/issue', [DeviceController::class, 'issue'])
             ->name('admin.devices.issue');
@@ -356,5 +360,11 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
         Route::delete('admin/users/{user}', [UserController::class, 'destroy'])->name('admin.users.destroy');
         Route::patch('admin/users/{user}/restore', [UserController::class, 'restore'])->name('admin.users.restore');
         Route::delete('admin/users/{user}/force-delete', [UserController::class, 'forceDestroy'])->name('admin.users.forceDestroy');
+
+        Route::patch('admin/devices/{device}/restore', [DeviceController::class, 'restore'])->name('admin.devices.restore');
+        Route::delete('admin/devices/{device}/force-delete', [DeviceController::class, 'forceDestroy'])->name('admin.devices.forceDestroy');
+
+        Route::post('admin/recycle-bin/permanent-delete', [UserController::class, 'permanentDelete'])
+            ->name('admin.recycle-bin.permanentDelete');
     });
 });

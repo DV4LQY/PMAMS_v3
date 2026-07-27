@@ -7,9 +7,14 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\Location;
+use App\Models\Office;
 
 class Device extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'device_type_id',
         'property_number',
@@ -20,6 +25,8 @@ class Device extends Model
         'model',
         'network_device_type',
         'location_deployed',
+        'location_deployed_id',
+        'office_deployed_id',
         'mac_address',
         'unit_price',
         'date_acquired',
@@ -67,6 +74,17 @@ class Device extends Model
                             ->orWhere('network_device_type', 'like', $like)
                             ->orWhere('location_deployed', 'like', $like)
                             ->orWhere('mac_address', 'like', $like)
+                            ->orWhereHas('deployedLocation', function (Builder $location) use ($like) {
+                                $location->where('name', 'like', $like)
+                                    ->orWhere('code', 'like', $like);
+                            })
+                            ->orWhereHas('deployedOffice', function (Builder $office) use ($like) {
+                                $office->where('name', 'like', $like)
+                                    ->orWhereHas('location', function (Builder $location) use ($like) {
+                                        $location->where('name', 'like', $like)
+                                            ->orWhere('code', 'like', $like);
+                                    });
+                            })
                             ->orWhereHas('type', fn (Builder $type) => $type->where('name', 'like', $like))
                             ->orWhereHas('currentAssignment.location', function (Builder $location) use ($like) {
                                 $location->where('name', 'like', $like)
@@ -124,6 +142,21 @@ class Device extends Model
         return $this->belongsTo(DeviceType::class, 'device_type_id');
     }
 
+    /**
+     * Registered Location used as the deployment reference for network devices.
+     * The legacy location_deployed text is retained for older/imported records.
+     */
+    public function deployedLocation(): BelongsTo
+    {
+        return $this->belongsTo(Location::class, 'location_deployed_id');
+    }
+
+    /** Registered Office used as the deployment reference for network devices. */
+    public function deployedOffice(): BelongsTo
+    {
+        return $this->belongsTo(Office::class, 'office_deployed_id');
+    }
+
     public function assignments(): HasMany
     {
         return $this->hasMany(DeviceAssignment::class);
@@ -147,6 +180,11 @@ class Device extends Model
     public function maintenanceRecords(): HasMany
     {
         return $this->hasMany(DeviceMaintenanceRecord::class);
+    }
+
+    public function maintenanceRecordsIncludingTrashed(): HasMany
+    {
+        return $this->hasMany(DeviceMaintenanceRecord::class)->withTrashed();
     }
 
     public function maintenancePhotos(): HasMany
