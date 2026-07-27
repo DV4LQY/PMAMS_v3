@@ -243,14 +243,23 @@ class DeviceChecklistController extends Controller
             ->all();
 
         // Keep user-entered remarks intact. When no remarks are supplied,
-        // describe defective sections first, then apply the existing
-        // not-available defaults.
+        // describe Not OK sections from their selected condition/status. A
+        // plain Serviceable remark is only generated when the System Unit or
+        // Monitor itself is checked OK; checking only another row must not
+        // make the whole property appear serviceable.
+        $notAvailableRemarks = $this->formatNotAvailableRemarks($avrUpsUnavailable, $printerUnavailable);
         if ($remarks === '') {
-            $remarks = count($defectiveSections) > 0
-                ? 'Defective ' . $this->formatSectionList($defectiveSections)
-                : ($avrUpsUnavailable
-                    ? 'not available UPS/AVR'
-                    : ($printerUnavailable ? null : 'Serviceable'));
+            $notOkRemarks = count($defectiveSections) > 0
+                ? $this->formatNotOkRemarks($hardwareResponses, $conditionResponses, $dispositionResponses)
+                : '';
+
+            $remarks = $notOkRemarks !== ''
+                ? $notOkRemarks . ($notAvailableRemarks ? '; ' . $notAvailableRemarks : '')
+                : ($notAvailableRemarks
+                    ?? (($hardwareResponses['system_unit_power_on'] ?? null) === 'OK'
+                        || ($hardwareResponses['monitor_display'] ?? null) === 'OK'
+                        ? 'Serviceable'
+                        : null));
         }
 
         if ($correctiveAction === '' && ($avrUpsUnavailable || $printerUnavailable)) {
@@ -565,6 +574,51 @@ class DeviceChecklistController extends Controller
             2 => $sections[0] . ' and ' . $sections[1],
             default => implode(', ', array_slice($sections, 0, -1)) . ', and ' . end($sections),
         };
+    }
+
+    /**
+     * Build an automatic remark for Not OK rows from their selected condition
+     * and status. Rows with different dispositions are kept distinct so a
+     * repair selection is not mislabeled as merely defective.
+     */
+    private function formatNotOkRemarks(
+        array $hardwareResponses,
+        array $conditionResponses,
+        array $dispositionResponses
+    ): string {
+        $groups = [];
+
+        foreach ($this->checklistItems() as $key => $item) {
+            if (($hardwareResponses[$key] ?? null) !== 'Not OK') {
+                continue;
+            }
+
+            $prefix = match (true) {
+                ($dispositionResponses[$key] ?? null) === 'repair' => 'Repair',
+                ($dispositionResponses[$key] ?? null) === 'not_in_use' => 'Not in Use',
+                ($conditionResponses[$key] ?? null) === 'condemned' => 'Condemned',
+                default => 'Defective',
+            };
+
+            $groups[$prefix][] = $item['group'] ?? $key;
+        }
+
+        return collect($groups)
+            ->map(fn (array $sections, string $prefix) => $prefix . ' ' . $this->formatSectionList($sections))
+            ->implode('; ');
+    }
+
+    private function formatNotAvailableRemarks(bool $avrUpsUnavailable, bool $printerUnavailable): ?string
+    {
+        $equipment = [];
+        if ($avrUpsUnavailable) {
+            $equipment[] = 'UPS/AVR';
+        }
+        if ($printerUnavailable) {
+            $equipment[] = 'Printer';
+        }
+
+        return $equipment === [] ? null : 'not available ' . implode(', ', $equipment);
     }
 
     private function isComputerDevice(?string $deviceType): bool

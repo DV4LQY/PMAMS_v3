@@ -231,27 +231,51 @@
                 return `${sections.slice(0, -1).join(', ')}, and ${sections[sections.length - 1]}`;
             },
             generatedRemarks() {
-                const defectiveSections = Array.from(this.$root.querySelectorAll('input'))
+                const sectionGroups = {};
+                Array.from(this.$root.querySelectorAll('input'))
                     .filter((input) => input.name.startsWith('hardware[') && input.value === 'Not OK' && input.checked)
-                    .map((input) => input.dataset.section)
-                    .filter(Boolean);
-                if (defectiveSections.length) {
-                    return `Defective ${this.formatSectionList(defectiveSections)}`;
+                    .forEach((input) => {
+                        const key = input.name.match(/^hardware\[(.+)\]$/)?.[1];
+                        const section = input.dataset.section;
+                        if (!key || !section) return;
+
+                        const prefix = this.statusRows[key] === 'repair'
+                            ? 'Repair'
+                            : (this.statusRows[key] === 'not_in_use'
+                                ? 'Not in Use'
+                                : (this.conditionRows[key] === 'condemned' ? 'Condemned' : 'Defective'));
+                        (sectionGroups[prefix] ||= []).push(section);
+                    });
+
+                const defectiveRemarks = Object.entries(sectionGroups)
+                    .map(([prefix, sections]) => `${prefix} ${this.formatSectionList(sections)}`)
+                    .join('; ');
+                if (defectiveRemarks) {
+                    return defectiveRemarks;
                 }
 
                 const form = this.$root;
                 const avrUnavailable = form.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
                 const printerUnavailable = form.elements['hardware[printer_printout]']?.value === 'Not Available';
-                if (avrUnavailable) return 'not available UPS/AVR';
-                if (printerUnavailable) return '';
-                return 'Serviceable';
+                const unavailableEquipment = [];
+                if (avrUnavailable) unavailableEquipment.push('UPS/AVR');
+                if (printerUnavailable) unavailableEquipment.push('Printer');
+                if (unavailableEquipment.length) return `not available ${unavailableEquipment.join(', ')}`;
+                const systemUnitChecked = form.elements['hardware[system_unit_power_on]']?.value === 'OK';
+                const monitorChecked = form.elements['hardware[monitor_display]']?.value === 'OK';
+                if (systemUnitChecked || monitorChecked) return 'Serviceable';
+                return '';
             },
             applyChecklistDefaults() {
                 const currentRemarks = this.remarks.trim();
                 const isGeneratedRemark = currentRemarks === ''
                     || currentRemarks === 'Serviceable'
                     || currentRemarks === 'not available UPS/AVR'
-                    || currentRemarks.startsWith('Defective ');
+                    || currentRemarks.startsWith('not available ')
+                    || currentRemarks.startsWith('Defective ')
+                    || currentRemarks.startsWith('Repair ')
+                    || currentRemarks.startsWith('Not in Use ')
+                    || currentRemarks.startsWith('Condemned ');
 
                 if (!this.remarksEdited && isGeneratedRemark) {
                     this.remarks = this.generatedRemarks();
