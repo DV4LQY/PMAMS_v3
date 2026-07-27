@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\SystemSetting;
@@ -73,22 +74,92 @@ class MaintenanceCleanupController extends Controller
                 ->when($data['date_to'] ?? null, fn ($q, $date) => $q->whereDate('maintenance_date', '<=', $date));
         }
 
-        $records = $query->get(['id']);
+        $records = $query->with(['device.type', 'checkedBy'])->get();
         if ($records->isEmpty()) {
             return back()->withErrors(['record_ids' => 'Select checklist history rows or provide a date range.']);
         }
 
         DB::transaction(function () use ($records) {
-            $photos = DeviceMaintenancePhoto::query()
-                ->whereIn('maintenance_record_id', $records->modelKeys())
-                ->get(['id', 'photo_path']);
-            foreach ($photos as $photo) {
-                Storage::disk('public')->delete($photo->photo_path);
+            foreach ($records as $record) {
+                ActivityLog::record(
+                    'deleted',
+                    'Moved checklist history to the recycle bin.',
+                    $record,
+                    ActivityLog::makePayload([
+                        'maintenance_record_id' => $record->id,
+                        'device_id' => $record->device_id,
+                        'property_number' => $record->device?->property_number,
+                        'maintenance_date' => $record->maintenance_date?->toDateString(),
+                        'checked_by' => $record->checkedBy?->name,
+                        'photos_retained' => DeviceMaintenancePhoto::where('maintenance_record_id', $record->id)->count(),
+                    ])
+                );
+
+                // Keep the checklist row and its photos recoverable. The
+                // gallery hides photos belonging to a trashed checklist.
+                $record->delete();
             }
-            DeviceMaintenancePhoto::query()->whereIn('id', $photos->modelKeys())->delete();
-            DeviceMaintenanceRecord::query()->whereIn('id', $records->modelKeys())->delete();
         });
 
-        return back()->with('success', $records->count() . ' checklist history record(s) deleted.');
+        return back()->with('success', $records->count() . ' checklist history record(s) moved to the recycle bin.');
+    }
+
+    public function restore(int $record)
+    {
+        abort_unless(request()->user()?->isSuperAdmin(), 403);
+
+        $deletedRecord = DeviceMaintenanceRecord::onlyTrashed()
+            ->with(['device.type', 'checkedBy'])
+            ->findOrFail($record);
+        $deletedRecord->restore();
+
+        ActivityLog::record(
+            'restored',
+            'Restored checklist history from the recycle bin.',
+            $deletedRecord,
+            ActivityLog::makePayload([
+                'maintenance_record_id' => $deletedRecord->id,
+                'device_id' => $deletedRecord->device_id,
+                'property_number' => $deletedRecord->device?->property_number,
+                'maintenance_date' => $deletedRecord->maintenance_date?->toDateString(),
+            ])
+        );
+
+        return back()->with('success', 'Checklist history restored.');
+    }
+
+    public function forceDestroy(int $record)
+    {
+        abort_unless(request()->user()?->isSuperAdmin(), 403);
+
+        $deletedRecord = DeviceMaintenanceRecord::onlyTrashed()
+            ->with(['device.type', 'photos'])
+            ->findOrFail($record);
+
+        $summary = [
+            'maintenance_record_id' => $deletedRecord->id,
+            'device_id' => $deletedRecord->device_id,
+            'property_number' => $deletedRecord->device?->property_number,
+            'maintenance_date' => $deletedRecord->maintenance_date?->toDateString(),
+            'photos_deleted' => $deletedRecord->photos->count(),
+        ];
+
+        DB::transaction(function () use ($deletedRecord) {
+            foreach ($deletedRecord->photos as $photo) {
+                Storage::disk('public')->delete($photo->photo_path);
+                $photo->delete();
+            }
+
+            $deletedRecord->forceDelete();
+        });
+
+        ActivityLog::record(
+            'force_deleted',
+            'Permanently deleted checklist history from the recycle bin.',
+            null,
+            ActivityLog::makePayload($summary)
+        );
+
+        return back()->with('success', 'Checklist history permanently deleted.');
     }
 }

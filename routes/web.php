@@ -107,6 +107,10 @@ Route::middleware(['auth', 'role:admin,custodian'])->group(function () {
                 ->name('admin.maintenance-cleanup.window');
             Route::delete('/maintenance-cleanup', [MaintenanceCleanupController::class, 'destroy'])
                 ->name('admin.maintenance-cleanup.destroy');
+            Route::patch('/maintenance-cleanup/{record}/restore', [MaintenanceCleanupController::class, 'restore'])
+                ->name('admin.maintenance-cleanup.restore');
+            Route::delete('/maintenance-cleanup/{record}/force-delete', [MaintenanceCleanupController::class, 'forceDestroy'])
+                ->name('admin.maintenance-cleanup.forceDestroy');
             Route::get('/database', [DatabaseBackupController::class, 'index'])
                 ->name('admin.database.index');
             Route::get('/database/download', [DatabaseBackupController::class, 'download'])

@@ -16,9 +16,17 @@ class DeviceService
         $typeName = strtolower($type?->name ?? '');
 
         $isComputer = in_array($typeName, ['desktop', 'laptop']);
+        $isNetworkDevice = $typeName === 'network device';
 
         if (! $isComputer) {
-            $data['mac_address'] = null;
+            if (! $isNetworkDevice) {
+                $data['mac_address'] = null;
+            }
+
+            if (! $isNetworkDevice) {
+                $data['network_device_type'] = null;
+                $data['location_deployed'] = null;
+            }
 
             $data['specs'] = collect($data['specs'] ?? [])
                 ->except(['os', 'memory', 'storage', 'form_factor'])

@@ -69,6 +69,8 @@
             computer_name: '',
             brand: '',
             model: '',
+            network_device_type: '',
+            location_deployed: '',
             mac_address: '',
             unit_price: '',
             date_acquired: '',
@@ -145,6 +147,10 @@
         isComputerType(typeId) {
             const name = this.getTypeName(typeId);
             return name === 'desktop' || name === 'laptop';
+        },
+
+        isNetworkDeviceType(typeId) {
+            return this.getTypeName(typeId) === 'network device';
         },
 
         isDesktopType(typeId) {
@@ -319,6 +325,8 @@
             setValue('computer_name', this.addComputerName);
             setValue('brand', device.brand);
             setValue('model', device.model);
+            setValue('network_device_type', device.network_device_type);
+            setValue('location_deployed', device.location_deployed);
             setValue('mac_address', device.mac_address);
             setValue('specs[memory]', specs.memory);
             setValue('specs[storage]', specs.storage);
@@ -351,6 +359,8 @@
             device.os_license = device.os_license ?? '';
             device.ms_office_version = device.ms_office_version ?? '';
             device.ms_office_license = device.ms_office_license ?? '';
+            device.network_device_type = device.network_device_type ?? '';
+            device.location_deployed = device.location_deployed ?? '';
 
             this.editDevice = device;
             this.editDevice.unit_price = this.formatUnitPriceValue(this.editDevice.unit_price);
@@ -831,6 +841,8 @@
                             serial_number: @js($d->serial_number ?? ''),
                             brand: @js($d->brand ?? ''),
                             model: @js($d->model ?? ''),
+                            network_device_type: @js($d->network_device_type ?? ''),
+                            location_deployed: @js($d->location_deployed ?? ''),
                             mac_address: @js($d->mac_address ?? ''),
                             unit_price: @js($d->unit_price ?? ''),
                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
@@ -995,6 +1007,8 @@
                                             serial_number: @js($d->serial_number ?? ''),
                                             brand: @js($d->brand ?? ''),
                                             model: @js($d->model ?? ''),
+                                            network_device_type: @js($d->network_device_type ?? ''),
+                                            location_deployed: @js($d->location_deployed ?? ''),
                                             mac_address: @js($d->mac_address ?? ''),
                                             unit_price: @js($d->unit_price ?? ''),
                                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
@@ -1203,7 +1217,35 @@
                     >
                 </div>
 
-                <div x-show="isComputerType(editDevice.device_type_id)" x-cloak>
+                <div x-show="isNetworkDeviceType(editDevice.device_type_id)" x-cloak>
+                    <label class="text-sm font-medium dark:text-gray-300">Network Device Type</label>
+                    <select
+                        name="network_device_type"
+                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        x-model="editDevice.network_device_type"
+                        :disabled="!isNetworkDeviceType(editDevice.device_type_id)"
+                    >
+                        <option value="">-- Select Network Device Type --</option>
+                        <option value="Access point">Access point</option>
+                        <option value="Router">Router</option>
+                        <option value="Switch (managed)">Switch (managed)</option>
+                        <option value="Switch (unmanaged)">Switch (unmanaged)</option>
+                    </select>
+                </div>
+
+                <div x-show="isNetworkDeviceType(editDevice.device_type_id)" x-cloak>
+                    <label class="text-sm font-medium dark:text-gray-300">Location Deployed</label>
+                    <input
+                        name="location_deployed"
+                        x-model="editDevice.location_deployed"
+                        maxlength="255"
+                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        placeholder="e.g. Server Room, 2nd Floor"
+                        :disabled="!isNetworkDeviceType(editDevice.device_type_id)"
+                    >
+                </div>
+
+                <div x-show="isComputerType(editDevice.device_type_id) || isNetworkDeviceType(editDevice.device_type_id)" x-cloak>
                     <label class="text-sm font-medium dark:text-gray-300">MAC Address</label>
                     <input
                         name="mac_address"
@@ -1212,7 +1254,7 @@
                         maxlength="100"
                         pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
                         title="Enter one or more MAC addresses separated by semicolons"
-                        :disabled="!isComputerType(editDevice.device_type_id)"
+                        :disabled="!isComputerType(editDevice.device_type_id) && !isNetworkDeviceType(editDevice.device_type_id)"
                         placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C"
                     >
                 </div>

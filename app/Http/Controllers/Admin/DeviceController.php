@@ -237,6 +237,8 @@ class DeviceController extends Controller
                             ->orWhere('computer_name', 'like', $like)
                             ->orWhere('brand', 'like', $like)
                             ->orWhere('model', 'like', $like)
+                            ->orWhere('network_device_type', 'like', $like)
+                            ->orWhere('location_deployed', 'like', $like)
                             ->orWhereHas('type', fn ($type) => $type->where('name', 'like', $like));
                     });
                 }
@@ -564,6 +566,8 @@ class DeviceController extends Controller
 
         foreach ([
             'model' => $device->model,
+            'network_device_type' => $device->network_device_type,
+            'location_deployed' => $device->location_deployed,
             'serial_number' => $device->serial_number,
             'mac_address' => $device->mac_address,
             'windows_version' => $device->os_version,
@@ -836,6 +840,8 @@ class DeviceController extends Controller
             'computer_name' => $device->computer_name ?: data_get($device->specs, 'computer_name'),
             'brand' => $device->brand,
             'model' => $device->model,
+            'network_device_type' => $device->network_device_type,
+            'location_deployed' => $device->location_deployed,
             'serial_number' => $device->serial_number,
             'mac_address' => $device->mac_address,
 
@@ -877,6 +883,8 @@ class DeviceController extends Controller
 
         foreach ([
             'model' => $device->model,
+            'network_device_type' => $device->network_device_type,
+            'location_deployed' => $device->location_deployed,
             'serial_number' => $device->serial_number,
             'mac_address' => $device->mac_address,
             'windows_version' => $device->os_version,
@@ -1045,6 +1053,8 @@ class DeviceController extends Controller
 
         $summary += [
             'model' => $device->model,
+            'network_device_type' => $device->network_device_type,
+            'location_deployed' => $device->location_deployed,
             'serial_number' => $device->serial_number,
             'unit_price' => $device->unit_price,
             'condition' => $device->condition,
@@ -1601,7 +1611,7 @@ class DeviceController extends Controller
         $partOfPropertyNumber = $this->importValue($row, ['part_of_property_number']);
 
         $equipmentType = trim((string) $this->importValue($row, ['equipment_type', 'device_type', 'type']));
-        $allowedEquipmentTypes = ['desktop', 'laptop', 'printer', 'monitor', 'ups', 'avr', 'scanner', 'other'];
+        $allowedEquipmentTypes = ['desktop', 'laptop', 'printer', 'monitor', 'ups', 'avr', 'scanner', 'network device', 'other'];
         if ($equipmentType === '' || ! in_array(strtolower($equipmentType), $allowedEquipmentTypes, true)) {
             $equipmentType = 'Other';
             $row['equipment_type'] = $equipmentType;
@@ -1683,6 +1693,8 @@ class DeviceController extends Controller
             'brand' => [100, StoreDeviceRequest::BRAND_MODEL_REGEX],
             'model' => [100, StoreDeviceRequest::BRAND_MODEL_REGEX],
             'computer_name' => [100, null],
+            'network_device_type' => [50, null],
+            'location_deployed' => [255, null],
         ] as $field => [$maxLength, $regex]) {
             if (! array_key_exists($field, $row) || blank($row[$field])) {
                 continue;
@@ -1695,6 +1707,22 @@ class DeviceController extends Controller
             } else {
                 $row[$field] = $value;
             }
+        }
+
+        $networkDeviceTypes = ['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'];
+        $networkDeviceType = trim((string) ($row['network_device_type'] ?? ''));
+        if ($networkDeviceType !== '') {
+            $match = collect($networkDeviceTypes)->first(fn (string $value) => strtolower($value) === strtolower($networkDeviceType));
+            if ($match === null || strtolower($equipmentType) !== 'network device') {
+                $row['network_device_type'] = null;
+                $warnings[] = 'network_device_type was invalid for this equipment type; it was left blank.';
+            } else {
+                $row['network_device_type'] = $match;
+            }
+        }
+        if (strtolower($equipmentType) !== 'network device' && filled($row['location_deployed'] ?? null)) {
+            $row['location_deployed'] = null;
+            $warnings[] = 'location_deployed is only supported for Network Device equipment; it was left blank.';
         }
 
         if (filled($row['mac_address'] ?? null)
@@ -1900,7 +1928,7 @@ class DeviceController extends Controller
         }
 
         foreach ([
-            'serial_number', 'computer_name', 'brand', 'model', 'mac_address',
+            'serial_number', 'computer_name', 'brand', 'model', 'network_device_type', 'location_deployed', 'mac_address',
             'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
             'maintenance_remarks', 'notes',
         ] as $field) {
@@ -2573,6 +2601,15 @@ class DeviceController extends Controller
             throw new \RuntimeException('equipment_type must not exceed 100 characters.');
         }
 
+        if (filled($row['network_device_type'] ?? null)) {
+            $networkDeviceTypes = ['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'];
+            $networkDeviceType = trim((string) $row['network_device_type']);
+            if (strtolower($equipmentType) !== 'network device'
+                || ! in_array(strtolower($networkDeviceType), array_map('strtolower', $networkDeviceTypes), true)) {
+                throw new \RuntimeException('network_device_type is only valid for Network Device equipment and must be Access point, Router, Switch (managed), or Switch (unmanaged).');
+            }
+        }
+
         if ($partOfPropertyNumber !== ''
             && !in_array(strtolower($equipmentType), ['printer', 'monitor', 'avr', 'ups', 'scanner', 'network device', 'other'], true)) {
             throw new \RuntimeException('part_of_property_number is only supported for Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other equipment.');
@@ -2604,6 +2641,8 @@ class DeviceController extends Controller
             'computer_name' => 100,
             'brand' => 100,
             'model' => 100,
+            'network_device_type' => 50,
+            'location_deployed' => 255,
             'os_version' => 100,
             'os_license' => 100,
             'ms_office_version' => 100,
@@ -2667,7 +2706,7 @@ class DeviceController extends Controller
     {
         return [
             'property_number', 'equipment_type', 'serial_number', 'brand', 'model',
-            'computer_name', 'mac_address', 'unit_price', 'date_acquired', 'condition',
+            'computer_name', 'network_device_type', 'location_deployed', 'mac_address', 'unit_price', 'date_acquired', 'condition',
             'part_of_property_number',
             'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
             'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks',
@@ -2699,6 +2738,8 @@ class DeviceController extends Controller
             'part_of_property_no' => 'part_of_property_number', 'part_of' => 'part_of_property_number',
             'equipment' => 'equipment_type', 'device' => 'equipment_type', 'device_type' => 'equipment_type',
             'type' => 'equipment_type', 'type_name' => 'equipment_type',
+            'network_type' => 'network_device_type', 'device_subtype' => 'network_device_type', 'subtype' => 'network_device_type',
+            'deployed_location' => 'location_deployed', 'deployment_location' => 'location_deployed',
             'serial_no' => 'serial_number', 'office_name' => 'office', 'location_name' => 'location',
             'availability' => 'status',
             'user_email' => 'staff_email', 'end_user_email' => 'staff_email', 'issued_to_email' => 'staff_email',
@@ -2731,6 +2772,8 @@ class DeviceController extends Controller
             'computer_name',
             'brand',
             'model',
+            'network_device_type',
+            'location_deployed',
             'mac_address',
             'date_acquired',
             'condition',
@@ -2969,6 +3012,8 @@ class DeviceController extends Controller
 
             'brand' => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
             'model' => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
+            'network_device_type' => ['nullable', 'string', 'max:50', Rule::in(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'])],
+            'location_deployed' => ['nullable', 'string', 'max:255'],
             'mac_address' => ['nullable', 'string', 'regex:' . StoreDeviceRequest::MAC_ADDRESS_REGEX],
             'computer_name' => ['nullable', 'string', 'max:100'],
 
@@ -3383,12 +3428,19 @@ class DeviceController extends Controller
             $data['part_of_property_number'] = null;
         }
 
+        if ($typeName !== 'network device') {
+            $data['network_device_type'] = null;
+            $data['location_deployed'] = null;
+        }
+
         if (!$isComputerType) {
             // Computer names are meaningful only for Desktop/Laptop records.
             // Clear the value on create/update/import so changing an item type
             // cannot leave stale computer metadata behind.
             $data['computer_name'] = null;
-            $data['mac_address'] = null;
+            if ($typeName !== 'network device') {
+                $data['mac_address'] = null;
+            }
             $data['os_version'] = null;
             $data['os_license'] = null;
             $data['ms_office_version'] = null;

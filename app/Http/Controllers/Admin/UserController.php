@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\DeviceMaintenanceRecord;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -53,9 +54,30 @@ class UserController extends Controller
     {
         $deletedUsers = User::onlyTrashed()
             ->orderByDesc('deleted_at')
-            ->paginate(15);
+            ->paginate(15, ['*'], 'users_page')
+            ->withQueryString();
 
-        return view('admin.users.recycle-bin', compact('deletedUsers'));
+        $deletedChecklists = DeviceMaintenanceRecord::onlyTrashed()
+            ->with(['device.type', 'checkedBy'])
+            ->withCount('photos')
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('id')
+            ->paginate(15, ['*'], 'checklists_page')
+            ->withQueryString();
+
+        // Keep a central, read-only audit of every deletion action. This
+        // includes equipment, locations, offices, staff, photos, users, and
+        // checklist cleanup entries—even when the original record cannot be
+        // restored because it was hard-deleted by the existing workflow.
+        $deletedActions = ActivityLog::query()
+            ->whereIn('action', ['deleted', 'force_deleted'])
+            ->with('user')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(25, ['*'], 'deleted_actions_page')
+            ->withQueryString();
+
+        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedChecklists', 'deletedActions'));
     }
 
     public function store(Request $request)

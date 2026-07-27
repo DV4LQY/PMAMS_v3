@@ -67,6 +67,12 @@
                 @enderror
             </div>
 
+            <div>
+                <label class="text-sm font-medium">Serial Number</label>
+                <input name="serial_number" value="{{ old('serial_number') }}" maxlength="100" pattern="[A-Za-z0-9\-]*" title="Letters, numbers, and hyphens only" class="mt-1 w-full border rounded px-3 py-2" placeholder="Enter serial number">
+                @error('serial_number')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+            </div>
+
             {{-- Brand --}}
             <div>
                 <label class="text-sm font-medium">Brand</label>
@@ -79,6 +85,29 @@
                 @error('brand')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
+            </div>
+
+            <div>
+                <label class="text-sm font-medium">Model</label>
+                <input name="model" value="{{ old('model') }}" maxlength="100" pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*" title="Letters and numbers only" class="mt-1 w-full border rounded px-3 py-2" placeholder="Example: L3210, 2199">
+                @error('model')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+            </div>
+
+            <div id="network_device_type_wrapper" style="display:none;">
+                <label class="text-sm font-medium">Network Device Type</label>
+                <select name="network_device_type" id="network_device_type_select" class="mt-1 w-full border rounded px-3 py-2">
+                    <option value="">-- Select Network Device Type --</option>
+                    @foreach(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'] as $networkType)
+                        <option value="{{ $networkType }}" @selected(old('network_device_type') === $networkType)>{{ $networkType }}</option>
+                    @endforeach
+                </select>
+                @error('network_device_type')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+            </div>
+
+            <div id="location_deployed_wrapper" style="display:none;">
+                <label class="text-sm font-medium">Location Deployed</label>
+                <input name="location_deployed" value="{{ old('location_deployed') }}" maxlength="255" class="mt-1 w-full border rounded px-3 py-2" placeholder="e.g. Server Room, 2nd Floor">
+                @error('location_deployed')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
             {{-- Unit Price --}}
@@ -97,7 +126,7 @@
             </div>
 
             {{-- MAC Address --}}
-            <div>
+            <div id="mac_address_wrapper">
                 <label class="text-sm font-medium">MAC Address</label>
                 <input name="mac_address"
                        value="{{ old('mac_address') }}"
@@ -235,6 +264,9 @@
         var statusSelect    = document.getElementById('device_status_select');
         var osVersionSel    = document.getElementById('os_version_select');
         var msVersionSel    = document.getElementById('ms_office_version_select');
+        var networkTypeWrap = document.getElementById('network_device_type_wrapper');
+        var locationDeployedWrap = document.getElementById('location_deployed_wrapper');
+        var macAddressWrap = document.getElementById('mac_address_wrapper');
 
         var osVersionWrap   = document.getElementById('os_version_wrapper');
         var osLicenseWrap   = document.getElementById('os_license_wrapper');
@@ -246,6 +278,10 @@
         function isComputer(name) {
             name = String(name || '').trim().toLowerCase();
             return name === 'desktop' || name === 'laptop';
+        }
+
+        function isNetworkDevice(name) {
+            return String(name || '').trim().toLowerCase() === 'network device';
         }
 
         function show(el) { el.style.display = ''; }
@@ -268,6 +304,11 @@
             var selected = typeSelect.options[typeSelect.selectedIndex];
             var typeName = selected ? selected.dataset.name : '';
             var computer = isComputer(typeName);
+            var networkDevice = isNetworkDevice(typeName);
+
+            if (networkTypeWrap) networkDevice ? show(networkTypeWrap) : hide(networkTypeWrap);
+            if (locationDeployedWrap) networkDevice ? show(locationDeployedWrap) : hide(locationDeployedWrap);
+            if (macAddressWrap) networkDevice || computer ? show(macAddressWrap) : hide(macAddressWrap);
 
             if (computer) {
                 show(computerNameWrap);

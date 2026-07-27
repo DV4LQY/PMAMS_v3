@@ -34,6 +34,9 @@
                 const name = this.getTypeName(typeId ?? this.addTypeId);
                 return name === 'desktop' || name === 'laptop';
             },
+            isNetworkDeviceType(typeId) {
+                return this.getTypeName(typeId ?? this.addTypeId) === 'network device';
+            },
             isDesktopType(typeId) {
                 return this.getTypeName(typeId ?? this.addTypeId) === 'desktop';
             },

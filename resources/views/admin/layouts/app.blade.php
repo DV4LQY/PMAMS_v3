@@ -413,7 +413,7 @@
                         <svg class="w-5 h-5 {{ $currentNavGroup === 'user-recycle-bin' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 6h18M8 6V4h8v2m-9 4v8m5-8v8m5-8v8M5 6l1 15h12l1-15"/>
                         </svg>
-                        <span>User Recycle Bin</span>
+                        <span>Recycle Bin</span>
                     </a>
                     <a
                         href="{{ route('admin.maintenance-cleanup.index') }}"

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class QuickUpdateDeviceRequest extends FormRequest
 {
@@ -28,6 +29,8 @@ class QuickUpdateDeviceRequest extends FormRequest
             'serial_number' => ['nullable', 'string', 'max:255'],
             'brand'         => ['nullable', 'string', 'max:255'],
             'model'         => ['nullable', 'string', 'max:255'],
+            'network_device_type' => ['nullable', 'string', 'max:50', Rule::in(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'])],
+            'location_deployed' => ['nullable', 'string', 'max:255'],
             'mac_address'   => ['nullable', 'string', 'max:255'],
 
             'unit_price'    => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],

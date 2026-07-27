@@ -22,6 +22,10 @@ class MaintenancePhotoController extends Controller
         $search = trim($request->string('q')->toString());
 
         $photos = DeviceMaintenancePhoto::query()
+            ->where(function ($query) {
+                $query->whereNull('maintenance_record_id')
+                    ->orWhereHas('maintenanceRecord');
+            })
             ->with(['device.type', 'maintenanceRecord', 'uploadedBy'])
             ->when($dateFrom, fn ($query) => $query->whereDate('captured_at', '>=', $dateFrom))
             ->when($dateTo, fn ($query) => $query->whereDate('captured_at', '<=', $dateTo))
@@ -79,6 +83,10 @@ class MaintenancePhotoController extends Controller
      */
     public function photo(DeviceMaintenancePhoto $photo)
     {
+        if ($photo->maintenance_record_id && ! $photo->maintenanceRecord) {
+            abort(404);
+        }
+
         $disk = Storage::disk('public');
         abort_unless($disk->fileExists($photo->photo_path), 404);
 
@@ -143,6 +151,10 @@ class MaintenancePhotoController extends Controller
         ]);
 
         $photos = DeviceMaintenancePhoto::query()
+            ->where(function ($query) {
+                $query->whereNull('maintenance_record_id')
+                    ->orWhereHas('maintenanceRecord');
+            })
             ->whereIn('id', $data['photo_ids'])
             ->get(['id', 'device_id', 'uploaded_by', 'photo_path', 'captured_at', 'caption']);
 
@@ -177,6 +189,10 @@ class MaintenancePhotoController extends Controller
         ]);
 
         $photos = DeviceMaintenancePhoto::query()
+            ->where(function ($query) {
+                $query->whereNull('maintenance_record_id')
+                    ->orWhereHas('maintenanceRecord');
+            })
             ->with('device:id,property_number')
             ->whereIn('id', $data['photo_ids'])
             ->get();

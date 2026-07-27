@@ -50,6 +50,8 @@ class UpdateDeviceRequest extends FormRequest
 
             'brand'       => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
             'model'       => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
+            'network_device_type' => ['nullable', 'string', 'max:50', Rule::in(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'])],
+            'location_deployed' => ['nullable', 'string', 'max:255'],
             'mac_address' => ['nullable', 'string', 'regex:' . StoreDeviceRequest::MAC_ADDRESS_REGEX],
 
             'unit_price'    => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
@@ -94,11 +96,18 @@ class UpdateDeviceRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
+            $typeName = strtolower((string) DeviceType::whereKey($this->input('device_type_id'))->value('name'));
+            if (filled($this->input('network_device_type')) && $typeName !== 'network device') {
+                $validator->errors()->add(
+                    'network_device_type',
+                    'Network device subtype can only be used for Network Device equipment.'
+                );
+            }
+
             if (!filled($this->input('part_of_property_number'))) {
                 return;
             }
 
-            $typeName = strtolower((string) DeviceType::whereKey($this->input('device_type_id'))->value('name'));
             if (!in_array($typeName, ['printer', 'monitor', 'avr', 'ups', 'scanner', 'network device', 'other'], true)) {
                 $validator->errors()->add(
                     'part_of_property_number',
@@ -142,6 +151,7 @@ class UpdateDeviceRequest extends FormRequest
             'serial_number.regex'   => 'Serial number may only contain letters, numbers, and hyphens.',
             'brand.regex'           => 'Brand may only contain letters and numbers.',
             'model.regex'           => 'Model may only contain letters and numbers.',
+            'network_device_type.in' => 'Select a valid Network Device subtype.',
             'mac_address.regex'     => 'Enter one or more MAC addresses in colon format, separated by semicolons (for example, 90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C).',
 
             'unit_price.numeric' => 'The unit price must be a valid number.',

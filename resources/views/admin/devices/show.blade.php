@@ -46,6 +46,8 @@
             computer_name: @json($editComputerName),
             brand: @json(old('brand', $device->brand)),
             model: @json(old('model', $device->model)),
+            network_device_type: @json(old('network_device_type', $device->network_device_type)),
+            location_deployed: @json(old('location_deployed', $device->location_deployed)),
             mac_address: @json(old('mac_address', $device->mac_address)),
             unit_price: @json(old('unit_price', $device->unit_price)),
             date_acquired: @json($editDateAcquired),
@@ -100,6 +102,11 @@
                 let selected = typeId ?? this.selectedTypeId;
                 let name = this.getTypeName(selected);
                 return name === 'desktop' || name === 'laptop';
+            },
+
+            isNetworkDeviceType(typeId = null) {
+                let selected = typeId ?? this.selectedTypeId;
+                return this.getTypeName(selected) === 'network device';
             },
 
             isDesktopType(typeId = null) {
@@ -166,6 +173,8 @@
                 setValue('computer_name', this.addComputerName);
                 setValue('brand', device.brand);
                 setValue('model', device.model);
+                setValue('network_device_type', device.network_device_type);
+                setValue('location_deployed', device.location_deployed);
                 setValue('mac_address', device.mac_address);
                 setValue('specs[memory]', specs.memory);
                 setValue('specs[storage]', specs.storage);
@@ -676,7 +685,18 @@
                     </div>
                 </div>
 
-                @if($isComputerType)
+                @if($deviceTypeName === 'network device')
+                    <div>
+                        <div class="text-sm text-gray-500">Network Device Type</div>
+                        <div class="font-medium text-gray-900">{{ $device->network_device_type ?: '-' }}</div>
+                    </div>
+                    <div>
+                        <div class="text-sm text-gray-500">Location Deployed</div>
+                        <div class="font-medium text-gray-900">{{ $device->location_deployed ?: '-' }}</div>
+                    </div>
+                @endif
+
+                @if($isComputerType || $deviceTypeName === 'network device')
                     <div>
                         <div class="text-sm text-gray-500">MAC Address</div>
                         <div class="font-medium text-gray-900">
@@ -684,6 +704,7 @@
                         </div>
                     </div>
 
+                    @if($isComputerType)
                     <div>
                         <div class="text-sm text-gray-500">Memory</div>
                         <div class="font-medium text-gray-900">
@@ -726,6 +747,7 @@
                         <div class="text-sm text-gray-500">MS Office License</div>
                         <div class="font-medium text-gray-900">{{ $device->ms_office_license ?: '-' }}</div>
                     </div>
+                    @endif
                 @endif
 
                 <div>
@@ -1047,7 +1069,23 @@
                             >
                         </div>
 
-                        <div x-show="isComputerType()" x-cloak>
+                        <div x-show="isNetworkDeviceType()" x-cloak>
+                            <label class="text-sm font-medium dark:text-gray-300">Network Device Type</label>
+                            <select name="network_device_type" x-model="editDevice.network_device_type" :disabled="!isNetworkDeviceType()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                                <option value="">-- Select Network Device Type --</option>
+                                <option value="Access point">Access point</option>
+                                <option value="Router">Router</option>
+                                <option value="Switch (managed)">Switch (managed)</option>
+                                <option value="Switch (unmanaged)">Switch (unmanaged)</option>
+                            </select>
+                        </div>
+
+                        <div x-show="isNetworkDeviceType()" x-cloak>
+                            <label class="text-sm font-medium dark:text-gray-300">Location Deployed</label>
+                            <input name="location_deployed" x-model="editDevice.location_deployed" maxlength="255" :disabled="!isNetworkDeviceType()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="e.g. Server Room, 2nd Floor">
+                        </div>
+
+                        <div x-show="isComputerType() || isNetworkDeviceType()" x-cloak>
                             <label class="text-sm font-medium dark:text-gray-300">MAC Address</label>
                             <input
                                 name="mac_address"
@@ -1057,7 +1095,7 @@
                                 pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
                                 title="Enter one or more MAC addresses separated by semicolons"
                                 placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C"
-                                :disabled="!isComputerType()"
+                                :disabled="!isComputerType() && !isNetworkDeviceType()"
                             >
                         </div>
 

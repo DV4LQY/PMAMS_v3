@@ -18,6 +18,8 @@ class Device extends Model
         'computer_name',
         'brand',
         'model',
+        'network_device_type',
+        'location_deployed',
         'mac_address',
         'unit_price',
         'date_acquired',
@@ -62,6 +64,8 @@ class Device extends Model
                             ->orWhere('computer_name', 'like', $like)
                             ->orWhere('brand', 'like', $like)
                             ->orWhere('model', 'like', $like)
+                            ->orWhere('network_device_type', 'like', $like)
+                            ->orWhere('location_deployed', 'like', $like)
                             ->orWhere('mac_address', 'like', $like)
                             ->orWhereHas('type', fn (Builder $type) => $type->where('name', 'like', $like))
                             ->orWhereHas('currentAssignment.location', function (Builder $location) use ($like) {

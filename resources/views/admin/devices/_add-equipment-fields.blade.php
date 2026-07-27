@@ -221,7 +221,35 @@
         @error('model')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
-    <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
+    <div x-show="isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-device">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Network Device Type</label>
+        <select
+            name="network_device_type"
+            class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            :disabled="!isNetworkDeviceType(addTypeId)"
+        >
+            <option value="">-- Select Network Device Type --</option>
+            @foreach(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'] as $networkType)
+                <option value="{{ $networkType }}" @selected(old('network_device_type', $formDevice?->network_device_type) === $networkType)>{{ $networkType }}</option>
+            @endforeach
+        </select>
+        @error('network_device_type')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+    </div>
+
+    <div x-show="isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-device">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Location Deployed</label>
+        <input
+            name="location_deployed"
+            value="{{ old('location_deployed', $formDevice?->location_deployed) }}"
+            class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            maxlength="255"
+            placeholder="e.g. Server Room, 2nd Floor"
+            :disabled="!isNetworkDeviceType(addTypeId)"
+        >
+        @error('location_deployed')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+    </div>
+
+    <div x-show="isComputerType(addTypeId) || isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="network-device">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">MAC Address</label>
         <input
             name="mac_address"
@@ -231,7 +259,7 @@
             pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(;\s*[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})*"
             title="Enter one or more MAC addresses separated by semicolons"
             placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C"
-            :disabled="!isComputerType(addTypeId)"
+            :disabled="!isComputerType(addTypeId) && !isNetworkDeviceType(addTypeId)"
         >
         @error('mac_address')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
