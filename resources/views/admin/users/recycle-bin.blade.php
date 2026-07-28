@@ -9,11 +9,18 @@
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Recycle Bin</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Restore deleted users and equipment. Permanent deletion is available only to Super Admins.
+                Restore deleted users and equipment. Checklist history is managed in Checklist Cleanup. Permanent deletion is available only to Super Admins.
             </p>
         </div>
 
         <div class="flex flex-wrap gap-2">
+            <form method="POST" action="{{ route('admin.recycle-bin.restoreAll') }}" onsubmit="return confirm('Restore all deleted users and equipment from the recycle bin?')">
+                @csrf
+                @method('PATCH')
+                <button type="submit" class="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
+                    Restore All
+                </button>
+            </form>
             <button type="button" onclick="emptyRecycleBin()" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
                 Permanently Delete All
             </button>
@@ -24,7 +31,7 @@
     </div>
 
     <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-        Restoring returns the record to the active list. Permanent deletion cannot be undone. Equipment photos and checklist history are retained until their parent equipment record is permanently deleted.
+        Restoring returns the record to the active list. Permanent deletion cannot be undone.
     </div>
 
     @php($deletedUserCount = $deletedUsers->total())
@@ -32,7 +39,7 @@
     @if($deletedUserCount + $deletedDeviceCount > 0)
         <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200" role="status">
             <p class="font-semibold">Deleted records are still present in the database.</p>
-            <p class="mt-1">{{ number_format($deletedUserCount) }} user(s) and {{ number_format($deletedDeviceCount) }} equipment record(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to erase them and their retained equipment history.</p>
+            <p class="mt-1">{{ number_format($deletedUserCount) }} user(s) and {{ number_format($deletedDeviceCount) }} equipment record(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to manage them.</p>
         </div>
     @endif
 
@@ -53,7 +60,7 @@
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($deletedUsers as $user)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="users" value="{{ $user->id }}" class="h-4 w-4"></td>
+                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="users" value="{{ $user->id }}" class="h-4 w-4" onchange="syncRecycleBinSelectAll('users')"></td>
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $user->name }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $user->email }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $user->roleLabel() }}</td>
@@ -77,7 +84,7 @@
     </div>
     <div class="flex flex-wrap items-center gap-3">
         <button type="button" onclick="permanentDeleteSelected('users')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Users</button>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-users" type="checkbox" class="h-4 w-4"> Delete all users in recycle bin</label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-users" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('users', this.checked)"> Delete all users in recycle bin</label>
     </div>
     {{ $deletedUsers->links() }}
 
@@ -99,7 +106,7 @@
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($deletedDevices as $device)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="devices" value="{{ $device->id }}" class="h-4 w-4"></td>
+                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="devices" value="{{ $device->id }}" class="h-4 w-4" onchange="syncRecycleBinSelectAll('devices')"></td>
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $device->property_number ?? '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $device->type?->name ?? '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $device->maintenance_records_including_trashed_count }}</td>
@@ -124,7 +131,7 @@
     </div>
     <div class="flex flex-wrap items-center gap-3">
         <button type="button" onclick="permanentDeleteSelected('devices')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Equipment</button>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-devices" type="checkbox" class="h-4 w-4"> Delete all equipment in recycle bin</label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-devices" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('devices', this.checked)"> Delete all equipment in recycle bin</label>
     </div>
     {{ $deletedDevices->links() }}
 
@@ -140,13 +147,12 @@
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <h2 id="recycle-bin-remarks-title" class="text-lg font-semibold text-gray-900 dark:text-white">Permanent deletion remarks</h2>
-                    <p id="recycle-bin-remarks-message" class="mt-1 text-sm text-gray-600 dark:text-gray-300">This action cannot be undone. Enter the reason for the activity log.</p>
+                    <p id="recycle-bin-remarks-message" class="mt-1 text-sm text-gray-600 dark:text-gray-300">This action cannot be undone. Add an optional reason for the activity log.</p>
                 </div>
                 <button type="button" onclick="closeRecycleBinRemarks()" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-white" aria-label="Close">&times;</button>
             </div>
-            <label for="recycle-bin-modal-remarks" class="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200">Remarks <span class="text-red-600">*</span></label>
-            <textarea id="recycle-bin-modal-remarks" rows="4" maxlength="1000" class="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white" placeholder="Why are these records being permanently deleted?"></textarea>
-            <p id="recycle-bin-remarks-error" class="mt-1 hidden text-sm text-red-600 dark:text-red-400">Remarks are required before deletion.</p>
+            <label for="recycle-bin-modal-remarks" class="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200">Remarks <span class="text-gray-500">(optional)</span></label>
+            <textarea id="recycle-bin-modal-remarks" rows="4" maxlength="1000" class="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white" placeholder="Optional reason for permanent deletion"></textarea>
             <div class="mt-5 flex justify-end gap-2">
                 <button type="button" onclick="closeRecycleBinRemarks()" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">Cancel</button>
                 <button type="button" onclick="confirmRecycleBinRemarks()" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently delete</button>
@@ -163,13 +169,11 @@ function openRecycleBinRemarks(action) {
     pendingRecycleBinDelete = action;
     const modal = document.getElementById('recycle-bin-remarks-modal');
     const textarea = document.getElementById('recycle-bin-modal-remarks');
-    const error = document.getElementById('recycle-bin-remarks-error');
     const message = document.getElementById('recycle-bin-remarks-message');
     if (message) message.textContent = action.empty
         ? 'This will permanently delete every user and equipment record in the recycle bin.'
         : 'This action permanently deletes the selected recycle-bin records and cannot be undone.';
     if (textarea) textarea.value = '';
-    if (error) error.classList.add('hidden');
     if (modal) {
         modal.classList.remove('hidden');
         modal.classList.add('flex');
@@ -187,11 +191,6 @@ function closeRecycleBinRemarks() {
 function confirmRecycleBinRemarks() {
     const textarea = document.getElementById('recycle-bin-modal-remarks');
     const reason = String(textarea?.value || '').trim();
-    if (!reason) {
-        document.getElementById('recycle-bin-remarks-error')?.classList.remove('hidden');
-        textarea?.focus();
-        return;
-    }
     const action = pendingRecycleBinDelete;
     closeRecycleBinRemarks();
     if (action) submitRecycleBinDelete(action.type, action.ids || [], action.selectAll, reason, action.empty === true);
@@ -241,6 +240,20 @@ function permanentDeleteSingle(type, id) {
 
 function emptyRecycleBin() {
     openRecycleBinRemarks({ type: 'all', ids: [], selectAll: true, empty: true });
+}
+
+function toggleRecycleBinSelection(type, checked) {
+    document.querySelectorAll('[data-bin-checkbox="' + type + '"]').forEach((box) => {
+        box.checked = checked;
+    });
+}
+
+function syncRecycleBinSelectAll(type) {
+    const master = document.getElementById('delete-all-' + type);
+    if (!master) return;
+
+    const boxes = [...document.querySelectorAll('[data-bin-checkbox="' + type + '"]')];
+    master.checked = boxes.length > 0 && boxes.every((box) => box.checked);
 }
 
 document.getElementById('recycle-bin-remarks-modal')?.addEventListener('click', (event) => {

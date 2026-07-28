@@ -61,6 +61,34 @@ class UserController extends Controller
         return ['menus' => $menus, 'actions' => $actions];
     }
 
+    /**
+     * Do not rely only on the browser's dirty flag. This comparison keeps
+     * unchecked Delete (or Select All) boxes persistent even if a browser
+     * submits the form without firing Alpine's change event.
+     */
+    private function permissionsPayloadChanged(Request $request, string $role, ?array $permissions): bool
+    {
+        if (! $request->boolean('permissions_present') || $role === User::ROLE_SUPER_ADMIN || ! is_array($permissions)) {
+            return false;
+        }
+
+        $normalize = static function (array $value): array {
+            $menus = array_values(array_unique((array) ($value['menus'] ?? [])));
+            sort($menus);
+
+            $actions = [];
+            foreach (array_keys(User::PERMISSION_RESOURCES) as $resource) {
+                $selected = array_values(array_unique((array) data_get($value, "actions.{$resource}", [])));
+                sort($selected);
+                $actions[$resource] = $selected;
+            }
+
+            return ['menus' => $menus, 'actions' => $actions];
+        };
+
+        return $normalize(User::permissionsForRole($role)) !== $normalize($permissions);
+    }
+
     private function saveRolePermissions(string $role, ?array $permissions, bool $changed): void
     {
         if (! $changed || $role === User::ROLE_SUPER_ADMIN || ! is_array($permissions)) {
@@ -141,12 +169,8 @@ class UserController extends Controller
             'ids.*' => ['integer', 'distinct'],
             'select_all' => ['nullable', 'boolean'],
             'empty' => ['nullable', 'boolean'],
-            'remarks' => ['required', 'string', 'max:1000'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
-
-        if (trim($data['remarks']) === '') {
-            return back()->withErrors(['remarks' => 'Remarks are required before permanent deletion.']);
-        }
 
         $type = $data['type'];
         $empty = (bool) ($data['empty'] ?? false);
@@ -180,7 +204,7 @@ class UserController extends Controller
             ActivityLog::makePayload([
                 'types' => $types,
                 'counts' => $deletedCounts,
-                'remarks' => trim($data['remarks']),
+                'remarks' => trim((string) ($data['remarks'] ?? '')),
                 'empty_bin' => $empty,
             ])
         );
@@ -272,7 +296,12 @@ class UserController extends Controller
         }
 
         $rolePermissions = $this->permissionsFromRequest($request, $data['role']);
-        $this->saveRolePermissions($data['role'], $rolePermissions, $request->boolean('permissions_changed'));
+        $this->saveRolePermissions(
+            $data['role'],
+            $rolePermissions,
+            $request->boolean('permissions_changed')
+                || $this->permissionsPayloadChanged($request, $data['role'], $rolePermissions)
+        );
 
         $newUser = User::create([
             'name' => $data['name'],
@@ -344,7 +373,12 @@ class UserController extends Controller
             $data['role'],
             User::permissionsForRole($data['role'])
         );
-        $this->saveRolePermissions($data['role'], $rolePermissions, $request->boolean('permissions_changed'));
+        $this->saveRolePermissions(
+            $data['role'],
+            $rolePermissions,
+            $request->boolean('permissions_changed')
+                || $this->permissionsPayloadChanged($request, $data['role'], $rolePermissions)
+        );
 
         $before = [
             'name' => $user->name,
@@ -434,6 +468,47 @@ class UserController extends Controller
         );
 
         return back()->with('success', 'User restored.');
+    }
+
+    /** Restore every record currently held in the recycle bin. */
+    public function restoreAll(Request $request)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $restoredUsers = 0;
+        $restoredDevices = 0;
+
+        DB::transaction(function () use (&$restoredUsers, &$restoredDevices): void {
+            $deletedUsers = User::onlyTrashed()->get();
+            foreach ($deletedUsers as $deletedUser) {
+                $deletedUser->restore();
+            }
+            $restoredUsers = $deletedUsers->count();
+
+            $deletedDevices = Device::onlyTrashed()->get();
+            foreach ($deletedDevices as $deletedDevice) {
+                $deletedDevice->restore();
+            }
+            $restoredDevices = $deletedDevices->count();
+
+        });
+
+        $total = $restoredUsers + $restoredDevices;
+        if ($total > 0) {
+            ActivityLog::record(
+                'restored',
+                'Restored all user and equipment records from the recycle bin.',
+                null,
+                ActivityLog::makePayload([
+                    'users_restored' => $restoredUsers,
+                    'equipment_restored' => $restoredDevices,
+                ])
+            );
+        }
+
+        return back()->with('success', $total > 0
+            ? "Restored {$total} recycle-bin record(s)."
+            : 'The recycle bin is already empty.');
     }
 
     public function forceDestroy(int $user)

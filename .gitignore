@@ -2,6 +2,7 @@
 .DS_Store
 TODO*
 TODO.md
+*.docx
 .env
 .env.backup
 .env.production

@@ -892,6 +892,146 @@
     })();
 </script>
 
+<script>
+    // User account actions are defined in the persistent admin layout so the
+    // component is available on both full loads and Livewire SPA navigation.
+    // Page-specific scripts are not re-evaluated when Livewire swaps a page.
+    window.pmamsUserManager = function (root) {
+        let config = {};
+
+        try {
+            const encoded = root?.dataset?.userManagerConfig || '';
+            if (encoded) {
+                const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+                config = JSON.parse(new TextDecoder().decode(bytes));
+            }
+        } catch (error) {
+            config = {};
+        }
+
+        const clone = (value) => JSON.parse(JSON.stringify(value ?? {}));
+        const defaultMenus = Array.isArray(config.allPermissionMenus) ? config.allPermissionMenus : [];
+        const defaultActions = config.defaultPermissionActions && typeof config.defaultPermissionActions === 'object'
+            ? config.defaultPermissionActions
+            : {};
+        const defaultsByRole = config.rolePermissionDefaults && typeof config.rolePermissionDefaults === 'object'
+            ? config.rolePermissionDefaults
+            : {};
+
+        return {
+            addOpen: Boolean(config.addOpen),
+            editOpen: Boolean(config.editOpen),
+            deleteOpen: false,
+            showAddPassword: false,
+            showAddConfirmPassword: false,
+            showEditPassword: false,
+            showEditConfirmPassword: false,
+            hasUnitHead: Boolean(config.hasUnitHead),
+            rolePermissionDefaults: defaultsByRole,
+            allPermissionMenus: defaultMenus,
+            defaultPermissionActions: defaultActions,
+            addSingle: config.addSingle || {},
+            editUser: config.editUser || {},
+            deleteUserId: null,
+
+            defaultPermissions(role = 'custodian') {
+                const profile = defaultsByRole[role] || {
+                    menus: defaultMenus,
+                    actions: defaultActions,
+                };
+
+                return clone(profile);
+            },
+
+            normalizePermissions(value, role = 'custodian') {
+                const defaults = this.defaultPermissions(role);
+                if (!value || typeof value !== 'object') return defaults;
+
+                return {
+                    menus: Array.isArray(value.menus) ? [...value.menus] : [...defaults.menus],
+                    actions: Object.fromEntries(Object.keys(defaults.actions || {}).map((resource) => [
+                        resource,
+                        Array.isArray(value.actions?.[resource])
+                            ? [...value.actions[resource]]
+                            : [...(defaults.actions[resource] || [])],
+                    ])),
+                };
+            },
+
+            allMenusSelected(state) {
+                const selected = Array.isArray(state?.permissions?.menus) ? state.permissions.menus : [];
+                return defaultMenus.length > 0 && defaultMenus.every((menu) => selected.includes(menu));
+            },
+
+            toggleAllMenus(state, checked) {
+                state.permissions.menus = checked ? [...defaultMenus] : [];
+                state.permissionsChanged = true;
+            },
+
+            allActionsSelected(state) {
+                const actions = state?.permissions?.actions || {};
+                return Object.entries(defaultActions).every(([resource, resourceActions]) => {
+                    const selected = Array.isArray(actions[resource]) ? actions[resource] : [];
+                    return resourceActions.every((action) => selected.includes(action));
+                });
+            },
+
+            toggleAllActions(state, checked) {
+                state.permissions.actions = Object.fromEntries(
+                    Object.entries(defaultActions).map(([resource, resourceActions]) => [
+                        resource,
+                        checked ? [...resourceActions] : [],
+                    ])
+                );
+                state.permissionsChanged = true;
+            },
+
+            openAdd() {
+                this.addOpen = true;
+                this.addSingle = {
+                    name: '',
+                    email: '',
+                    role: 'custodian',
+                    password: '',
+                    password_confirmation: '',
+                    permissions: this.defaultPermissions('custodian'),
+                    permissionsChanged: false,
+                    nameError: '',
+                    emailError: '',
+                    roleError: '',
+                    passwordError: '',
+                };
+            },
+
+            openEdit(user) {
+                this.showEditPassword = false;
+                this.showEditConfirmPassword = false;
+                this.editUser = {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    password: '',
+                    password_confirmation: '',
+                    permissions: this.normalizePermissions(user.permissions, user.role),
+                    permissionsChanged: false,
+                    nameError: '',
+                    emailError: '',
+                    roleError: '',
+                    passwordError: '',
+                };
+                this.editOpen = true;
+            },
+
+            openDelete(id) {
+                this.deleteUserId = id;
+                this.deleteOpen = true;
+                this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
+            },
+        };
+    };
+</script>
+
 @stack('scripts')
 @livewireScripts
 </body>

@@ -42,6 +42,7 @@ class PermissionMiddleware
         if (str_starts_with($route, 'admin.maintenance-cleanup.')) return ['maintenance_cleanup', 'checklist', $this->action($route)];
         if ($route === 'admin.maintenance-gallery.photo') return ['maintenance_gallery', null, null];
         if (str_starts_with($route, 'admin.maintenance-gallery.')) return ['maintenance_gallery', 'maintenance_gallery', $this->action($route)];
+        if ($route === 'admin.reports.checkedEquipment.delete') return ['reports', 'checklist', 'delete'];
         if (str_starts_with($route, 'admin.reports.')) {
             $issuance = str_contains($route, '.issuance');
             return [$issuance ? 'issuance' : 'reports', $issuance ? 'issuance' : null, null];

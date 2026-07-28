@@ -21,123 +21,55 @@
     $initialAddPermissions = old('permissions', $rolePermissionDefaults[$initialAddRole] ?? $rolePermissionDefaults['custodian']);
     $initialEditRole = old('role', '');
     $initialEditPermissions = old('permissions', $initialEditRole && isset($rolePermissionDefaults[$initialEditRole]) ? $rolePermissionDefaults[$initialEditRole] : $rolePermissionDefaults['custodian']);
+    $userManagerConfig = [
+        'addOpen' => $addBag->any(),
+        'editOpen' => $editBag->any(),
+        'hasUnitHead' => $hasUnitHead,
+        'rolePermissionDefaults' => $rolePermissionDefaults,
+        'allPermissionMenus' => $defaultPermissionMenus,
+        'defaultPermissionActions' => $defaultPermissionActions,
+        'addSingle' => [
+            'name' => old('name', ''),
+            'email' => old('email', ''),
+            'role' => $initialAddRole,
+            'password' => '',
+            'password_confirmation' => '',
+            'permissions' => [
+                'menus' => $initialAddPermissions['menus'] ?? $defaultPermissionMenus,
+                'actions' => $initialAddPermissions['actions'] ?? $defaultPermissionActions,
+            ],
+            'permissionsChanged' => (bool) old('permissions_changed', false),
+            'nameError' => $addBag->first('name'),
+            'emailError' => $addBag->first('email'),
+            'roleError' => $addBag->first('role'),
+            'passwordError' => $addBag->first('password'),
+        ],
+        'editUser' => [
+            'id' => old('editing_id') !== null ? (int) old('editing_id') : null,
+            'name' => old('name', ''),
+            'email' => old('email', ''),
+            'role' => $initialEditRole,
+            'password' => '',
+            'password_confirmation' => '',
+            'permissions' => [
+                'menus' => $initialEditPermissions['menus'] ?? $defaultPermissionMenus,
+                'actions' => $initialEditPermissions['actions'] ?? $defaultPermissionActions,
+            ],
+            'permissionsChanged' => (bool) old('permissions_changed', false),
+            'nameError' => $editBag->first('name'),
+            'emailError' => $editBag->first('email'),
+            'roleError' => $editBag->first('role'),
+            'passwordError' => $editBag->first('password'),
+        ],
+    ];
 @endphp
-<script>
-function registerUserManager() {
-    if (!window.Alpine) return;
-
-    Alpine.data('userManager', () => ({
-        addOpen: {{ $addBag->any() ? 'true' : 'false' }},
-        editOpen: {{ $editBag->any() ? 'true' : 'false' }},
-        deleteOpen: false,
-        showAddPassword: false,
-        showAddConfirmPassword: false,
-        showEditPassword: false,
-        showEditConfirmPassword: false,
-        hasUnitHead: @js($hasUnitHead),
-        rolePermissionDefaults: @js($rolePermissionDefaults),
-        allPermissionMenus: @js($defaultPermissionMenus),
-        defaultPermissionActions: @js($defaultPermissionActions),
-
-        defaultPermissions(role = 'custodian') {
-            const profile = this.rolePermissionDefaults[role] || {
-                menus: this.allPermissionMenus,
-                actions: this.defaultPermissionActions
-            };
-            return JSON.parse(JSON.stringify(profile));
-        },
-
-        normalizePermissions(value, role = 'custodian') {
-            const defaults = this.defaultPermissions(role);
-            if (!value || typeof value !== 'object') return defaults;
-            return {
-                menus: Array.isArray(value.menus) ? value.menus : defaults.menus,
-                actions: Object.fromEntries(Object.keys(defaults.actions).map((resource) => [
-                    resource,
-                    Array.isArray(value.actions?.[resource]) ? value.actions[resource] : defaults.actions[resource]
-                ]))
-            };
-        },
-
-        addSingle: {
-            name: @js(old('name', '')),
-            email: @js(old('email', '')),
-            role: @js($initialAddRole),
-            password: '',
-            password_confirmation: '',
-            permissions: {
-                menus: @js($initialAddPermissions['menus'] ?? $defaultPermissionMenus),
-                actions: @js($initialAddPermissions['actions'] ?? $defaultPermissionActions),
-            },
-            permissionsChanged: @js((bool) old('permissions_changed', false)),
-            nameError: @js($addBag->first('name')),
-            emailError: @js($addBag->first('email')),
-            roleError: @js($addBag->first('role')),
-            passwordError: @js($addBag->first('password'))
-        },
-
-        editUser: {
-            id: @js(old('editing_id') !== null ? (int) old('editing_id') : null),
-            name: @js(old('name', '')),
-            email: @js(old('email', '')),
-            role: @js($initialEditRole),
-            password: '',
-            password_confirmation: '',
-            permissions: {
-                menus: @js($initialEditPermissions['menus'] ?? $defaultPermissionMenus),
-                actions: @js($initialEditPermissions['actions'] ?? $defaultPermissionActions),
-            },
-            permissionsChanged: @js((bool) old('permissions_changed', false)),
-            nameError: @js($editBag->first('name')),
-            emailError: @js($editBag->first('email')),
-            roleError: @js($editBag->first('role')),
-            passwordError: @js($editBag->first('password'))
-        },
-
-        deleteUserId: null,
-
-        openAdd() {
-            this.addOpen = true;
-            this.addSingle = {
-                name: '', email: '', role: 'custodian', password: '', password_confirmation: '',
-                permissions: this.defaultPermissions('custodian'),
-                permissionsChanged: false,
-                nameError: '', emailError: '', roleError: '', passwordError: ''
-            };
-        },
-
-        openEdit(user) {
-            this.showEditPassword = false;
-            this.showEditConfirmPassword = false;
-            this.editUser = {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                password: '',
-                password_confirmation: '',
-                permissions: this.normalizePermissions(user.permissions, user.role),
-                permissionsChanged: false,
-                nameError: '', emailError: '', roleError: '', passwordError: ''
-            };
-            this.editOpen = true;
-        },
-
-        openDelete(id) {
-            this.deleteUserId = id;
-            this.deleteOpen = true;
-            this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
-        }
-    }));
-    document.querySelectorAll('[x-data="userManager"]').forEach((element) => {
-        if (!element._x_dataStack) Alpine.initTree(element);
-    });
-}
-document.addEventListener('alpine:init', registerUserManager);
-registerUserManager();
-document.addEventListener('livewire:navigated', registerUserManager);
-</script>
-<div x-data="userManager" x-init="if (new URLSearchParams(window.location.search).get('action') === 'add') $nextTick(() => openAdd())" class="space-y-5">
+<div
+    data-user-manager
+    data-user-manager-config="{{ base64_encode(json_encode($userManagerConfig, JSON_UNESCAPED_UNICODE)) }}"
+    x-data="pmamsUserManager($el)"
+    x-init="if (new URLSearchParams(window.location.search).get('action') === 'add') $nextTick(() => openAdd())"
+    class="space-y-5"
+>
     <div class="flex items-start justify-between gap-3">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">User Accounts</h1>
@@ -347,6 +279,16 @@ document.addEventListener('livewire:navigated', registerUserManager);
                 <div class="mb-3">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline menu permissions. Saving checkbox changes updates every account with this role.</p>
+                </div>
+                <div class="mb-3 flex flex-wrap gap-4 text-xs text-gray-700 dark:text-gray-300">
+                    <label class="inline-flex items-center gap-2">
+                        <input type="checkbox" :checked="allMenusSelected(addSingle)" @change="toggleAllMenus(addSingle, $event.target.checked)" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                        Select all menus
+                    </label>
+                    <label class="inline-flex items-center gap-2">
+                        <input type="checkbox" :checked="allActionsSelected(addSingle)" @change="toggleAllActions(addSingle, $event.target.checked)" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                        Select all actions
+                    </label>
                 </div>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     @foreach($permissionMenus as $key => $label)
@@ -569,6 +511,16 @@ document.addEventListener('livewire:navigated', registerUserManager);
                 <div class="mb-3">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline menu permissions. Saving checkbox changes updates every account with this role.</p>
+                </div>
+                <div class="mb-3 flex flex-wrap gap-4 text-xs text-gray-700 dark:text-gray-300">
+                    <label class="inline-flex items-center gap-2">
+                        <input type="checkbox" :checked="allMenusSelected(editUser)" @change="toggleAllMenus(editUser, $event.target.checked)" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                        Select all menus
+                    </label>
+                    <label class="inline-flex items-center gap-2">
+                        <input type="checkbox" :checked="allActionsSelected(editUser)" @change="toggleAllActions(editUser, $event.target.checked)" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                        Select all actions
+                    </label>
                 </div>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     @foreach($permissionMenus as $key => $label)

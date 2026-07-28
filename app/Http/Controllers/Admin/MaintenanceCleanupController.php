@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
-use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
@@ -21,18 +20,20 @@ class MaintenanceCleanupController extends Controller
 
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
-        $records = DeviceMaintenanceRecord::query()
-            ->whereHas('device')
-            ->with(['device.type', 'checkedBy'])
+        $deletedRecords = DeviceMaintenanceRecord::onlyTrashed()
+            ->with([
+                'device' => fn ($query) => $query->withTrashed()->with('type'),
+                'checkedBy' => fn ($query) => $query->withTrashed(),
+            ])
             ->when($dateFrom, fn ($q) => $q->whereDate('maintenance_date', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('maintenance_date', '<=', $dateTo))
-            ->orderByDesc('maintenance_date')
+            ->orderByDesc('deleted_at')
             ->orderByDesc('id')
-            ->paginate(50)
+            ->paginate(50, ['*'], 'deleted_page')
             ->withQueryString();
 
         return view('admin.maintenance-cleanup.index', [
-            'records' => $records,
+            'deletedRecords' => $deletedRecords,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'windowMonths' => (int) SystemSetting::getValue(self::WINDOW_KEY, 3),
@@ -54,7 +55,11 @@ class MaintenanceCleanupController extends Controller
 
     public function destroy(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless(
+            $request->user()?->isSuperAdmin()
+                || $request->user()?->canAction('checklist', 'delete'),
+            403
+        );
 
         $data = $request->validate([
             'record_ids' => ['nullable', 'array'],
@@ -66,21 +71,21 @@ class MaintenanceCleanupController extends Controller
             'filter_q' => ['nullable', 'string', 'max:255'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
-            'remarks' => ['required', 'string', 'max:1000'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if (trim($data['remarks']) === '') {
-            return back()->withErrors(['remarks' => 'Remarks are required before deletion.']);
-        }
-
         $ids = collect($data['record_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();
-        $selectAll = (bool) ($data['select_all'] ?? false)
-            || ($ids->isEmpty() && (filled($data['date_from'] ?? null) || filled($data['date_to'] ?? null)));
+        // Match Equipment bulk deletion: selecting all is explicit. A date or
+        // another filter alone must never turn an empty selection into a bulk
+        // delete request.
+        $selectAll = (bool) ($data['select_all'] ?? false);
         if (! $selectAll && $ids->isEmpty()) {
             return back()->withErrors(['record_ids' => 'Select checklist history rows or choose select all matching records.']);
         }
 
-        $query = DeviceMaintenanceRecord::query()->whereNotNull('checked_by');
+        $query = DeviceMaintenanceRecord::query()
+            ->whereNotNull('checked_by')
+            ->whereHas('device');
         if (! $selectAll) {
             $query->whereIn('id', $ids);
         } else {
@@ -104,6 +109,7 @@ class MaintenanceCleanupController extends Controller
                         $like = '%' . $value . '%';
                         $searchQuery->where('remarks', 'like', $like)
                             ->orWhere('corrective_action', 'like', $like)
+                            ->orWhere('maintenance_type', 'like', $like)
                             ->orWhereHas('device', function ($device) use ($like) {
                                 $device->where('property_number', 'like', $like)
                                     ->orWhere('serial_number', 'like', $like)
@@ -121,12 +127,12 @@ class MaintenanceCleanupController extends Controller
             return back()->withErrors(['record_ids' => 'No checklist history records match the selected deletion criteria.']);
         }
 
-        $remarks = trim($data['remarks']);
+        $remarks = trim((string) ($data['remarks'] ?? ''));
         DB::transaction(function () use ($records, $remarks) {
             foreach ($records as $record) {
                 ActivityLog::record(
                     'deleted',
-                    'Moved checklist history to the recycle bin: ' . $remarks,
+                    'Deleted checklist history from Checklist Cleanup.',
                     $record,
                     ActivityLog::makePayload([
                         'maintenance_record_id' => $record->id,
@@ -134,18 +140,15 @@ class MaintenanceCleanupController extends Controller
                         'property_number' => $record->device?->property_number,
                         'maintenance_date' => $record->maintenance_date?->toDateString(),
                         'checked_by' => $record->checkedBy?->name,
-                        'photos_retained' => DeviceMaintenancePhoto::where('maintenance_record_id', $record->id)->count(),
                         'deletion_remarks' => $remarks,
                     ])
                 );
 
-                // Keep the checklist row and its photos recoverable. The
-                // gallery hides photos belonging to a trashed checklist.
                 $record->delete();
             }
         });
 
-        return back()->with('success', $records->count() . ' checklist history record(s) moved to the recycle bin.');
+        return back()->with('success', $records->count() . ' checklist history record(s) deleted.');
     }
 
     public function restore(int $record)
@@ -153,13 +156,16 @@ class MaintenanceCleanupController extends Controller
         abort_unless(request()->user()?->isSuperAdmin(), 403);
 
         $deletedRecord = DeviceMaintenanceRecord::onlyTrashed()
-            ->with(['device.type', 'checkedBy'])
+            ->with([
+                'device' => fn ($query) => $query->withTrashed()->with('type'),
+                'checkedBy' => fn ($query) => $query->withTrashed(),
+            ])
             ->findOrFail($record);
         $deletedRecord->restore();
 
         ActivityLog::record(
             'restored',
-            'Restored checklist history from the recycle bin.',
+            'Restored checklist history from Checklist Cleanup.',
             $deletedRecord,
             ActivityLog::makePayload([
                 'maintenance_record_id' => $deletedRecord->id,
@@ -172,46 +178,155 @@ class MaintenanceCleanupController extends Controller
         return back()->with('success', 'Checklist history restored.');
     }
 
+    public function restoreBulk(Request $request)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'record_ids' => ['nullable', 'array'],
+            'record_ids.*' => ['integer', 'distinct'],
+            'select_all' => ['nullable', 'boolean'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $selectAll = (bool) ($data['select_all'] ?? false);
+        $ids = collect($data['record_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();
+        if (! $selectAll && $ids->isEmpty()) {
+            return back()->withErrors(['record_ids' => 'Select at least one deleted checklist history row or choose select all matching records.']);
+        }
+
+        $records = DeviceMaintenanceRecord::onlyTrashed()
+            ->when(! $selectAll, fn ($query) => $query->whereIn('id', $ids))
+            ->when($selectAll && ($data['date_from'] ?? null), fn ($query, $date) => $query->whereDate('maintenance_date', '>=', $date))
+            ->when($selectAll && ($data['date_to'] ?? null), fn ($query, $date) => $query->whereDate('maintenance_date', '<=', $date))
+            ->orderByDesc('deleted_at')
+            ->get();
+
+        if ($records->isEmpty()) {
+            return back()->withErrors(['record_ids' => 'No deleted checklist history records match the selected criteria.']);
+        }
+
+        DB::transaction(function () use ($records) {
+            foreach ($records as $record) {
+                $record->restore();
+            }
+
+            ActivityLog::record(
+                'restored',
+                'Restored checklist history from Checklist Cleanup.',
+                null,
+                ActivityLog::makePayload(['checklists_restored' => $records->count()])
+            );
+        });
+
+        return back()->with('success', "Restored {$records->count()} checklist history record(s).");
+    }
+
     public function forceDestroy(int $record)
     {
         abort_unless(request()->user()?->isSuperAdmin(), 403);
 
         $data = request()->validate([
-            'remarks' => ['required', 'string', 'max:1000'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $deletedRecord = DeviceMaintenanceRecord::onlyTrashed()
-            ->with(['device.type', 'photos'])
+            ->with([
+                'device' => fn ($query) => $query->withTrashed()->with('type'),
+                'photos',
+            ])
             ->findOrFail($record);
 
-        $summary = [
-            'maintenance_record_id' => $deletedRecord->id,
-            'device_id' => $deletedRecord->device_id,
-            'property_number' => $deletedRecord->device?->property_number,
-            'maintenance_date' => $deletedRecord->maintenance_date?->toDateString(),
-            'photos_deleted' => $deletedRecord->photos->count(),
-        ];
+        $remarks = trim((string) ($data['remarks'] ?? ''));
 
-        DB::transaction(function () use ($deletedRecord) {
-            foreach ($deletedRecord->photos as $photo) {
-                if (filled($photo->photo_path)) {
-                    Storage::disk('public')->delete($photo->photo_path);
-                }
-                $photo->delete();
-            }
+        $summary = DB::transaction(function () use ($deletedRecord, $remarks) {
+            $summary = $this->permanentlyDeleteRecord($deletedRecord);
+            ActivityLog::record(
+                'force_deleted',
+                'Permanently deleted checklist history from Checklist Cleanup.',
+                null,
+                ActivityLog::makePayload($summary, ['deletion_remarks' => $remarks])
+            );
 
-            $deletedRecord->forceDelete();
+            return $summary;
         });
 
-        ActivityLog::record(
-            'force_deleted',
-            'Permanently deleted checklist history from the recycle bin: ' . trim($data['remarks']),
-            null,
-            ActivityLog::makePayload($summary, [
-                'deletion_remarks' => trim($data['remarks']),
-            ])
-        );
-
         return back()->with('success', 'Checklist history permanently deleted.');
+    }
+
+    public function forceDestroyBulk(Request $request)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'record_ids' => ['nullable', 'array'],
+            'record_ids.*' => ['integer', 'distinct'],
+            'select_all' => ['nullable', 'boolean'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $remarks = trim((string) ($data['remarks'] ?? ''));
+
+        $selectAll = (bool) ($data['select_all'] ?? false);
+        $ids = collect($data['record_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();
+        if (! $selectAll && $ids->isEmpty()) {
+            return back()->withErrors(['record_ids' => 'Select at least one deleted checklist history row or choose select all matching records.']);
+        }
+
+        $records = DeviceMaintenanceRecord::onlyTrashed()
+            ->with([
+                'device' => fn ($query) => $query->withTrashed()->with('type'),
+                'photos',
+            ])
+            ->when(! $selectAll, fn ($query) => $query->whereIn('id', $ids))
+            ->when($selectAll && ($data['date_from'] ?? null), fn ($query, $date) => $query->whereDate('maintenance_date', '>=', $date))
+            ->when($selectAll && ($data['date_to'] ?? null), fn ($query, $date) => $query->whereDate('maintenance_date', '<=', $date))
+            ->orderByDesc('deleted_at')
+            ->get();
+
+        if ($records->isEmpty()) {
+            return back()->withErrors(['record_ids' => 'No deleted checklist history records match the selected criteria.']);
+        }
+
+        $count = DB::transaction(function () use ($records, $remarks) {
+            foreach ($records as $record) {
+                $summary = $this->permanentlyDeleteRecord($record);
+                ActivityLog::record(
+                    'force_deleted',
+                    'Permanently deleted checklist history from Checklist Cleanup.',
+                    null,
+                    ActivityLog::makePayload($summary, ['deletion_remarks' => $remarks])
+                );
+            }
+
+            return $records->count();
+        });
+
+        return back()->with('success', "Permanently deleted {$count} checklist history record(s).");
+    }
+
+    private function permanentlyDeleteRecord(DeviceMaintenanceRecord $record): array
+    {
+        $summary = [
+            'maintenance_record_id' => $record->id,
+            'device_id' => $record->device_id,
+            'property_number' => $record->device?->property_number,
+            'maintenance_date' => $record->maintenance_date?->toDateString(),
+            'photos_deleted' => $record->photos->count(),
+        ];
+
+        foreach ($record->photos as $photo) {
+            if (filled($photo->photo_path)) {
+                Storage::disk('public')->delete($photo->photo_path);
+            }
+            $photo->delete();
+        }
+
+        $record->forceDelete();
+
+        return $summary;
     }
 }

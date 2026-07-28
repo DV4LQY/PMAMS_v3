@@ -24,6 +24,13 @@
 
 @section('content')
 
+@php
+    // Checklist history deletion follows the Maintenance Checklist role
+    // permission. Super Admins remain unrestricted.
+    $canDeleteCheckedHistory = auth()->user()?->isSuperAdmin()
+        || auth()->user()?->canAction('checklist', 'delete');
+@endphp
+
 <div class="space-y-5">
 
     @if($errors->any())
@@ -298,7 +305,7 @@
                             PDF
                         </th>
 
-                        @if(auth()->user()?->isSuperAdmin())
+                        @if($canDeleteCheckedHistory)
                             <th class="px-4 py-3">
                                 Delete
                             </th>
@@ -417,30 +424,24 @@
 
 
 
-                        <td class="px-4 py-3">
-
-
+                        <td class="px-4 py-3 align-middle">
                             @if($device)
-
-                            <a href="{{ route('admin.reports.checkedEquipment.pdf',$record) }}" data-no-spa="true"
-                               target="_blank"
-                               class="rounded bg-gray-900 px-3 py-1 text-white">
-
-                                PDF
-
-                            </a>
-                            <a href="{{ route('admin.reports.checkedEquipment.preview', $record) }}"
-                               class="ml-1 rounded bg-indigo-600 px-3 py-1 text-white">
-                                Preview
-                            </a>
-
-
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <a href="{{ route('admin.reports.checkedEquipment.pdf',$record) }}"
+                                       data-no-spa="true"
+                                       target="_blank"
+                                       class="inline-flex items-center justify-center whitespace-nowrap rounded bg-gray-900 px-3 py-1.5 leading-5 text-white hover:bg-gray-700">
+                                        PDF
+                                    </a>
+                                    <a href="{{ route('admin.reports.checkedEquipment.preview', $record) }}"
+                                       class="inline-flex items-center justify-center whitespace-nowrap rounded bg-indigo-600 px-3 py-1.5 leading-5 text-white hover:bg-indigo-500">
+                                        Preview
+                                    </a>
+                                </div>
                             @endif
-
-
                         </td>
 
-                        @if(auth()->user()?->isSuperAdmin())
+                        @if($canDeleteCheckedHistory)
                             <td class="px-4 py-3">
                                 @if($device)
                                     <button type="button"
@@ -462,7 +463,7 @@
 
                     <tr>
 
-                        <td colspan="{{ auth()->user()?->isSuperAdmin() ? 10 : 9 }}"
+                        <td colspan="{{ $canDeleteCheckedHistory ? 10 : 9 }}"
                             class="px-5 py-10 text-center">
 
                             No records found.
@@ -495,12 +496,11 @@
 
     </form>
 
-    @if(auth()->user()?->isSuperAdmin())
+    @if($canDeleteCheckedHistory)
         <form id="checked-equipment-delete-form"
               method="POST"
-              action="{{ route('admin.maintenance-cleanup.destroy') }}"
-              class="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/20"
-              onsubmit="return submitCheckedEquipmentDeletion(this);">
+              action="{{ route('admin.reports.checkedEquipment.delete') }}"
+              class="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/20">
             @csrf
             @method('DELETE')
             <input type="hidden" name="filter_checker_id" value="{{ $checkerId }}">
@@ -510,23 +510,41 @@
             <input type="hidden" name="date_from" value="{{ $dateFrom }}">
             <input type="hidden" name="date_to" value="{{ $dateTo }}">
             <input type="hidden" name="select_all" id="checked-equipment-delete-all" value="0">
+            <input type="hidden" name="remarks" id="checked-equipment-delete-remarks" value="">
             <div id="checked-equipment-delete-ids"></div>
             <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <h2 class="font-semibold text-red-900 dark:text-red-200">Delete checklist history</h2>
-                    <p class="mt-1 text-sm text-red-800/80 dark:text-red-200/80">Select individual rows above, or delete every record matching the current report filters.</p>
+                    <p class="mt-1 text-sm text-red-800/80 dark:text-red-200/80">Select individual rows above, or select every record matching the current report filters across all pages.</p>
                     <label class="mt-3 inline-flex items-center gap-2 text-sm text-red-900 dark:text-red-200">
                         <input id="checked-equipment-delete-all-toggle" type="checkbox" class="h-4 w-4">
-                        Delete all records matching these filters
+                        Select all checklist history matching these filters
                     </label>
                 </div>
                 <div class="flex w-full flex-col gap-2 lg:w-auto lg:min-w-96">
-                    <label class="text-sm font-medium text-red-900 dark:text-red-200">Required deletion remarks</label>
-                    <textarea name="remarks" required maxlength="1000" rows="2" class="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-red-800 dark:bg-gray-900 dark:text-white" placeholder="Why is this checklist history being deleted?"></textarea>
-                    <button type="submit" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Move selected history to recycle bin</button>
+                    <button type="button" onclick="openCheckedEquipmentDeleteRemarks()" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Delete selected history</button>
                 </div>
             </div>
         </form>
+
+        <div id="checked-equipment-delete-remarks-modal" onclick="if (event.target === this) closeCheckedEquipmentDeleteRemarks()" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="checked-equipment-delete-remarks-title" aria-hidden="true">
+            <div class="w-full max-w-lg rounded-2xl border border-red-300 bg-white p-5 shadow-2xl dark:border-red-900/70 dark:bg-gray-900">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 id="checked-equipment-delete-remarks-title" class="text-lg font-semibold text-gray-900 dark:text-white">Deletion remarks required</h2>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Explain why the selected checklist history is being deleted. It can be restored from Checklist Cleanup.</p>
+                    </div>
+                    <button type="button" onclick="closeCheckedEquipmentDeleteRemarks()" class="rounded-lg px-2 py-1 text-xl leading-none text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Close">&times;</button>
+                </div>
+                <label for="checked-equipment-delete-remarks-input" class="mt-4 block text-sm font-medium text-gray-800 dark:text-gray-200">Remarks</label>
+                <textarea id="checked-equipment-delete-remarks-input" maxlength="1000" rows="4" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white" placeholder="Why is this checklist history being deleted?"></textarea>
+                <p id="checked-equipment-delete-remarks-error" class="mt-2 hidden text-sm text-red-600 dark:text-red-300">Remarks are required before deletion.</p>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" onclick="closeCheckedEquipmentDeleteRemarks()" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Cancel</button>
+                    <button type="button" onclick="confirmCheckedEquipmentDeleteRemarks()" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Confirm deletion</button>
+                </div>
+            </div>
+        </div>
     @endif
 
 
@@ -572,31 +590,24 @@ function deleteCheckedEquipmentRecord(recordId)
     const form = document.getElementById('checked-equipment-delete-form');
     if (!form) return;
 
-    const reason = window.prompt('Enter the required deletion remarks:');
-    if (!reason || !reason.trim()) {
-        alert('Remarks are required before deletion.');
-        return;
-    }
-
-    form.querySelector('textarea[name="remarks"]').value = reason.trim();
-    document.getElementById('checked-equipment-delete-all').value = '0';
-    const ids = document.getElementById('checked-equipment-delete-ids');
-    ids.innerHTML = '';
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'record_ids[]';
-    input.value = recordId;
-    ids.appendChild(input);
-    form.submit();
+    openCheckedEquipmentDeleteRemarks(recordId);
 }
 
-function submitCheckedEquipmentDeletion(form)
+function openCheckedEquipmentDeleteRemarks(recordId = null)
 {
     const deleteAll = document.getElementById('checked-equipment-delete-all-toggle')?.checked === true;
     const ids = document.getElementById('checked-equipment-delete-ids');
     ids.innerHTML = '';
 
-    if (deleteAll) {
+    if (recordId !== null && recordId !== undefined) {
+        document.getElementById('checked-equipment-delete-all-toggle').checked = false;
+        document.getElementById('checked-equipment-delete-all').value = '0';
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'record_ids[]';
+        input.value = recordId;
+        ids.appendChild(input);
+    } else if (deleteAll) {
         document.getElementById('checked-equipment-delete-all').value = '1';
     } else {
         document.getElementById('checked-equipment-delete-all').value = '0';
@@ -610,16 +621,51 @@ function submitCheckedEquipmentDeletion(form)
 
         if (!ids.children.length) {
             alert('Select at least one checklist history row or choose delete all matching records.');
-            return false;
+            return;
         }
     }
 
-    if (!form.querySelector('textarea[name="remarks"]').value.trim()) {
-        alert('Remarks are required before deletion.');
-        return false;
+    const modal = document.getElementById('checked-equipment-delete-remarks-modal');
+    const input = document.getElementById('checked-equipment-delete-remarks-input');
+    const error = document.getElementById('checked-equipment-delete-remarks-error');
+    if (!modal || !input) return;
+
+    input.value = '';
+    error?.classList.add('hidden');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+    window.setTimeout(() => input.focus(), 0);
+}
+
+function closeCheckedEquipmentDeleteRemarks()
+{
+    const modal = document.getElementById('checked-equipment-delete-remarks-modal');
+    if (!modal) return;
+
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function confirmCheckedEquipmentDeleteRemarks()
+{
+    const input = document.getElementById('checked-equipment-delete-remarks-input');
+    const hiddenRemarks = document.getElementById('checked-equipment-delete-remarks');
+    const form = document.getElementById('checked-equipment-delete-form');
+    const error = document.getElementById('checked-equipment-delete-remarks-error');
+    const reason = input?.value.trim() || '';
+
+    if (!reason) {
+        error?.classList.remove('hidden');
+        input?.focus();
+        return;
     }
 
-    return confirm('Move the selected checklist history to the recycle bin?');
+    if (!form || !hiddenRemarks) return;
+    hiddenRemarks.value = reason;
+    closeCheckedEquipmentDeleteRemarks();
+    form.submit();
 }
 
 </script>

@@ -109,8 +109,12 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
                 ->name('admin.maintenance-cleanup.destroy');
             Route::patch('/maintenance-cleanup/{record}/restore', [MaintenanceCleanupController::class, 'restore'])
                 ->name('admin.maintenance-cleanup.restore');
+            Route::patch('/maintenance-cleanup/restore-bulk', [MaintenanceCleanupController::class, 'restoreBulk'])
+                ->name('admin.maintenance-cleanup.restoreBulk');
             Route::delete('/maintenance-cleanup/{record}/force-delete', [MaintenanceCleanupController::class, 'forceDestroy'])
                 ->name('admin.maintenance-cleanup.forceDestroy');
+            Route::delete('/maintenance-cleanup/force-delete-bulk', [MaintenanceCleanupController::class, 'forceDestroyBulk'])
+                ->name('admin.maintenance-cleanup.forceDestroyBulk');
             Route::get('/database', [DatabaseBackupController::class, 'index'])
                 ->name('admin.database.index');
             Route::post('/database/schedule', [DatabaseBackupController::class, 'updateSchedule'])
@@ -144,6 +148,8 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
                 ->middleware('role:super_admin')
                 ->name('accounts');
             Route::get('/checked-equipment', [ReportController::class, 'checkedEquipment'])->name('checkedEquipment');
+            Route::delete('/checked-equipment/delete', [MaintenanceCleanupController::class, 'destroy'])
+                ->name('checkedEquipment.delete');
             Route::post('/checked-equipment/pdf-selected', [ReportController::class, 'checkedEquipmentSelectedPdf'])->name('checkedEquipment.pdfSelected');
             Route::get('/checked-equipment/pdf-filtered', [ReportController::class, 'checkedEquipmentFilteredPdf'])->name('checkedEquipment.pdfFiltered');
             Route::get('/checked-equipment/{record}/pdf', [ReportController::class, 'checkedEquipmentPdf'])->name('checkedEquipment.pdf');
@@ -359,6 +365,7 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
         Route::put('admin/users/{user}', [UserController::class, 'update'])->name('admin.users.update');
         Route::delete('admin/users/{user}', [UserController::class, 'destroy'])->name('admin.users.destroy');
         Route::patch('admin/users/{user}/restore', [UserController::class, 'restore'])->name('admin.users.restore');
+        Route::patch('admin/recycle-bin/restore-all', [UserController::class, 'restoreAll'])->name('admin.recycle-bin.restoreAll');
         Route::delete('admin/users/{user}/force-delete', [UserController::class, 'forceDestroy'])->name('admin.users.forceDestroy');
 
         Route::patch('admin/devices/{device}/restore', [DeviceController::class, 'restore'])->name('admin.devices.restore');

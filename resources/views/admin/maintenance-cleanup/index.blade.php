@@ -1,38 +1,220 @@
 @extends('admin.layouts.app')
 
-@section('title', 'Checklist History Management')
-@section('page_title', 'Checklist History Management')
+@section('title', 'Checklist Cleanup')
+@section('page_title', 'Checklist Cleanup')
 @section('breadcrumbs')
     <a href="{{ route('admin.dashboard') }}" class="hover:text-blue-600">Dashboard</a><span>/</span>
-    <span class="font-medium">Checklist History Management</span>
+    <span class="font-medium">Checklist Cleanup</span>
 @endsection
 
 @section('content')
-<div x-data="{ selected: [], pageIds: @js($records->pluck('id')->values()), dateFrom: @js($dateFrom), dateTo: @js($dateTo), allPageSelected() { return this.pageIds.length && this.pageIds.every(id => this.selected.includes(id)); }, togglePage(value) { this.selected = value ? [...this.pageIds] : []; }, canDelete() { return this.selected.length > 0 || this.dateFrom || this.dateTo; } }" class="space-y-6">
-    @if(session('success'))<div class="rounded-xl border border-green-700/40 bg-green-900/20 px-4 py-3 text-sm text-green-300">{{ session('success') }}</div>@endif
-    @if($errors->any())<div class="rounded-xl border border-red-700/40 bg-red-900/20 px-4 py-3 text-sm text-red-300">{{ $errors->first() }}</div>@endif
+<div class="space-y-6">
+    @if($errors->any())
+        <div class="rounded-xl border border-red-700/40 bg-red-900/20 px-4 py-3 text-sm text-red-300">{{ $errors->first() }}</div>
+    @endif
 
     <section class="rounded-2xl border border-gray-700 bg-gray-800 p-5">
         <div class="flex flex-wrap items-end justify-between gap-4">
-            <div><h2 class="text-lg font-semibold text-white">Duplicate checklist window</h2><p class="mt-1 text-sm text-gray-400">A new checklist within this window prompts for verification, while every history record remains stored.</p></div>
-            <form method="POST" action="{{ route('admin.maintenance-cleanup.window') }}" class="flex items-end gap-2">@csrf
-                <label class="text-sm text-gray-300">Months<input name="window_months" type="number" min="1" max="36" value="{{ $windowMonths }}" class="mt-1 w-24 rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white"></label>
+            <div>
+                <h2 class="text-lg font-semibold text-white">Checklist recovery bin</h2>
+                <p class="mt-1 text-sm text-gray-400">Only checklist history deleted from Checked Equipment appears here. Restore records individually or across all filtered pages.</p>
+            </div>
+            <form method="POST" action="{{ route('admin.maintenance-cleanup.window') }}" class="flex items-end gap-2">
+                @csrf
+                <label class="text-sm text-gray-300">Duplicate window (months)
+                    <input name="window_months" type="number" min="1" max="36" value="{{ $windowMonths }}" class="mt-1 w-24 rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white">
+                </label>
                 <button class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Save</button>
             </form>
         </div>
     </section>
 
     <section class="rounded-2xl border border-gray-700 bg-gray-800 p-5">
-        <form method="GET" class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[12rem_12rem_auto]"><input type="date" name="date_from" value="{{ $dateFrom }}" class="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white"><input type="date" name="date_to" value="{{ $dateTo }}" class="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white"><button class="rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white">Filter</button></form>
-        <form method="POST" action="{{ route('admin.maintenance-cleanup.destroy') }}" onsubmit="return confirm('Move the selected checklist history to the recycle bin? It can be restored by a Super Admin.')">@csrf @method('DELETE')
-            <input type="hidden" name="date_from" value="{{ $dateFrom }}"><input type="hidden" name="date_to" value="{{ $dateTo }}">
-            <div class="mb-3 flex flex-wrap items-center justify-between gap-3"><label class="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-bind:checked="allPageSelected()" x-on:change="togglePage($event.target.checked)" class="h-4 w-4"> Select page</label><button type="submit" x-bind:disabled="!canDelete()" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Move selected / date range to recycle bin</button></div>
-            <label class="mb-3 block text-sm text-gray-300">Required deletion remarks
-                <textarea name="remarks" required maxlength="1000" rows="2" class="mt-1 w-full rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white" placeholder="Why is this checklist history being deleted?"></textarea>
-            </label>
-            <div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="text-left text-gray-300"><tr><th class="px-3 py-2">Select</th><th class="px-3 py-2">Date</th><th class="px-3 py-2">Property</th><th class="px-3 py-2">Type</th><th class="px-3 py-2">Checked by</th><th class="px-3 py-2">Remarks</th></tr></thead><tbody class="divide-y divide-gray-700">@forelse($records as $record)<tr><td class="px-3 py-2"><input type="checkbox" name="record_ids[]" value="{{ $record->id }}" x-model.number="selected" class="h-4 w-4"></td><td class="px-3 py-2 text-gray-300">{{ $record->maintenance_date?->format('M d, Y') }}</td><td class="px-3 py-2 text-white">{{ $record->device?->property_number ?? '-' }}</td><td class="px-3 py-2 text-gray-300">{{ $record->device?->type?->name ?? '-' }}</td><td class="px-3 py-2 text-gray-300">{{ $record->checkedBy?->name ?? '-' }}</td><td class="px-3 py-2 text-gray-300">{{ $record->remarks ?? '-' }}</td></tr>@empty<tr><td colspan="6" class="px-3 py-8 text-center text-gray-400">No checklist history found.</td></tr>@endforelse</tbody></table></div>
+        <form method="GET" class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[12rem_12rem_auto]">
+            <input type="date" name="date_from" value="{{ $dateFrom }}" class="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white">
+            <input type="date" name="date_to" value="{{ $dateTo }}" class="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white">
+            <button class="rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white">Filter deleted history</button>
         </form>
-        <div class="mt-4">{{ $records->links() }}</div>
+
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-semibold text-white">Deleted checklist records</h2>
+                <p class="mt-1 text-sm text-gray-400">These records are soft-deleted and remain recoverable until permanently deleted.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+                    <input id="deleted-checklist-select-page" type="checkbox" class="h-4 w-4" onchange="toggleCleanupPage(this.checked)">
+                    Select page
+                </label>
+                <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+                    <input id="deleted-checklist-select-all" type="checkbox" class="h-4 w-4" onchange="toggleCleanupAll(this.checked)">
+                    Select all matching the filter across every page
+                </label>
+                <button type="button" onclick="restoreSelectedDeletedChecklists()" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore selected</button>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="text-left text-gray-300">
+                    <tr>
+                        <th class="px-3 py-2">Select</th>
+                        <th class="px-3 py-2">Deleted</th>
+                        <th class="px-3 py-2">Maintenance date</th>
+                        <th class="px-3 py-2">Property</th>
+                        <th class="px-3 py-2">Type</th>
+                        <th class="px-3 py-2">Checked by</th>
+                        <th class="px-3 py-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-700">
+                    @forelse($deletedRecords as $record)
+                        <tr>
+                            <td class="px-3 py-2"><input type="checkbox" data-deleted-checklist-id="{{ $record->id }}" class="h-4 w-4" onchange="syncCleanupSelection()"></td>
+                            <td class="px-3 py-2 text-gray-400">{{ $record->deleted_at?->format('M d, Y h:i A') ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-300">{{ $record->maintenance_date?->format('M d, Y') ?? '-' }}</td>
+                            <td class="px-3 py-2 text-white">{{ $record->device?->property_number ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-300">{{ $record->device?->type?->name ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-300">{{ $record->checkedBy?->name ?? '-' }}</td>
+                            <td class="px-3 py-2">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <button type="button" onclick="restoreCleanupRecords([{{ $record->id }}])" class="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Restore</button>
+                                    <button type="button" onclick="openCleanupDeleteRemarks({{ $record->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">Delete permanently</button>
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="px-3 py-8 text-center text-gray-400">No deleted checklist history found.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4">{{ $deletedRecords->links() }}</div>
     </section>
+
+    <form id="deleted-checklist-restore-form" method="POST" action="{{ route('admin.maintenance-cleanup.restoreBulk') }}" class="hidden">
+        @csrf
+        @method('PATCH')
+        <input type="hidden" name="select_all" id="deleted-checklist-restore-select-all" value="0">
+        <input type="hidden" name="date_from" value="{{ $dateFrom }}">
+        <input type="hidden" name="date_to" value="{{ $dateTo }}">
+    </form>
+    <form id="deleted-checklist-delete-form" method="POST" action="{{ route('admin.maintenance-cleanup.forceDestroyBulk') }}" class="hidden">
+        @csrf
+        @method('DELETE')
+        <input type="hidden" name="select_all" value="0">
+        <input type="hidden" name="date_from" value="{{ $dateFrom }}">
+        <input type="hidden" name="date_to" value="{{ $dateTo }}">
+        <input type="hidden" name="remarks" id="deleted-checklist-delete-remarks" value="">
+    </form>
+
+    <div id="cleanup-delete-remarks-modal" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="cleanup-delete-remarks-title">
+        <div class="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 id="cleanup-delete-remarks-title" class="text-lg font-semibold text-gray-900 dark:text-white">Permanent deletion remarks</h2>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">This action cannot be undone. Add an optional reason for the activity log.</p>
+                </div>
+                <button type="button" onclick="closeCleanupDeleteRemarks()" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-white" aria-label="Close">&times;</button>
+            </div>
+            <label for="cleanup-modal-remarks" class="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200">Deletion remarks <span class="text-gray-500">(optional)</span></label>
+            <textarea id="cleanup-modal-remarks" rows="4" maxlength="1000" class="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white" placeholder="Optional reason for permanent deletion"></textarea>
+            <div class="mt-5 flex justify-end gap-2">
+                <button type="button" onclick="closeCleanupDeleteRemarks()" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">Cancel</button>
+                <button type="button" onclick="confirmCleanupDeleteRemarks()" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently delete</button>
+            </div>
+        </div>
+    </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+let pendingCleanupDelete = null;
+
+function cleanupBoxes() {
+    return [...document.querySelectorAll('[data-deleted-checklist-id]')];
+}
+
+function toggleCleanupPage(checked) {
+    cleanupBoxes().forEach((box) => { box.checked = checked; });
+    if (!checked) document.getElementById('deleted-checklist-select-all').checked = false;
+}
+
+function toggleCleanupAll(checked) {
+    document.getElementById('deleted-checklist-select-page').checked = checked;
+    cleanupBoxes().forEach((box) => { box.checked = checked; });
+}
+
+function syncCleanupSelection() {
+    const boxes = cleanupBoxes();
+    document.getElementById('deleted-checklist-select-all').checked = false;
+    document.getElementById('deleted-checklist-select-page').checked = boxes.length > 0 && boxes.every((box) => box.checked);
+}
+
+function restoreCleanupRecords(ids, selectAll = false) {
+    if (!selectAll && (!ids || ids.length === 0)) {
+        window.alert('Select at least one deleted checklist history record, or choose the all-pages option.');
+        return;
+    }
+    if (!window.confirm(selectAll
+        ? 'Restore every deleted checklist history record matching the current filter across every page?'
+        : `Restore ${ids.length} selected deleted checklist history record(s)?`)) return;
+
+    const form = document.getElementById('deleted-checklist-restore-form');
+    form.querySelectorAll('input[name="record_ids[]"]').forEach((input) => input.remove());
+    document.getElementById('deleted-checklist-restore-select-all').value = selectAll ? '1' : '0';
+    if (!selectAll) ids.forEach((id) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'record_ids[]';
+        input.value = id;
+        form.appendChild(input);
+    });
+    form.submit();
+}
+
+function restoreSelectedDeletedChecklists() {
+    const all = document.getElementById('deleted-checklist-select-all').checked;
+    const ids = cleanupBoxes().filter((box) => box.checked).map((box) => box.dataset.deletedChecklistId);
+    restoreCleanupRecords(ids, all);
+}
+
+function openCleanupDeleteRemarks(recordId) {
+    pendingCleanupDelete = [String(recordId)];
+    const modal = document.getElementById('cleanup-delete-remarks-modal');
+    const textarea = document.getElementById('cleanup-modal-remarks');
+    textarea.value = '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    window.setTimeout(() => textarea.focus(), 30);
+}
+
+function closeCleanupDeleteRemarks() {
+    const modal = document.getElementById('cleanup-delete-remarks-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    pendingCleanupDelete = null;
+}
+
+function confirmCleanupDeleteRemarks() {
+    const remarks = String(document.getElementById('cleanup-modal-remarks').value || '').trim();
+    const form = document.getElementById('deleted-checklist-delete-form');
+    form.querySelectorAll('input[name="record_ids[]"]').forEach((input) => input.remove());
+    document.getElementById('deleted-checklist-delete-remarks').value = remarks;
+    pendingCleanupDelete.forEach((id) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'record_ids[]';
+        input.value = id;
+        form.appendChild(input);
+    });
+    closeCleanupDeleteRemarks();
+    form.submit();
+}
+
+document.getElementById('cleanup-delete-remarks-modal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'cleanup-delete-remarks-modal') closeCleanupDeleteRemarks();
+});
+</script>
+@endpush
