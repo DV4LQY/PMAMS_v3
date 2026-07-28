@@ -68,6 +68,7 @@
             remarksEdited: false,
             correctiveAction: @js(old('corrective_action', '')),
             checklistReady: false,
+            checklistAnsweredCount: 0,
             checklistVersion: 0,
             checklistRowCount: {{ count($checklistItems) + count($softwareItems) }},
             duplicateReasonOpen: {{ session('duplicate_warning') ? 'true' : 'false' }},
@@ -123,15 +124,24 @@
                 }
             },
             allChecklistAnswered() {
+                return this.answeredChecklistCount() === this.checklistRowCount;
+            },
+            answeredChecklistCount() {
                 const selectedRows = new Set(
                     Array.from(this.$root.querySelectorAll('input[type=radio]:checked'))
                         .map((input) => input.name)
                 );
 
-                return selectedRows.size === this.checklistRowCount;
+                return selectedRows.size;
+            },
+            checklistCompletionPercent() {
+                return this.checklistRowCount
+                    ? Math.round((this.checklistAnsweredCount / this.checklistRowCount) * 100)
+                    : 0;
             },
             refreshChecklistState() {
                 this.checklistVersion++;
+                this.checklistAnsweredCount = this.answeredChecklistCount();
                 this.checklistReady = this.allChecklistAnswered();
             },
             setNotOkRow(key, enabled) {
@@ -378,9 +388,39 @@
 
         </div>
 
-        <div class="mt-6 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-            <table class="min-w-full text-sm">
-                <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
+        <div class="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/20" aria-live="polite">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div>
+                    <span class="font-semibold text-blue-900 dark:text-blue-100">Checklist progress</span>
+                    <span class="ml-2 text-blue-800 dark:text-blue-200" x-text="`${checklistAnsweredCount} of ${checklistRowCount} items completed`"></span>
+                </div>
+                <span
+                    class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-blue-800 shadow-sm dark:bg-blue-900/50 dark:text-blue-100"
+                    x-text="`${checklistCompletionPercent()}%`"
+                ></span>
+            </div>
+            <div class="mt-3 h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/50" role="progressbar" aria-label="Checklist completion" x-bind:aria-valuenow="checklistCompletionPercent()" aria-valuemin="0" aria-valuemax="100">
+                <div class="h-full rounded-full bg-blue-600 transition-all duration-300 dark:bg-blue-400" x-bind:style="`width: ${checklistCompletionPercent()}%`"></div>
+            </div>
+            <p class="mt-2 text-xs text-blue-800 dark:text-blue-200" x-show="!checklistReady" x-cloak>Select one result for every hardware and software item. Condition and Status appear only for Not OK rows.</p>
+            <p class="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300" x-show="checklistReady" x-cloak>All checklist items are complete. You can save this checklist.</p>
+        </div>
+
+        <div class="mt-6 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                <div>
+                    <h2 class="font-semibold text-gray-900 dark:text-white">Checklist items</h2>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one result per row. Use the Not OK controls only when a condition or status needs to be recorded.</p>
+                </div>
+                <div class="flex flex-wrap gap-2 text-[11px] font-semibold">
+                    <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">OK</span>
+                    <span class="rounded-full bg-red-100 px-2.5 py-1 text-red-800 dark:bg-red-900/40 dark:text-red-200">Not OK</span>
+                    <span class="rounded-full bg-gray-200 px-2.5 py-1 text-gray-700 dark:bg-gray-700 dark:text-gray-200">Not Available</span>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+            <table class="min-w-[980px] w-full text-sm">
+                <thead class="sticky top-0 z-10 bg-gray-50 text-left dark:bg-gray-900/95">
                     <tr>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Section</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Checklist Item</th>
@@ -652,6 +692,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         </div>
 
         <div class="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -662,9 +703,10 @@
                     x-model="remarks"
                     x-on:input="remarksEdited = true"
                     rows="4"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    placeholder="Optional remarks"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    placeholder="Optional remarks; automatic text will appear when applicable"
                 ></textarea>
+ 
             </div>
 
             <div>
@@ -700,7 +742,10 @@
             </div>
         </div>
 
-        <div class="mt-6 flex justify-end gap-2">
+        <div class="sticky bottom-3 z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-800/95 sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
+            <span class="text-xs text-gray-500 dark:text-gray-400" x-show="!checklistReady" x-cloak>Complete every row to enable saving.</span>
+            <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300" x-show="checklistReady" x-cloak>Ready to save</span>
+            <div class="ml-auto flex flex-wrap justify-end gap-2">
             <a
                 href="{{ route('admin.devices.show', $device) }}"
                 class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
@@ -728,6 +773,7 @@
                     Save Checklist
                 </button>
             @endif
+            </div>
         </div>
 
         @if(session('duplicate_warning'))

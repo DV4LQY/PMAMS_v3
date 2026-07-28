@@ -134,6 +134,23 @@ Clear cached application state when changing configuration or routes:
 php artisan optimize:clear
 ```
 
+## Windows/XAMPP scheduler startup
+
+Automatic monthly backups require Laravel's scheduler to remain running. On a
+Windows/XAMPP server, register the deployable startup task from an elevated
+PowerShell window:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\deployment\windows\install-scheduler-task.ps1 -PhpPath C:\xampp\php\php.exe
+Start-ScheduledTask -TaskName 'PMAMS Laravel Scheduler'
+```
+
+The task starts `php artisan schedule:work` when Windows starts, restarts it if
+it exits, and uses the project directory as its working directory. See
+[`deployment/windows/README.md`](deployment/windows/README.md) for XAMPP paths,
+manual startup, logs, and removal instructions.
+
 ## Project structure
 
 ```text

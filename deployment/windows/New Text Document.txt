@@ -1,0 +1,13 @@
+Added a deployable Windows/XAMPP scheduler setup.
+Files:
+[install-scheduler-task.ps1](/C:/laragon/www/pms_systemv2/deployment/windows/install-scheduler-task.ps1)
+[start-laravel-scheduler.cmd](/C:/laragon/www/pms_systemv2/deployment/windows/start-laravel-scheduler.cmd)
+[uninstall-scheduler-task.ps1](/C:/laragon/www/pms_systemv2/deployment/windows/uninstall-scheduler-task.ps1)
+[Windows deployment guide](/C:/laragon/www/pms_systemv2/deployment/windows/README.md)
+Run PowerShell as Administrator on the server:
+Set-ExecutionPolicy -Scope Process Bypass
+.\deployment\windows\install-scheduler-task.ps1 -PhpPath C:\xampp\php\php.exe
+Start-ScheduledTask -TaskName 'PMAMS Laravel Scheduler'
+It starts php artisan schedule:work during Windows startup, allows XAMPP/MySQL time to initialize, restarts after failure, and logs to:
+storage/logs/scheduler-startup.log
+Scheduler verification passed with php artisan schedule:list.
