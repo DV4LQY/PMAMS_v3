@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\MaintenancePhotoController;
 use App\Http\Controllers\Admin\MaintenanceCleanupController;
 use App\Http\Controllers\Admin\DatabaseBackupController;
+use App\Http\Controllers\Admin\PreventiveMaintenancePlanController;
 
 
 /*
@@ -102,6 +103,16 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
             ->name('admin.maintenance-gallery.bulkDownload');
         Route::delete('/maintenance-gallery/{photo}', [MaintenancePhotoController::class, 'destroy'])
             ->name('admin.maintenance-gallery.destroy');
+
+        Route::get('/maintenance-plan', [PreventiveMaintenancePlanController::class, 'index'])
+            ->name('admin.maintenance-plan.index');
+        Route::post('/maintenance-plan', [PreventiveMaintenancePlanController::class, 'store'])
+            ->middleware('role:super_admin')
+            ->name('admin.maintenance-plan.store');
+        Route::post('/maintenance-plan/{schedule}/override', [PreventiveMaintenancePlanController::class, 'override'])
+            ->name('admin.maintenance-plan.override');
+        Route::post('/maintenance-plan/{schedule}/complete', [PreventiveMaintenancePlanController::class, 'complete'])
+            ->name('admin.maintenance-plan.complete');
         Route::middleware('role:super_admin')->group(function () {
             Route::get('/maintenance-cleanup', [MaintenanceCleanupController::class, 'index'])
                 ->name('admin.maintenance-cleanup.index');
@@ -157,6 +168,10 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
             Route::get('/checked-equipment/{record}/pdf', [ReportController::class, 'checkedEquipmentPdf'])->name('checkedEquipment.pdf');
             Route::get('/checked-equipment/{record}/preview', [ReportController::class, 'checkedEquipmentPreview'])->name('checkedEquipment.preview');
             Route::get('/checklist', [ReportController::class, 'checklist'])->name('checklist');
+            Route::get('/maintenance-schedule', [PreventiveMaintenancePlanController::class, 'report'])
+                ->name('maintenanceSchedule');
+            Route::get('/maintenance-schedule/pdf', [PreventiveMaintenancePlanController::class, 'reportPdf'])
+                ->name('maintenanceSchedule.pdf');
         });
 
         /*

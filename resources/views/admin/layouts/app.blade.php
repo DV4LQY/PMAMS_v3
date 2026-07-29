@@ -212,6 +212,7 @@
         request()->routeIs('admin.staff.*'),
         request()->routeIs('admin.org-browser') => 'locations',
         request()->routeIs('admin.devices.*') => 'devices',
+        request()->routeIs('admin.maintenance-plan.*') => 'maintenance-plan',
         request()->routeIs('admin.issuance.*') => 'reports',
         request()->routeIs('admin.reports.*') => 'reports',
         request()->routeIs('admin.maintenance-cleanup.*') => 'maintenance-cleanup',
@@ -348,6 +349,21 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0v10l-8 4m8-14l-8 4m0 10L4 17V7m8 4L4 7m8 4l8-4"/>
                     </svg>
                     <span>Equipment</span>
+                </a>
+                @endif
+                @if(auth()->user()?->canMenu('maintenance_plan'))
+                <a
+                    href="{{ route('admin.maintenance-plan.index') }}"
+                    data-nav-group="maintenance-plan"
+                    data-active="{{ $currentNavGroup === 'maintenance-plan' ? 'true' : 'false' }}"
+                    @if($currentNavGroup === 'maintenance-plan') aria-current="page" @endif
+                    class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition
+                    {{ request()->routeIs('admin.maintenance-plan.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
+                >
+                    <svg class="w-5 h-5 {{ request()->routeIs('admin.maintenance-plan.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 3v4m8-4v4M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm3 8h3m-3 4h3m3-4h3m-3 4h3"/>
+                    </svg>
+                    <span>PM Plan Setup</span>
                 </a>
                 @endif
                 @if(auth()->user()?->canMenu('reports'))

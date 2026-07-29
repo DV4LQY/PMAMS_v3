@@ -40,6 +40,7 @@ class PermissionMiddleware
         if (str_starts_with($route, 'admin.logs.')) return ['activity_logs', null, null];
         if (str_starts_with($route, 'admin.database.')) return ['database', null, null];
         if (str_starts_with($route, 'admin.maintenance-cleanup.')) return ['maintenance_cleanup', 'checklist', $this->action($route)];
+        if (str_starts_with($route, 'admin.maintenance-plan.')) return ['maintenance_plan', 'maintenance_plan', $this->action($route)];
         if ($route === 'admin.maintenance-gallery.photo') return ['maintenance_gallery', null, null];
         if (str_starts_with($route, 'admin.maintenance-gallery.')) return ['maintenance_gallery', 'maintenance_gallery', $this->action($route)];
         if ($route === 'admin.reports.checkedEquipment.delete') return ['reports', 'checklist', 'delete'];
@@ -67,7 +68,7 @@ class PermissionMiddleware
     {
         if (str_contains($route, 'destroy') || str_contains($route, 'delete') || str_contains($route, 'forceDelete')) return 'delete';
         if (str_contains($route, 'store') || str_contains($route, 'create') || str_contains($route, 'import')) return 'add';
-        if (str_contains($route, 'update') || str_contains($route, 'edit') || str_contains($route, 'quickUpdate') || str_contains($route, 'markChecked') || str_contains($route, 'checklist') || str_contains($route, 'link') || str_contains($route, 'unlink') || str_contains($route, 'issue') || str_contains($route, 'reissue') || str_contains($route, 'photo') || str_contains($route, 'restore')) return 'edit';
+        if (str_contains($route, 'update') || str_contains($route, 'edit') || str_contains($route, 'quickUpdate') || str_contains($route, 'markChecked') || str_contains($route, 'checklist') || str_contains($route, 'link') || str_contains($route, 'unlink') || str_contains($route, 'issue') || str_contains($route, 'reissue') || str_contains($route, 'photo') || str_contains($route, 'restore') || str_contains($route, 'override') || str_contains($route, 'complete')) return 'edit';
 
         return null;
     }

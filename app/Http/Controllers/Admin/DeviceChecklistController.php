@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Admin\PreventiveMaintenancePlanController;
 use App\Models\ActivityLog;
 use App\Models\Device;
 use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\SystemSetting;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -26,6 +28,7 @@ class DeviceChecklistController extends Controller
         ]);
 
         abort_unless($this->isComputerDevice($device->type?->name), 404);
+        $this->assertPlanAccess($device);
 
         $linkablePeripherals = Device::query()
             ->with('type:id,name')
@@ -59,6 +62,7 @@ class DeviceChecklistController extends Controller
     {
         $device->load(['type', 'linkedPeripherals.type']);
         abort_unless($this->isComputerDevice($device->type?->name), 404);
+        $this->assertPlanAccess($device);
 
         $hardwareRules = [];
         $softwareRules = [];
@@ -624,5 +628,19 @@ class DeviceChecklistController extends Controller
     private function isComputerDevice(?string $deviceType): bool
     {
         return in_array(strtolower((string) $deviceType), ['desktop', 'laptop'], true);
+    }
+
+    private function assertPlanAccess(Device $device): void
+    {
+        $user = auth()->user();
+        if (! $user || $user->isSuperAdmin() || ! in_array($user->role, [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD], true)) {
+            return;
+        }
+
+        abort_unless(
+            PreventiveMaintenancePlanController::canMarkDevice($user, $device),
+            403,
+            'This equipment is outside your assigned preventive-maintenance location or has no published schedule.'
+        );
     }
 }

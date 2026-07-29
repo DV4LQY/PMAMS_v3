@@ -8,6 +8,7 @@ use App\Exports\PreventiveMaintenanceReportExport;
 use App\Imports\DeviceInventoryImport;
 use App\Models\ActivityLog;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Admin\PreventiveMaintenancePlanController;
 use App\Http\Requests\StoreDeviceRequest;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Device;
@@ -3364,6 +3365,13 @@ class DeviceController extends Controller
     {
         $device->loadMissing('type');
         abort_unless($this->isComputerDevice($device->type?->name), 404);
+        if (auth()->user() && in_array(auth()->user()->role, [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_UNIT_HEAD], true)) {
+            abort_unless(
+                PreventiveMaintenancePlanController::canMarkDevice(auth()->user(), $device),
+                403,
+                'This equipment is outside your assigned preventive-maintenance location or has no published schedule.'
+            );
+        }
 
         $data = $request->validate([
             'maintenance_date' => ['nullable', 'date', 'before_or_equal:today'],
