@@ -38,7 +38,9 @@ Route::get('/', function () {
 */
 
 Route::get('/login', [LoginController::class, 'show'])->name('login');
-Route::post('/login', [LoginController::class, 'login'])->name('login.submit');
+Route::post('/login', [LoginController::class, 'login'])
+    ->middleware('throttle:10,1')
+    ->name('login.submit');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 /*

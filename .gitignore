@@ -1,4 +1,7 @@
+*.sql
 *.log
+*.crt
+*.key
 .DS_Store
 TODO*
 TODO.md

@@ -334,6 +334,14 @@
 
         .btn-login:hover  { opacity: .92; transform: translateY(-1px); }
         .btn-login:active { transform: translateY(0); }
+        .btn-login:disabled { opacity: .65; cursor: wait; transform: none; }
+
+        .recaptcha-note {
+            margin-top: 8px;
+            color: #64748b;
+            font-size: 11px;
+            text-align: center;
+        }
 
         .support-entry {
             margin-top: 18px;
@@ -641,8 +649,9 @@
                 <div class="alert-error">{{ $errors->first() }}</div>
             @endif
 
-            <form method="POST" action="{{ route('login.submit') }}">
+            <form id="login-form" method="POST" action="{{ route('login.submit') }}">
                 @csrf
+                <input type="hidden" name="recaptcha_token" id="recaptcha-token">
 
                 <div class="field">
                     <label for="email">Email</label>
@@ -678,7 +687,7 @@
 
                 <div class="row-options">
                     <label class="remember">
-                        <input type="checkbox" name="remember" checked>
+                        <input type="checkbox" name="remember">
                         Remember me
                     </label>
                     <a href="{{ route('password.request') }}" class="forgot">Forgot password?</a>
@@ -690,6 +699,10 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
                     </svg>
                 </button>
+
+                @if (config('services.recaptcha.enabled') && filled(config('services.recaptcha.site_key')))
+                    <div class="recaptcha-note">Protected by reCAPTCHA</div>
+                @endif
 
             </form>
 
@@ -763,5 +776,71 @@
             }
         });
     </script>
+
+    @if (config('services.recaptcha.enabled') && filled(config('services.recaptcha.site_key')))
+        <script src="https://www.google.com/recaptcha/api.js?render={{ urlencode(config('services.recaptcha.site_key')) }}" async defer></script>
+        <script>
+            (() => {
+                const loginForm = document.getElementById('login-form');
+                const tokenInput = document.getElementById('recaptcha-token');
+                const recaptchaSiteKey = @json(config('services.recaptcha.site_key'));
+                const loginButton = loginForm?.querySelector('button[type="submit"]');
+
+                if (!loginForm || !tokenInput || !recaptchaSiteKey) return;
+
+                let submitting = false;
+
+                const failVerification = () => {
+                    submitting = false;
+                    loginButton?.removeAttribute('disabled');
+                    loginButton?.classList.remove('is-loading');
+                    alert('Security verification failed. Please try again.');
+                };
+
+                const executeVerification = () => {
+                    if (!window.grecaptcha || typeof window.grecaptcha.execute !== 'function') {
+                        failVerification();
+                        return;
+                    }
+
+                    window.grecaptcha.execute(recaptchaSiteKey, { action: 'login' })
+                        .then((token) => {
+                            if (!token) {
+                                failVerification();
+                                return;
+                            }
+
+                            tokenInput.value = token;
+                            loginForm.submit();
+                        })
+                        .catch(failVerification);
+                };
+
+                const waitForRecaptcha = (attempt = 0) => {
+                    if (window.grecaptcha?.ready) {
+                        window.grecaptcha.ready(executeVerification);
+                        return;
+                    }
+
+                    if (attempt >= 20) {
+                        failVerification();
+                        return;
+                    }
+
+                    window.setTimeout(() => waitForRecaptcha(attempt + 1), 500);
+                };
+
+                loginForm.addEventListener('submit', (event) => {
+                    if (submitting) return;
+
+                    event.preventDefault();
+                    submitting = true;
+                    loginButton?.setAttribute('disabled', 'disabled');
+                    loginButton?.classList.add('is-loading');
+                    waitForRecaptcha();
+                });
+            })();
+        </script>
+    @endif
 </body>
 </html>
