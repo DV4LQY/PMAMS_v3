@@ -166,6 +166,155 @@
             color: #f9fafb !important;
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Reduced-glare light palette
+        |--------------------------------------------------------------------------
+        | Keep the application chrome softly tinted instead of using high-glare
+        | pure white. Controlled-form report sheets are excluded so their paper
+        | preview remains white and matches the PDF output.
+        */
+        html:not(.dark) body,
+        html:not(.dark) main {
+            background-color: #f5f5f4 !important;
+            color: #1f2937 !important;
+        }
+
+        html:not(.dark) .bg-white:not(.report-sheet) {
+            background-color: #fafaf9 !important;
+        }
+
+        html:not(.dark) .bg-gray-50 {
+            background-color: #f5f5f4 !important;
+        }
+
+        html:not(.dark) .bg-gray-100 {
+            background-color: #e7e9ee !important;
+        }
+
+        html:not(.dark) .bg-gray-200 {
+            background-color: #dde2ea !important;
+        }
+
+        html:not(.dark) .border-gray-100,
+        html:not(.dark) .border-gray-200,
+        html:not(.dark) .border-gray-300 {
+            border-color: #d1d5db !important;
+        }
+
+        html:not(.dark) input,
+        html:not(.dark) select,
+        html:not(.dark) textarea {
+            background-color: #eef2f7 !important;
+            border-color: #cbd5e1 !important;
+            color: #1f2937 !important;
+        }
+
+        html:not(.dark) input::placeholder,
+        html:not(.dark) textarea::placeholder {
+            color: #64748b !important;
+        }
+
+        html:not(.dark) select option {
+            background-color: #fafaf9;
+            color: #1f2937;
+        }
+
+        html:not(.dark) .text-gray-500 {
+            color: #64748b !important;
+        }
+
+        html:not(.dark) .text-gray-600 {
+            color: #475569 !important;
+        }
+
+        html:not(.dark) .text-gray-700,
+        html:not(.dark) .text-gray-800 {
+            color: #334155 !important;
+        }
+
+        html:not(.dark) .shadow-sm,
+        html:not(.dark) .shadow,
+        html:not(.dark) .shadow-md,
+        html:not(.dark) .shadow-lg,
+        html:not(.dark) .shadow-xl {
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07) !important;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Shared interaction and accessibility baseline
+        |--------------------------------------------------------------------------
+        */
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", sans-serif;
+            line-height: 1.5;
+            -webkit-tap-highlight-color: rgba(37, 99, 235, 0.16);
+        }
+
+        :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+            outline: 3px solid rgba(37, 99, 235, 0.55);
+            outline-offset: 2px;
+        }
+
+        :where(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]) {
+            min-height: 44px;
+            touch-action: manipulation;
+        }
+
+        :where(input:not([type="checkbox"]):not([type="radio"]), select) {
+            min-height: 44px;
+        }
+
+        textarea { min-height: 96px; resize: vertical; }
+
+        :where(button, a, input, select, textarea) {
+            transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+            transition-duration: 150ms;
+            transition-timing-function: ease-out;
+        }
+
+        :where(button, input[type="button"], input[type="submit"], input[type="reset"]):disabled,
+        :where(button, input[type="button"], input[type="submit"], input[type="reset"])[aria-disabled="true"] {
+            cursor: not-allowed;
+            opacity: 0.58;
+        }
+
+        ::selection {
+            background: #bfdbfe;
+            color: #172554;
+        }
+
+        .skip-link {
+            position: fixed;
+            top: 0.75rem;
+            left: 0.75rem;
+            z-index: 100;
+            transform: translateY(-180%);
+            border-radius: 0.75rem;
+            background: #1d4ed8;
+            color: #fff;
+            padding: 0.7rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 700;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+        }
+
+        .skip-link:focus { transform: translateY(0); }
+
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
         @media (max-width: 1023px) {
             [data-admin-sidebar] {
                 transform: translateX(-100%);
@@ -191,6 +340,17 @@
             color: #2563eb !important;
         }
 
+        /* Profile shortcuts use one consistent hover treatment in both themes. */
+        .profile-menu :where(a, button) {
+            border-left: 3px solid transparent;
+        }
+
+        .profile-menu :where(a, button):hover {
+            background-color: #eff6ff !important;
+            border-left-color: #2563eb;
+            color: #1d4ed8 !important;
+        }
+
         html.dark aside nav a[data-active="true"] {
             background-color: rgba(30, 58, 138, 0.3) !important;
             color: #60a5fa !important;
@@ -198,6 +358,12 @@
 
         html.dark aside nav a[data-active="true"] svg {
             color: #60a5fa !important;
+        }
+
+        html.dark .profile-menu :where(a, button):hover {
+            background-color: rgba(30, 58, 138, 0.35) !important;
+            border-left-color: #60a5fa;
+            color: #93c5fd !important;
         }
 
     </style>
@@ -231,6 +397,7 @@
     data-current-nav-group="{{ $currentNavGroup }}"
     class="bg-gray-50 text-gray-900 antialiased overflow-x-hidden dark:bg-gray-900 dark:text-gray-100"
 >
+<a class="skip-link" href="#main-content">Skip to main content</a>
 <div
     x-data="{
         sidebarOpen: false,
@@ -667,7 +834,7 @@
                                 </div>
                             </div>
 
-                            <div class="py-2">
+                            <div class="profile-menu py-2">
                                 @if(auth()->user()?->canMenu('dashboard'))
                                 <a href="{{ route('admin.dashboard') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Dashboard
@@ -721,7 +888,7 @@
             </div>
         </header>
 
-        <main class="p-3 sm:p-6" data-current-nav-group="{{ $currentNavGroup }}">
+        <main id="main-content" class="p-3 sm:p-6" data-current-nav-group="{{ $currentNavGroup }}">
             @if (session('success'))
                 <div class="mb-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-green-700 shadow-sm dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
                     {{ session('success') }}

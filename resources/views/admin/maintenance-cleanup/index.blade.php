@@ -10,43 +10,43 @@
 @section('content')
 <div class="space-y-6">
     @if($errors->any())
-        <div class="rounded-xl border border-red-700/40 bg-red-900/20 px-4 py-3 text-sm text-red-300">{{ $errors->first() }}</div>
+        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-900/20 dark:text-red-300">{{ $errors->first() }}</div>
     @endif
 
-    <section class="rounded-2xl border border-gray-700 bg-gray-800 p-5">
+    <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
-                <h2 class="text-lg font-semibold text-white">Checklist recovery bin</h2>
-                <p class="mt-1 text-sm text-gray-400">Only checklist history deleted from Checked Equipment appears here. Restore records individually or across all filtered pages.</p>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Checklist recovery bin</h2>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Only checklist history deleted from Checked Equipment appears here. Restore records individually or across all filtered pages.</p>
             </div>
             <form method="POST" action="{{ route('admin.maintenance-cleanup.window') }}" class="flex items-end gap-2">
                 @csrf
-                <label class="text-sm text-gray-300">Duplicate window (months)
-                    <input name="window_months" type="number" min="1" max="36" value="{{ $windowMonths }}" class="mt-1 w-24 rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white">
+                <label class="text-sm text-gray-700 dark:text-gray-300">Duplicate window (months)
+                    <input name="window_months" type="number" min="1" max="36" value="{{ $windowMonths }}" class="mt-1 w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
                 </label>
                 <button class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Save</button>
             </form>
         </div>
     </section>
 
-    <section class="rounded-2xl border border-gray-700 bg-gray-800 p-5">
+    <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <form method="GET" class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[12rem_12rem_auto]">
-            <input type="date" name="date_from" value="{{ $dateFrom }}" class="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white">
-            <input type="date" name="date_to" value="{{ $dateTo }}" class="rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white">
-            <button class="rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white">Filter deleted history</button>
+            <input type="date" name="date_from" value="{{ $dateFrom }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+            <input type="date" name="date_to" value="{{ $dateTo }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+            <button class="cleanup-filter-button justify-self-start rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white">Filter deleted history</button>
         </form>
 
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h2 class="text-lg font-semibold text-white">Deleted checklist records</h2>
-                <p class="mt-1 text-sm text-gray-400">These records are soft-deleted and remain recoverable until permanently deleted.</p>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Deleted checklist records</h2>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">These records are soft-deleted and remain recoverable until permanently deleted.</p>
             </div>
             <div class="flex flex-wrap items-center gap-3">
-                <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                     <input id="deleted-checklist-select-page" type="checkbox" class="h-4 w-4" onchange="toggleCleanupPage(this.checked)">
                     Select page
                 </label>
-                <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                     <input id="deleted-checklist-select-all" type="checkbox" class="h-4 w-4" onchange="toggleCleanupAll(this.checked)">
                     Select all matching the filter across every page
                 </label>
@@ -57,7 +57,7 @@
 
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
-                <thead class="text-left text-gray-300">
+                <thead class="bg-gray-50 text-left text-gray-600 dark:bg-gray-900/50 dark:text-gray-300">
                     <tr>
                         <th class="px-3 py-2">Select</th>
                         <th class="px-3 py-2">Deleted</th>
@@ -68,15 +68,15 @@
                         <th class="px-3 py-2">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-700">
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($deletedRecords as $record)
                         <tr>
                             <td class="px-3 py-2"><input type="checkbox" data-deleted-checklist-id="{{ $record->id }}" class="h-4 w-4" onchange="syncCleanupSelection()"></td>
-                            <td class="px-3 py-2 text-gray-400">{{ $record->deleted_at?->format('M d, Y h:i A') ?? '-' }}</td>
-                            <td class="px-3 py-2 text-gray-300">{{ $record->maintenance_date?->format('M d, Y') ?? '-' }}</td>
-                            <td class="px-3 py-2 text-white">{{ $record->device?->property_number ?? '-' }}</td>
-                            <td class="px-3 py-2 text-gray-300">{{ $record->device?->type?->name ?? '-' }}</td>
-                            <td class="px-3 py-2 text-gray-300">{{ $record->checkedBy?->name ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ $record->deleted_at?->format('M d, Y h:i A') ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ $record->maintenance_date?->format('M d, Y') ?? '-' }}</td>
+                            <td class="px-3 py-2 font-medium text-gray-900 dark:text-white">{{ $record->device?->property_number ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ $record->device?->type?->name ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ $record->checkedBy?->name ?? '-' }}</td>
                             <td class="px-3 py-2">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <button type="button" onclick="restoreCleanupRecords([{{ $record->id }}])" class="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Restore</button>
@@ -85,7 +85,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-3 py-8 text-center text-gray-400">No deleted checklist history found.</td></tr>
+                        <tr><td colspan="7" class="px-3 py-8 text-center text-gray-500 dark:text-gray-400">No deleted checklist history found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -128,6 +128,10 @@
     </div>
 </div>
 @endsection
+
+<style>
+    .cleanup-filter-button { min-height: 36px !important; }
+</style>
 
 @push('scripts')
 <script>
