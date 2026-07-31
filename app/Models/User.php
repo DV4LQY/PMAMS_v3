@@ -65,7 +65,7 @@ class User extends Authenticatable
         'activity_logs' => 'Activity Logs',
         'database' => 'Backup & Restore',
         'maintenance_cleanup' => 'Checklist Cleanup',
-        'maintenance_plan' => 'PM Plan Setup',
+        'maintenance_plan' => 'PM Plan',
     ];
 
     /** Resources whose add/edit/delete abilities can be assigned separately. */
@@ -77,7 +77,7 @@ class User extends Authenticatable
         'issuance' => 'Issuance',
         'maintenance_gallery' => 'PM Gallery',
         'checklist' => 'Maintenance Checklist',
-        'maintenance_plan' => 'PM Plan Setup',
+        'maintenance_plan' => 'PM Plan',
     ];
 
     public const PERMISSION_ACTIONS = [

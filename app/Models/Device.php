@@ -109,10 +109,15 @@ class Device extends Model
             ->when($typeId, fn (Builder $query) => $query->where('device_type_id', $typeId))
             ->when($locationId, function (Builder $query) use ($locationId) {
                 $query->whereHas('currentAssignment', function (Builder $assignment) use ($locationId) {
-                    $assignment->where('location_id', $locationId)
-                        ->orWhereHas('staff.office', function (Builder $office) use ($locationId) {
-                            $office->where('location_id', $locationId);
-                        });
+                    $assignment->where(function (Builder $match) use ($locationId) {
+                        $match->where('location_id', $locationId)
+                            ->orWhereHas('office', function (Builder $office) use ($locationId) {
+                                $office->where('location_id', $locationId);
+                            })
+                            ->orWhereHas('staff.office', function (Builder $office) use ($locationId) {
+                                $office->where('location_id', $locationId);
+                            });
+                    });
                 });
             })
             ->when($officeId, function (Builder $query) use ($officeId) {

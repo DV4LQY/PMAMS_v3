@@ -51,6 +51,7 @@
                     Select all matching the filter across every page
                 </label>
                 <button type="button" onclick="restoreSelectedDeletedChecklists()" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore selected</button>
+                <button type="button" onclick="openCleanupBulkDeleteRemarks()" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently delete selected</button>
             </div>
         </div>
 
@@ -102,7 +103,7 @@
     <form id="deleted-checklist-delete-form" method="POST" action="{{ route('admin.maintenance-cleanup.forceDestroyBulk') }}" class="hidden">
         @csrf
         @method('DELETE')
-        <input type="hidden" name="select_all" value="0">
+        <input type="hidden" name="select_all" id="deleted-checklist-delete-select-all" value="0">
         <input type="hidden" name="date_from" value="{{ $dateFrom }}">
         <input type="hidden" name="date_to" value="{{ $dateTo }}">
         <input type="hidden" name="remarks" id="deleted-checklist-delete-remarks" value="">
@@ -181,7 +182,24 @@ function restoreSelectedDeletedChecklists() {
 }
 
 function openCleanupDeleteRemarks(recordId) {
-    pendingCleanupDelete = [String(recordId)];
+    pendingCleanupDelete = { ids: [String(recordId)], selectAll: false };
+    openCleanupDeleteRemarksModal();
+}
+
+function openCleanupBulkDeleteRemarks() {
+    const selectAll = document.getElementById('deleted-checklist-select-all')?.checked === true;
+    const ids = cleanupBoxes().filter((box) => box.checked).map((box) => box.dataset.deletedChecklistId);
+
+    if (!selectAll && ids.length === 0) {
+        window.alert('Select at least one deleted checklist record, or choose select all matching the filter.');
+        return;
+    }
+
+    pendingCleanupDelete = { ids, selectAll };
+    openCleanupDeleteRemarksModal();
+}
+
+function openCleanupDeleteRemarksModal() {
     const modal = document.getElementById('cleanup-delete-remarks-modal');
     const textarea = document.getElementById('cleanup-modal-remarks');
     textarea.value = '';
@@ -202,7 +220,8 @@ function confirmCleanupDeleteRemarks() {
     const form = document.getElementById('deleted-checklist-delete-form');
     form.querySelectorAll('input[name="record_ids[]"]').forEach((input) => input.remove());
     document.getElementById('deleted-checklist-delete-remarks').value = remarks;
-    pendingCleanupDelete.forEach((id) => {
+    document.getElementById('deleted-checklist-delete-select-all').value = pendingCleanupDelete?.selectAll ? '1' : '0';
+    (pendingCleanupDelete?.ids || []).forEach((id) => {
         const input = document.createElement('input');
         input.type = 'hidden';
         input.name = 'record_ids[]';

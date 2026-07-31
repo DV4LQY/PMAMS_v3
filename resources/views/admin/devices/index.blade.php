@@ -568,7 +568,9 @@
             @if(isset($colleges))
                 <div class="w-full lg:w-44">
                     <select
-                        name="college"
+                    name="college"
+                        id="equipment-location-filter"
+                        aria-label="Equipment location"
                         onchange="const officeField = this.form.querySelector('[name=office_id]'); if (officeField) officeField.value = ''; this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
                         class="w-full truncate rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
                     >
@@ -586,6 +588,8 @@
                 <div class="w-full lg:w-56">
                     <select
                         name="office_id"
+                        id="equipment-office-filter"
+                        aria-label="Office filter for selected location"
                         onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
                         class="w-full truncate rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
                     >

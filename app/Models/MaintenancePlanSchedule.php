@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class MaintenancePlanSchedule extends Model
 {
@@ -16,12 +17,16 @@ class MaintenancePlanSchedule extends Model
         'assigned_user_id',
         'created_by',
         'scheduled_date',
+        'schedule_month_from',
+        'schedule_month_to',
         'title',
         'notes',
     ];
 
     protected $casts = [
         'scheduled_date' => 'date',
+        'schedule_month_from' => 'date',
+        'schedule_month_to' => 'date',
     ];
 
     public function location(): BelongsTo
@@ -37,6 +42,16 @@ class MaintenancePlanSchedule extends Model
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_user_id');
+    }
+
+    public function assignedUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,
+            'maintenance_plan_schedule_user',
+            'maintenance_plan_schedule_id',
+            'user_id'
+        )->withTimestamps()->orderBy('users.name');
     }
 
     public function creator(): BelongsTo
@@ -66,12 +81,21 @@ class MaintenancePlanSchedule extends Model
         }
 
         return $query->where(function (Builder $visible) use ($user) {
-            $visible->whereNull('assigned_user_id')->orWhere('assigned_user_id', $user->id);
+            $visible
+                ->where(function (Builder $unassigned) {
+                    $unassigned->whereNull('assigned_user_id')
+                        ->whereDoesntHave('assignedUsers');
+                })
+                ->orWhere('assigned_user_id', $user->id)
+                ->orWhereHas('assignedUsers', fn (Builder $assigned) => $assigned->whereKey($user->id));
         });
     }
 
     public function effectiveDate(): \Carbon\CarbonInterface
     {
-        return ($this->latestOverride?->override_date ?? $this->scheduled_date)->copy();
+        return ($this->latestOverride?->override_month_from
+            ?? $this->latestOverride?->override_date
+            ?? $this->schedule_month_from
+            ?? $this->scheduled_date)->copy();
     }
 }

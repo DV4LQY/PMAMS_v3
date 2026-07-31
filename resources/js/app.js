@@ -38,6 +38,13 @@ import './bootstrap';
     // points at a different local host/port.
     window.adminBasePath = currentBasePath();
 
+    document.addEventListener('livewire:navigated', () => {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('_spa_refresh')) return;
+        url.searchParams.delete('_spa_refresh');
+        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    });
+
     document.addEventListener('click', (event) => {
         if (!canNavigate() || event.defaultPrevented || event.button !== 0) return;
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -73,6 +80,101 @@ import './bootstrap';
         const query = params.toString();
         const path = localNavigatePath(action).split('#')[0].split('?')[0];
         window.Livewire.navigate(`${path}${query ? `?${query}` : ''}`);
+    });
+})();
+
+// Submit marked PM Plan actions through fetch, then let Livewire replace the
+// current page. This keeps the PM Plan in SPA mode while preserving Laravel's
+// normal redirects, validation errors, flash messages, CSRF protection, and
+// confirmation handlers on destructive forms.
+(function setupAdminSpaForms() {
+    if (window.__adminSpaFormsReady) return;
+    window.__adminSpaFormsReady = true;
+
+    const canNavigate = () => window.Livewire && typeof window.Livewire.navigate === 'function';
+    const navigateTo = (path) => {
+        const currentPath = window.location.pathname + window.location.search + window.location.hash;
+        const targetPath = path === currentPath
+            ? path + (path.includes('?') ? '&' : '?') + '_spa_refresh=' + Date.now()
+            : path;
+        window.Livewire.navigate(targetPath);
+    };
+
+    document.addEventListener('submit', async (event) => {
+        if (event.defaultPrevented || !canNavigate()) return;
+
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.dataset.spaForm !== 'true' || form.dataset.spaSubmitting === '1') return;
+
+        event.preventDefault();
+        form.dataset.spaSubmitting = '1';
+        form.setAttribute('aria-busy', 'true');
+        form.querySelectorAll('button[type="submit"]').forEach((button) => {
+            button.disabled = true;
+            button.classList.add('cursor-wait', 'opacity-70');
+        });
+
+        try {
+            const action = new URL(form.action || window.location.href, window.location.href);
+            const response = await fetch(action.href, {
+                method: (form.getAttribute('method') || 'POST').toUpperCase(),
+                body: new FormData(form),
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-SPA-Request': '1',
+                    'Accept': 'text/html, application/xhtml+xml',
+                },
+            });
+
+            const responseType = response.headers.get('content-type') || '';
+            if (responseType.includes('application/json')) {
+                const payload = await response.json();
+                const target = new URL(payload.redirect || action.href, window.location.href);
+                const path = window.adminLocalNavigatePath
+                    ? window.adminLocalNavigatePath(target)
+                    : `${target.pathname}${target.search}${target.hash}`;
+
+                if (canNavigate()) {
+                    navigateTo(path);
+                } else {
+                    window.location.assign(target.href);
+                }
+                return;
+            }
+
+            // PM Plan actions redirect back to the index on success and after
+            // validation failures. Navigate to that final URL so the response
+            // includes the normal flash/error state without a full reload.
+            if (response.redirected || response.ok) {
+                const responseUrl = new URL(response.url || action.href, window.location.href);
+                const path = window.adminLocalNavigatePath
+                    ? window.adminLocalNavigatePath(responseUrl)
+                    : `${responseUrl.pathname}${responseUrl.search}${responseUrl.hash}`;
+
+                if (canNavigate()) {
+                    navigateTo(path);
+                } else {
+                    window.location.assign(responseUrl.href);
+                }
+                return;
+            }
+
+            // Authorization/server errors should still be visible rather than
+            // silently leaving the user on a stale PM Plan page.
+            window.location.assign(response.url || action.href);
+        } catch (error) {
+            // Network failures retain the browser's normal submit behavior so
+            // the user receives the browser/server error instead of losing the
+            // action entirely.
+            form.removeAttribute('data-spa-submitting');
+            form.removeAttribute('aria-busy');
+            form.querySelectorAll('button[type="submit"]').forEach((button) => {
+                button.disabled = false;
+                button.classList.remove('cursor-wait', 'opacity-70');
+            });
+            HTMLFormElement.prototype.submit.call(form);
+        }
     });
 })();
 

@@ -263,7 +263,7 @@
         x-show="sidebarOpen"
         x-transition.opacity
         data-sidebar-overlay
-        class="fixed inset-0 z-40 bg-gray-900/60 backdrop-blur-[1px] lg:hidden"
+        class="fixed inset-0 z-40 bg-gray-900/60 backdrop-blur-[1px] lg:hidden print:hidden"
         @click="closeSidebar()"
     ></div>
 
@@ -273,7 +273,7 @@
         data-admin-sidebar
         :data-open="sidebarOpen ? 'true' : 'false'"
         :aria-hidden="(!sidebarOpen && window.innerWidth < 1024).toString()"
-        class="fixed top-0 left-0 z-50 h-[100dvh] w-[min(20rem,calc(100vw-3rem))] bg-white border-r border-gray-200 transition-transform duration-300 ease-out lg:w-64 flex flex-col dark:bg-gray-800 dark:border-gray-700"
+        class="fixed top-0 left-0 z-50 h-[100dvh] w-[min(20rem,calc(100vw-3rem))] bg-white border-r border-gray-200 transition-transform duration-300 ease-out lg:w-64 flex flex-col dark:bg-gray-800 dark:border-gray-700 print:hidden"
     >
         <div class="h-16 px-4 border-b border-gray-200 flex items-center justify-between dark:border-gray-700">
             <div class="flex items-center gap-3">
@@ -363,7 +363,7 @@
                     <svg class="w-5 h-5 {{ request()->routeIs('admin.maintenance-plan.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 3v4m8-4v4M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm3 8h3m-3 4h3m3-4h3m-3 4h3"/>
                     </svg>
-                    <span>PM Plan Setup</span>
+                    <span>PM Plan</span>
                 </a>
                 @endif
                 @if(auth()->user()?->canMenu('reports'))
@@ -542,8 +542,8 @@
     </aside>
     @endpersist
 
-    <div class="lg:ml-64 min-h-screen">
-        <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200 dark:bg-gray-800/90 dark:border-gray-700">
+    <div class="lg:ml-64 min-h-screen print:ml-0">
+        <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200 dark:bg-gray-800/90 dark:border-gray-700 print:hidden">
             <div class="h-16 px-3 sm:px-6 flex items-center justify-between">
                 <div class="flex items-center gap-3 min-w-0">
                     <button
@@ -725,6 +725,12 @@
             @if (session('success'))
                 <div class="mb-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-green-700 shadow-sm dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
                     {{ session('success') }}
+                </div>
+            @endif
+
+            @if (session('warning'))
+                <div class="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                    {{ session('warning') }}
                 </div>
             @endif
 

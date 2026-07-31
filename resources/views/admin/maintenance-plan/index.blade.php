@@ -1,7 +1,7 @@
 @extends('admin.layouts.app')
 
-@section('title', 'Preventive Maintenance Plan Setup')
-@section('page_title', 'Preventive Maintenance Plan Setup')
+@section('title', 'PM Plan')
+@section('page_title', 'PM Plan')
 
 @section('breadcrumbs')
     <a href="{{ route('admin.dashboard') }}" class="hover:text-blue-600 dark:hover:text-blue-400">Dashboard</a>
@@ -13,7 +13,7 @@
 <div class="space-y-6" x-data="maintenanceCompletionModal()">
     <div class="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Preventive Maintenance Plan Setup</h1>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">PM Plan</h1>
             <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
                 The Super Admin publishes the original schedule. Assigned Admins and Unit Heads can view their targets, propose a temporary reschedule with a reason, and record completion details after all office equipment has been checked.
             </p>
@@ -23,9 +23,6 @@
         </a>
     </div>
 
-    @if(session('success'))
-        <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-200">{{ session('success') }}</div>
-    @endif
     @if($errors->any())
         <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-200">
             <ul class="list-disc space-y-1 pl-5">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
@@ -39,7 +36,7 @@
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Choose one location and optionally select several offices. Leaving offices unchecked creates one location-wide schedule.</p>
             </div>
 
-            <form method="POST" action="{{ route('admin.maintenance-plan.store') }}" class="grid gap-4 lg:grid-cols-2">
+            <form method="POST" action="{{ route('admin.maintenance-plan.store') }}" data-spa-form="true" class="grid gap-4 lg:grid-cols-2">
                 @csrf
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Location <span class="text-red-500">*</span></label>
@@ -51,13 +48,14 @@
                     </select>
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Unit Head</label>
-                    <select name="assigned_user_id" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                        <option value="">All Admins and Unit Heads</option>
+                    @php($selectedAssignedUserIds = collect(old('assigned_user_ids', old('assigned_user_id') ? [old('assigned_user_id')] : []))->map(fn ($id) => (int) $id)->all())
+                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Unit Head <span class="font-normal text-gray-500">(select one or more)</span></label>
+                    <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                         @foreach($admins as $admin)
-                            <option value="{{ $admin->id }}">{{ $admin->name }} ({{ $admin->roleLabel() }})</option>
+                            <option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $selectedAssignedUserIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>
                         @endforeach
                     </select>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (Windows) or Command (Mac) to select multiple users. Leave empty to make the schedule available to all Admins and Unit Heads.</p>
                 </div>
                 <div class="lg:col-span-2">
                     <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-200">Offices <span class="font-normal text-gray-500">(optional)</span></label>
@@ -72,8 +70,12 @@
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" x-show="locationId && !availableOffices.length" x-cloak>No registered offices are available for this location; the schedule will apply to the location.</p>
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Scheduled maintenance date <span class="text-red-500">*</span></label>
-                    <input type="date" name="scheduled_date" value="{{ old('scheduled_date', now()->toDateString()) }}" required class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Maintenance month / range <span class="text-red-500">*</span></label>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                        <input type="month" name="schedule_month_from" value="{{ old('schedule_month_from', now()->format('Y-m')) }}" required aria-label="Starting month" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                        <input type="month" name="schedule_month_to" value="{{ old('schedule_month_to', old('schedule_month_from', now()->format('Y-m'))) }}" aria-label="Ending month" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use the same month for a single-month plan, or choose an ending month for a range.</p>
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Schedule title <span class="text-red-500">*</span></label>
@@ -113,8 +115,8 @@
                         </optgroup>
                     @endforeach
                 </select>
-                <input type="date" name="date_from" value="{{ $dateFrom }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule date from">
-                <input type="date" name="date_to" value="{{ $dateTo }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule date to">
+                <input type="month" name="month_from" value="{{ $monthFrom }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month from">
+                <input type="month" name="month_to" value="{{ $monthTo }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month to">
                 <button class="rounded-lg bg-gray-700 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">Filter</button>
                 <a href="{{ route('admin.maintenance-plan.index') }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Reset</a>
             </form>
@@ -139,7 +141,10 @@
                             <td class="px-4 py-4">
                                 <div class="font-semibold text-gray-900 dark:text-white">{{ $row['office'] }}</div>
                                 <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ $schedule->title }}</div>
-                                @if($schedule->assignedUser)
+                                @php($assignedNames = $schedule->assignedUsers->pluck('name')->filter()->values())
+                                @if($assignedNames->isNotEmpty())
+                                    <div class="mt-2 text-xs text-blue-700 dark:text-blue-300">Assigned: {{ $assignedNames->join(', ') }}</div>
+                                @elseif($schedule->assignedUser)
                                     <div class="mt-2 text-xs text-blue-700 dark:text-blue-300">Assigned: {{ $schedule->assignedUser->name }}</div>
                                 @else
                                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Available to all Admins</div>
@@ -166,29 +171,66 @@
                             </td>
                             <td class="px-4 py-4">
                                 <div class="mb-1 flex items-center justify-between gap-3 text-xs">
-                                    <span class="font-semibold {{ $row['is_complete'] ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-300' }}">{{ $row['is_complete'] ? 'All equipment checked' : 'In progress' }}</span>
+                                    @if((int) $row['checked_equipment'] > 0)
+                                        <span class="font-semibold {{ $row['is_complete'] ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-300' }}">{{ $row['is_complete'] ? 'All equipment checked' : 'In progress' }}</span>
+                                    @else
+                                        <span aria-hidden="true"></span>
+                                    @endif
                                     <span class="text-gray-500 dark:text-gray-400">{{ $row['checked_equipment'] }}/{{ $row['total_equipment'] }}</span>
                                 </div>
                                 <div class="h-2 w-48 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                                     <div class="h-full rounded-full {{ $row['is_complete'] ? 'bg-emerald-500' : 'bg-blue-500' }}" style="width: {{ $row['total_equipment'] ? min(100, round(($row['checked_equipment'] / $row['total_equipment']) * 100)) : 0 }}%"></div>
                                 </div>
-                                @if($row['completion'])
-                                    <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">{{ $row['completion']->person_in_charge }} · {{ $row['completion']->signature }}</div>
+                                @if((int) $row['checked_equipment'] > 0 && $row['completion'])
+                                    <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">Checked by: {{ $row['person_in_charge'] ?: 'Not recorded' }}<br>Signed by: {{ $row['completion']->signer_name ?: 'Not recorded' }}</div>
                                 @endif
                             </td>
                             <td class="px-4 py-4">
-                                <div class="flex min-w-[190px] flex-col gap-2">
+                                <div class="flex min-w-[220px] flex-col gap-2">
+                                    @if(auth()->user()?->isSuperAdmin())
+                                        <details class="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/20">
+                                            <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-blue-800 dark:text-blue-200">Edit published schedule</summary>
+                                            <form method="POST" action="{{ route('admin.maintenance-plan.update', $schedule) }}" data-spa-form="true" class="space-y-2 border-t border-blue-200 p-3 dark:border-blue-900/60">
+                                                @csrf @method('PUT')
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <input type="month" name="schedule_month_from" value="{{ optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                    <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                </div>
+                                                @php($scheduleAssignedIds = $schedule->assignedUsers->pluck('id')->merge([$schedule->assigned_user_id])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all())
+                                                <label class="block text-[11px] font-semibold text-gray-600 dark:text-gray-300">Assigned Admin / Unit Head</label>
+                                                <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                    @foreach($admins as $admin)<option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $scheduleAssignedIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>@endforeach
+                                                </select>
+                                                <p class="text-[11px] text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin and Unit Head.</p>
+                                                <input type="text" name="title" value="{{ $schedule->title }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                <textarea name="notes" rows="2" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $schedule->notes }}</textarea>
+                                                <button class="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Save schedule</button>
+                                            </form>
+                                        </details>
+                                        <form method="POST" action="{{ route('admin.maintenance-plan.destroy', $schedule) }}" data-spa-form="true" class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return confirm('Remove this published PM schedule? Its override and completion sign-off will be removed, but equipment checklist history will be retained.')">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Remove scheduled PM plan</button>
+                                        </form>
+                                    @endif
                                     <details class="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20">
                                         <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-200">Override schedule</summary>
-                                        <form method="POST" action="{{ route('admin.maintenance-plan.override', $schedule) }}" class="space-y-2 border-t border-amber-200 p-3 dark:border-amber-900/60">
+                                        <form method="POST" action="{{ route('admin.maintenance-plan.override', $schedule) }}" data-spa-form="true" class="space-y-2 border-t border-amber-200 p-3 dark:border-amber-900/60">
                                             @csrf
-                                            <input type="date" name="override_date" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                            <input type="date" name="override_date" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white" aria-label="Override date">
                                             <textarea name="reason" rows="2" required maxlength="2000" placeholder="Required reason / remarks" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white"></textarea>
                                             <button class="w-full rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700">Save override</button>
                                         </form>
+                                        @if(auth()->user()?->isSuperAdmin() && $row['override_schedule'])
+                                            <form method="POST" action="{{ route('admin.maintenance-plan.override.reset', $schedule) }}" data-spa-form="true" class="border-t border-amber-200 p-3 dark:border-amber-900/60" onsubmit="return confirm('Remove this temporary override and restore the original published schedule?')">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="w-full rounded-lg bg-gray-700 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500">Reset / remove override</button>
+                                            </form>
+                                        @endif
                                     </details>
                                     @if($row['is_complete'])
-                                        <button type="button" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700" @click="openCompletion({{ $schedule->id }}, @js(route('admin.maintenance-plan.complete', $schedule)), @js(['actual_date' => $row['completion']?->actual_date?->format('Y-m-d') ?? $row['latest_actual_date'] ?? now()->toDateString(), 'person_in_charge' => $row['completion']?->person_in_charge ?? '', 'signature' => $row['completion']?->signature ?? '', 'remarks' => $row['completion']?->remarks ?? '']))">
+                                        <button type="button" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700" @click="openCompletion({{ $schedule->id }}, @js(route('admin.maintenance-plan.complete', $schedule)), @js(['actual_date' => $row['completion']?->actual_date?->format('Y-m-d') ?? $row['latest_actual_date'] ?? now()->toDateString(), 'person_in_charge' => $row['person_in_charge'] ?? '', 'signer_name' => $row['completion']?->signer_name ?? '', 'signature_data' => $row['completion']?->signature_data ?? '', 'remarks' => $row['completion']?->remarks ?? '']))">
                                             {{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}
                                         </button>
                                     @endif
@@ -203,8 +245,23 @@
         </div>
     </section>
 
-    <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/70 p-4" role="dialog" aria-modal="true" @keydown.escape.window="open = false">
-        <div class="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800" @click.outside="open = false">
+    <div class="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:flex-row sm:items-center sm:justify-between">
+        <span class="text-gray-600 dark:text-gray-300">
+            @if($schedules->total() > 0)
+                Showing {{ $schedules->firstItem() }}–{{ $schedules->lastItem() }} of {{ $schedules->total() }} published schedules
+            @else
+                No published schedules
+            @endif
+        </span>
+        @if($schedules->hasPages())
+            {{ $schedules->onEachSide(1)->links() }}
+        @else
+            <span class="text-gray-500 dark:text-gray-400">Page 1 of 1</span>
+        @endif
+    </div>
+
+    <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-950/70 p-4 sm:items-center" role="dialog" aria-modal="true" @keydown.escape.window="open = false">
+        <div class="my-auto max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800" @click.outside="open = false">
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Record office completion</h2>
@@ -212,19 +269,44 @@
                 </div>
                 <button type="button" @click="open = false" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close">&times;</button>
             </div>
-            <form method="POST" :action="action" class="mt-5 space-y-4">
+            <form method="POST" :action="action" data-spa-form="true" class="mt-5 space-y-4">
                 @csrf
+                <input type="hidden" name="privacy_consent" :value="consentGiven ? '1' : '0'">
+                <div x-show="!consentGiven" x-cloak class="space-y-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
+                    <h3 class="font-semibold">Data Privacy consent</h3>
+                    <p>Under the Data Privacy Act of 2012 (Republic Act No. 10173), I consent to the collection and processing of my name and signature for preventive-maintenance monitoring, reporting, and records management.</p>
+                    <label class="flex items-start gap-2">
+                        <input type="checkbox" x-model="consentChecked" class="mt-0.5 h-4 w-4 rounded border-blue-400 text-blue-600 focus:ring-blue-500">
+                        <span>I have read and consent to proceed.</span>
+                    </label>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" @click="open = false" class="rounded-xl bg-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100">Cancel</button>
+                        <button type="button" @click="consentGiven = true" :disabled="!consentChecked" class="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Proceed</button>
+                    </div>
+                </div>
+                <div x-show="consentGiven" x-cloak class="space-y-4">
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Actual date</label>
                     <input type="date" name="actual_date" x-model="form.actual_date" required class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Person/s in charge</label>
-                    <input type="text" name="person_in_charge" x-model="form.person_in_charge" required maxlength="255" placeholder="Name of person/s in charge" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    <div class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100" x-text="form.person_in_charge || 'Names are taken from the users who marked the equipment checked.'"></div>
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Signature</label>
-                    <input type="text" name="signature" x-model="form.signature" required maxlength="255" placeholder="Typed signature or signatory name" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Name of signer</label>
+                    <input type="text" name="signer_name" x-model="form.signer_name" required maxlength="255" placeholder="Full name of the person signing" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Signature <span class="font-normal text-gray-500">(optional)</span></label>
+                    <input type="hidden" name="signature_data" x-model="form.signature_data">
+                    <div class="rounded-xl border border-dashed border-gray-400 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-900">
+                        <canvas id="completion-signature-pad" width="520" height="170" class="h-36 w-full touch-none rounded-lg bg-white dark:bg-gray-100" aria-label="Draw signature"></canvas>
+                        <div class="mt-2 flex items-center justify-between gap-2">
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Sign with your mouse, finger, or stylus.</span>
+                            <button type="button" @click="clearSignature()" class="rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100">Clear</button>
+                        </div>
+                    </div>
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Remarks</label>
@@ -233,6 +315,7 @@
                 <div class="flex justify-end gap-2">
                     <button type="button" @click="open = false" class="rounded-xl bg-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
                     <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700">Save completion</button>
+                </div>
                 </div>
             </form>
         </div>
@@ -253,12 +336,40 @@
     function maintenanceCompletionModal() {
         return {
             open: false,
+            consentChecked: false,
+            consentGiven: false,
             action: '',
-            form: { actual_date: '', person_in_charge: '', signature: '', remarks: '' },
+            form: { actual_date: '', person_in_charge: '', signer_name: '', signature_data: '', remarks: '' },
+            pad: null,
+            ctx: null,
+            drawing: false,
+            init() {
+                this.$nextTick(() => {
+                    const canvas = document.getElementById('completion-signature-pad');
+                    if (!canvas) return;
+                    this.pad = canvas;
+                    this.ctx = canvas.getContext('2d');
+                    this.ctx.lineWidth = 2;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.strokeStyle = '#111827';
+                    canvas.addEventListener('pointerdown', (event) => { this.drawing = true; canvas.setPointerCapture(event.pointerId); this.ctx.beginPath(); this.ctx.moveTo(...this.point(event)); });
+                    canvas.addEventListener('pointermove', (event) => { if (!this.drawing) return; this.ctx.lineTo(...this.point(event)); this.ctx.stroke(); });
+                    ['pointerup', 'pointercancel', 'pointerleave'].forEach((name) => canvas.addEventListener(name, () => { if (this.drawing) this.form.signature_data = this.pad.toDataURL('image/png'); this.drawing = false; }));
+                });
+            },
+            point(event) { const rect = this.pad.getBoundingClientRect(); return [(event.clientX - rect.left) * (this.pad.width / rect.width), (event.clientY - rect.top) * (this.pad.height / rect.height)]; },
+            clearSignature() { if (this.ctx) this.ctx.clearRect(0, 0, this.pad.width, this.pad.height); this.form.signature_data = ''; },
             openCompletion(id, action, form) {
                 this.action = action;
                 this.form = { ...this.form, ...(form || {}) };
+                this.consentChecked = false;
+                this.consentGiven = false;
                 this.open = true;
+                this.$nextTick(() => {
+                    if (!this.ctx) return;
+                    this.ctx.clearRect(0, 0, this.pad.width, this.pad.height);
+                    if (this.form.signature_data) { const image = new Image(); image.onload = () => this.ctx.drawImage(image, 0, 0, this.pad.width, this.pad.height); image.src = this.form.signature_data; }
+                });
             },
         };
     }

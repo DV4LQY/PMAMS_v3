@@ -29,6 +29,7 @@
     // permission. Super Admins remain unrestricted.
     $canDeleteCheckedHistory = auth()->user()?->isSuperAdmin()
         || auth()->user()?->canAction('checklist', 'delete');
+    $canBulkDeleteCheckedHistory = auth()->user()?->isSuperAdmin();
 @endphp
 
 <div class="space-y-5">
@@ -248,6 +249,14 @@
                     Print Selected PDF
 
                 </button>
+
+                @if($canDeleteCheckedHistory)
+                    <button type="button"
+                            onclick="openCheckedEquipmentDeleteRemarks()"
+                            class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                        Delete Selected History
+                    </button>
+                @endif
 
 
             </div>
@@ -515,11 +524,13 @@
             <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <h2 class="font-semibold text-red-900 dark:text-red-200">Delete checklist history</h2>
-                    <p class="mt-1 text-sm text-red-800/80 dark:text-red-200/80">Select individual rows above, or select every record matching the current report filters across all pages.</p>
-                    <label class="mt-3 inline-flex items-center gap-2 text-sm text-red-900 dark:text-red-200">
-                        <input id="checked-equipment-delete-all-toggle" type="checkbox" class="h-4 w-4">
-                        Select all checklist history matching these filters
-                    </label>
+                    <p class="mt-1 text-sm text-red-800/80 dark:text-red-200/80">Select individual rows above to move them to Checklist Cleanup.</p>
+                    @if($canBulkDeleteCheckedHistory)
+                        <label class="mt-3 inline-flex items-center gap-2 text-sm text-red-900 dark:text-red-200">
+                            <input id="checked-equipment-delete-all-toggle" type="checkbox" class="h-4 w-4">
+                            Select all checklist history matching these filters across every page
+                        </label>
+                    @endif
                 </div>
                 <div class="flex w-full flex-col gap-2 lg:w-auto lg:min-w-96">
                     <button type="button" onclick="openCheckedEquipmentDeleteRemarks()" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Delete selected history</button>

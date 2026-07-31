@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Device;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
@@ -79,6 +80,9 @@ class MaintenanceCleanupController extends Controller
         // another filter alone must never turn an empty selection into a bulk
         // delete request.
         $selectAll = (bool) ($data['select_all'] ?? false);
+        if ($selectAll) {
+            abort_unless($request->user()?->isSuperAdmin(), 403);
+        }
         if (! $selectAll && $ids->isEmpty()) {
             return back()->withErrors(['record_ids' => 'Select checklist history rows or choose select all matching records.']);
         }
@@ -128,7 +132,8 @@ class MaintenanceCleanupController extends Controller
         }
 
         $remarks = trim((string) ($data['remarks'] ?? ''));
-        DB::transaction(function () use ($records, $remarks) {
+        $deviceIds = $records->pluck('device_id')->filter()->unique()->values();
+        DB::transaction(function () use ($records, $remarks, $deviceIds) {
             foreach ($records as $record) {
                 ActivityLog::record(
                     'deleted',
@@ -146,6 +151,8 @@ class MaintenanceCleanupController extends Controller
 
                 $record->delete();
             }
+
+            $this->syncDeviceMaintenanceDates($deviceIds);
         });
 
         return back()->with('success', $records->count() . ' checklist history record(s) deleted.');
@@ -162,6 +169,7 @@ class MaintenanceCleanupController extends Controller
             ])
             ->findOrFail($record);
         $deletedRecord->restore();
+        $this->syncDeviceMaintenanceDates(collect([$deletedRecord->device_id]));
 
         ActivityLog::record(
             'restored',
@@ -207,10 +215,13 @@ class MaintenanceCleanupController extends Controller
             return back()->withErrors(['record_ids' => 'No deleted checklist history records match the selected criteria.']);
         }
 
-        DB::transaction(function () use ($records) {
+        $deviceIds = $records->pluck('device_id')->filter()->unique()->values();
+        DB::transaction(function () use ($records, $deviceIds) {
             foreach ($records as $record) {
                 $record->restore();
             }
+
+            $this->syncDeviceMaintenanceDates($deviceIds);
 
             ActivityLog::record(
                 'restored',
@@ -242,6 +253,7 @@ class MaintenanceCleanupController extends Controller
 
         $summary = DB::transaction(function () use ($deletedRecord, $remarks) {
             $summary = $this->permanentlyDeleteRecord($deletedRecord);
+            $this->syncDeviceMaintenanceDates(collect([$deletedRecord->device_id]));
             ActivityLog::record(
                 'force_deleted',
                 'Permanently deleted checklist history from Checklist Cleanup.',
@@ -291,7 +303,8 @@ class MaintenanceCleanupController extends Controller
             return back()->withErrors(['record_ids' => 'No deleted checklist history records match the selected criteria.']);
         }
 
-        $count = DB::transaction(function () use ($records, $remarks) {
+        $deviceIds = $records->pluck('device_id')->filter()->unique()->values();
+        $count = DB::transaction(function () use ($records, $remarks, $deviceIds) {
             foreach ($records as $record) {
                 $summary = $this->permanentlyDeleteRecord($record);
                 ActivityLog::record(
@@ -301,6 +314,8 @@ class MaintenanceCleanupController extends Controller
                     ActivityLog::makePayload($summary, ['deletion_remarks' => $remarks])
                 );
             }
+
+            $this->syncDeviceMaintenanceDates($deviceIds);
 
             return $records->count();
         });
@@ -328,5 +343,58 @@ class MaintenanceCleanupController extends Controller
         $record->forceDelete();
 
         return $summary;
+    }
+
+    /**
+     * Keep the equipment summary in sync with the surviving (non-deleted)
+     * checklist history after a cleanup or restore operation.
+     */
+    private function syncDeviceMaintenanceDates($deviceIds): void
+    {
+        $ids = collect($deviceIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $parentDevices = Device::withTrashed()->whereIn('id', $ids)->get();
+        $linkedDevices = Device::withTrashed()
+            ->whereIn('part_of_property_number', $parentDevices->pluck('property_number')->filter()->values())
+            ->get();
+
+        $latestByDevice = [];
+        $parentDevices->each(function ($device) use (&$latestByDevice) {
+            $latest = DeviceMaintenanceRecord::query()
+                ->where('device_id', $device->id)
+                ->orderByDesc('maintenance_date')
+                ->orderByDesc('id')
+                ->first();
+
+            $latestByDevice[$device->id] = $latest;
+            $device->forceFill([
+                'last_maintenance_date' => $latest?->maintenance_date,
+                'maintenance_remarks' => $latest?->remarks,
+            ])->saveQuietly();
+        });
+
+        // Checklist saves also copy the parent date/remarks to linked
+        // peripherals. Rebuild that copied summary when the parent history is
+        // deleted or restored so peripherals do not retain stale dates.
+        $parentLatestByProperty = $parentDevices->mapWithKeys(fn ($device) => [
+            (string) $device->property_number => $latestByDevice[$device->id] ?? null,
+        ]);
+        $linkedDevices->each(function ($device) use ($parentLatestByProperty) {
+            $ownLatest = DeviceMaintenanceRecord::query()
+                ->where('device_id', $device->id)
+                ->orderByDesc('maintenance_date')
+                ->orderByDesc('id')
+                ->first();
+            $parentLatest = $parentLatestByProperty->get((string) $device->part_of_property_number);
+            $latest = $ownLatest ?: $parentLatest;
+
+            $device->forceFill([
+                'last_maintenance_date' => $latest?->maintenance_date,
+                'maintenance_remarks' => $latest?->remarks,
+            ])->saveQuietly();
+        });
     }
 }

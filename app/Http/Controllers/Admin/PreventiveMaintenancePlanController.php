@@ -10,6 +10,7 @@ use App\Models\Location;
 use App\Models\MaintenancePlanCompletion;
 use App\Models\MaintenancePlanSchedule;
 use App\Models\Office;
+use App\Models\SystemSetting;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -23,26 +24,33 @@ class PreventiveMaintenancePlanController extends Controller
     {
         $locationId = $request->integer('location_id') ?: null;
         $officeId = $request->integer('office_id') ?: null;
-        $dateFrom = $request->query('date_from');
-        $dateTo = $request->query('date_to');
+        $monthFrom = $request->query('month_from');
+        $monthTo = $request->query('month_to');
+        $monthFromStart = $this->monthStartOrNull($monthFrom);
+        $monthToStart = $this->monthStartOrNull($monthTo);
 
         $schedules = $this->visibleSchedules($request)
             ->when($locationId, fn ($query) => $query->where('location_id', $locationId))
             ->when($officeId, fn ($query) => $query->where('office_id', $officeId))
-            ->when($dateFrom, fn ($query) => $query->whereDate('scheduled_date', '>=', $dateFrom))
-            ->when($dateTo, fn ($query) => $query->whereDate('scheduled_date', '<=', $dateTo))
+            ->when($monthFromStart, fn ($query) => $query->whereDate('schedule_month_to', '>=', $monthFromStart))
+            ->when($monthToStart, fn ($query) => $query->whereDate('schedule_month_from', '<=', $monthToStart))
             ->with([
                 'location:id,name,code',
                 'office:id,location_id,name',
                 'assignedUser:id,name,email,role',
+                'assignedUsers:id,name,email,role',
                 'latestOverride',
                 'completion',
             ])
             ->orderByDesc('scheduled_date')
             ->orderBy('location_id')
             ->orderBy('office_id')
-            ->get()
-            ->map(fn (MaintenancePlanSchedule $schedule) => $this->scheduleRow($schedule));
+            ->paginate(10)
+            ->withQueryString();
+
+        $schedules->setCollection(
+            $schedules->getCollection()->map(fn (MaintenancePlanSchedule $schedule) => $this->scheduleRow($schedule))
+        );
 
         return view('admin.maintenance-plan.index', [
             'schedules' => $schedules,
@@ -53,8 +61,8 @@ class PreventiveMaintenancePlanController extends Controller
                 ->get(['id', 'name', 'email', 'role']),
             'selectedLocationId' => $locationId,
             'selectedOfficeId' => $officeId,
-            'dateFrom' => $dateFrom,
-            'dateTo' => $dateTo,
+            'monthFrom' => $monthFrom,
+            'monthTo' => $monthTo,
         ]);
     }
 
@@ -73,10 +81,25 @@ class PreventiveMaintenancePlanController extends Controller
                     ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
                     ->whereNull('deleted_at')),
             ],
-            'scheduled_date' => ['required', 'date'],
+            'assigned_user_ids' => ['nullable', 'array'],
+            'assigned_user_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('users', 'id')->where(fn ($query) => $query
+                    ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                    ->whereNull('deleted_at')),
+            ],
+            'schedule_month_from' => ['required', 'date_format:Y-m'],
+            'schedule_month_to' => ['nullable', 'date_format:Y-m'],
             'title' => ['required', 'string', 'max:150'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $assignedUserIds = $this->assignedUserIds($data);
+        [$monthFrom, $monthTo] = $this->monthRange($data['schedule_month_from'], $data['schedule_month_to'] ?? null);
+        if ($monthTo->lt($monthFrom)) {
+            return back()->withInput()->withErrors(['schedule_month_to' => 'The ending month must be the same as or after the starting month.']);
+        }
 
         $location = Location::findOrFail($data['location_id']);
         $officeIds = collect($data['office_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
@@ -92,29 +115,36 @@ class PreventiveMaintenancePlanController extends Controller
 
         $targets = $offices->isEmpty() ? collect([null]) : $offices;
         $created = 0;
+        $duplicates = 0;
 
-        DB::transaction(function () use ($targets, $data, $location, &$created, $request) {
+        DB::transaction(function () use ($targets, $data, $assignedUserIds, $location, $monthFrom, $monthTo, &$created, &$duplicates, $request) {
             foreach ($targets as $office) {
-                $exists = MaintenancePlanSchedule::query()
+                $duplicateExists = MaintenancePlanSchedule::query()
                     ->where('location_id', $location->id)
                     ->where('office_id', $office?->id)
-                    ->whereDate('scheduled_date', $data['scheduled_date'])
-                    ->where('assigned_user_id', $data['assigned_user_id'] ?? null)
+                    ->whereDate('schedule_month_from', $monthFrom->toDateString())
+                    ->whereDate('schedule_month_to', $monthTo->toDateString())
                     ->exists();
 
-                if ($exists) {
+                if ($duplicateExists) {
+                    $duplicates++;
                     continue;
                 }
 
                 $schedule = MaintenancePlanSchedule::create([
                     'location_id' => $location->id,
                     'office_id' => $office?->id,
-                    'assigned_user_id' => $data['assigned_user_id'] ?? null,
+                    // Keep the first assignment in the legacy column for
+                    // existing integrations; the pivot stores the full list.
+                    'assigned_user_id' => $assignedUserIds[0] ?? null,
                     'created_by' => $request->user()->id,
-                    'scheduled_date' => $data['scheduled_date'],
+                    'scheduled_date' => $monthFrom->toDateString(),
+                    'schedule_month_from' => $monthFrom->toDateString(),
+                    'schedule_month_to' => $monthTo->toDateString(),
                     'title' => $data['title'],
                     'notes' => $data['notes'] ?? null,
                 ]);
+                $schedule->assignedUsers()->sync($assignedUserIds);
 
                 ActivityLog::record(
                     'created',
@@ -123,8 +153,9 @@ class PreventiveMaintenancePlanController extends Controller
                     ActivityLog::makePayload([
                         'location' => $location->name,
                         'office' => $office?->name,
-                        'scheduled_date' => $data['scheduled_date'],
-                        'assigned_user_id' => $data['assigned_user_id'] ?? null,
+                        'schedule_month_from' => $monthFrom->format('Y-m'),
+                        'schedule_month_to' => $monthTo->format('Y-m'),
+                        'assigned_user_ids' => $assignedUserIds,
                         'title' => $data['title'],
                     ])
                 );
@@ -132,11 +163,127 @@ class PreventiveMaintenancePlanController extends Controller
             }
         });
 
-        $message = $created
-            ? "Created {$created} preventive maintenance schedule(s)."
-            : 'No new schedule was created because the same target/date/assignee already exists.';
+        $message = $created > 0
+            ? "PM Plan published successfully. Created {$created} preventive maintenance schedule(s)."
+            : 'No new schedule was published.';
+        $warning = $duplicates > 0
+            ? ($created > 0
+                ? "Duplicate detection: {$duplicates} schedule(s) were skipped because the selected location/office and month range already exist."
+                : 'Duplicate PM Plan detected. No new schedule was published because the selected location/office and month range already exist.')
+            : null;
 
-        return redirect()->route('admin.maintenance-plan.index')->with('success', $message);
+        if ($request->header('X-SPA-Request') === '1') {
+            if ($created > 0) {
+                $request->session()->flash('success', $message);
+            }
+            if ($warning) {
+                $request->session()->flash('warning', $warning);
+            }
+
+            return response()->json([
+                'redirect' => route('admin.maintenance-plan.index'),
+                'success' => $created > 0 ? $message : null,
+                'warning' => $warning,
+            ]);
+        }
+
+        $redirect = redirect()->route('admin.maintenance-plan.index')->with('success', $message);
+        if ($warning) {
+            $redirect->with('warning', $warning);
+        }
+
+        return $redirect;
+    }
+
+    public function update(Request $request, MaintenancePlanSchedule $schedule)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'schedule_month_from' => ['required', 'date_format:Y-m'],
+            'schedule_month_to' => ['nullable', 'date_format:Y-m'],
+            'assigned_user_id' => [
+                'nullable', 'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query
+                    ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                    ->whereNull('deleted_at')),
+            ],
+            'assigned_user_ids' => ['nullable', 'array'],
+            'assigned_user_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('users', 'id')->where(fn ($query) => $query
+                    ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                    ->whereNull('deleted_at')),
+            ],
+            'title' => ['required', 'string', 'max:150'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $assignedUserIds = $this->assignedUserIds($data);
+        [$monthFrom, $monthTo] = $this->monthRange($data['schedule_month_from'], $data['schedule_month_to'] ?? null);
+        if ($monthTo->lt($monthFrom)) {
+            return back()->withInput()->withErrors(['schedule_month_to' => 'The ending month must be the same as or after the starting month.']);
+        }
+
+        $schedule->update([
+            'scheduled_date' => $monthFrom->toDateString(),
+            'schedule_month_from' => $monthFrom->toDateString(),
+            'schedule_month_to' => $monthTo->toDateString(),
+            'assigned_user_id' => $assignedUserIds[0] ?? null,
+            'title' => $data['title'],
+            'notes' => $data['notes'] ?? null,
+        ]);
+        $schedule->assignedUsers()->sync($assignedUserIds);
+
+        ActivityLog::record('updated', 'Edited preventive maintenance schedule for ' . $this->scheduleTargetLabel($schedule->load(['location', 'office'])), $schedule, ActivityLog::makePayload([
+            'schedule_month_from' => $monthFrom->format('Y-m'),
+            'schedule_month_to' => $monthTo->format('Y-m'),
+            'assigned_user_ids' => $assignedUserIds,
+            'title' => $data['title'],
+        ]));
+
+        return back()->with('success', 'Preventive maintenance schedule updated.');
+    }
+
+    /**
+     * Remove a published PM schedule. This is intentionally restricted to
+     * Super Admin because deleting a schedule also removes its temporary
+     * overrides and office-completion sign-off row through the existing
+     * foreign-key cascades. Equipment checklist history is stored separately
+     * and is not affected.
+     */
+    public function destroy(Request $request, MaintenancePlanSchedule $schedule)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $schedule->load(['location', 'office', 'latestOverride', 'completion']);
+        $targetLabel = $this->scheduleTargetLabel($schedule);
+        $scheduleId = $schedule->id;
+
+        DB::transaction(function () use ($schedule, $targetLabel, $scheduleId) {
+            ActivityLog::record(
+                'deleted',
+                'Removed preventive maintenance schedule for ' . $targetLabel,
+                $schedule,
+                ActivityLog::makePayload([
+                    'schedule_id' => $scheduleId,
+                    'location' => $schedule->location?->name,
+                    'office' => $schedule->office?->name,
+                    'schedule_month_from' => optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m'),
+                    'schedule_month_to' => optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m'),
+                    'assigned_user_ids' => $this->assignedUserIdsForSchedule($schedule),
+                    'removed_override' => (bool) $schedule->latestOverride,
+                    'removed_completion' => (bool) $schedule->completion,
+                    'reason' => 'Published PM schedule removed by Super Admin.',
+                ])
+            );
+
+            $schedule->delete();
+        });
+
+        return redirect()->route('admin.maintenance-plan.index')
+            ->with('success', 'The scheduled preventive maintenance plan was removed. Equipment checklist history was retained.');
     }
 
     public function override(Request $request, MaintenancePlanSchedule $schedule)
@@ -144,12 +291,16 @@ class PreventiveMaintenancePlanController extends Controller
         $this->authorizeSchedule($schedule, $request->user());
 
         $data = $request->validate([
-            'override_date' => ['required', 'date'],
+            'override_date' => ['required', 'date_format:Y-m-d'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
 
+        $overrideDate = Carbon::createFromFormat('Y-m-d', $data['override_date'])->startOfDay();
+
         $override = $schedule->overrides()->create([
-            'override_date' => $data['override_date'],
+            'override_date' => $overrideDate->toDateString(),
+            'override_month_from' => $overrideDate->toDateString(),
+            'override_month_to' => $overrideDate->toDateString(),
             'reason' => $data['reason'],
             'overridden_by' => $request->user()->id,
         ]);
@@ -159,13 +310,40 @@ class PreventiveMaintenancePlanController extends Controller
             'Temporarily rescheduled preventive maintenance for ' . $this->scheduleTargetLabel($schedule->load(['location', 'office'])),
             $schedule,
             ActivityLog::makePayload([
-                'original_schedule' => optional($schedule->scheduled_date)->format('Y-m-d'),
-                'override_schedule' => $override->override_date->format('Y-m-d'),
+                'original_schedule' => $this->formatMonthRange($schedule->schedule_month_from ?: $schedule->scheduled_date, $schedule->schedule_month_to ?: $schedule->scheduled_date),
+                'override_schedule' => $this->formatOverrideDate($overrideDate),
                 'reason' => $override->reason,
             ])
         );
 
         return back()->with('success', 'Override schedule saved. The original schedule remains unchanged.');
+    }
+
+    public function resetOverride(Request $request, MaintenancePlanSchedule $schedule)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $overrides = $schedule->overrides()->orderByDesc('id')->get();
+        if ($overrides->isEmpty()) {
+            return back()->with('success', 'This schedule has no temporary override to remove.');
+        }
+
+        DB::transaction(function () use ($schedule, $overrides) {
+            $schedule->overrides()->delete();
+
+            ActivityLog::record(
+                'updated',
+                'Removed temporary preventive maintenance override for ' . $this->scheduleTargetLabel($schedule->load(['location', 'office'])),
+                $schedule,
+                ActivityLog::makePayload([
+                    'removed_override_count' => $overrides->count(),
+                    'removed_override_dates' => $overrides->map(fn ($override) => $this->formatOverrideDate($override->override_date ?: $override->override_month_from))->values()->all(),
+                    'reason' => 'Override reset; original published schedule restored.',
+                ])
+            );
+        });
+
+        return back()->with('success', 'Override removed. The original published schedule is active again.');
     }
 
     public function complete(Request $request, MaintenancePlanSchedule $schedule)
@@ -181,17 +359,26 @@ class PreventiveMaintenancePlanController extends Controller
 
         $data = $request->validate([
             'actual_date' => ['required', 'date', 'before_or_equal:today'],
-            'person_in_charge' => ['required', 'string', 'max:255'],
-            'signature' => ['required', 'string', 'max:255'],
+            'signer_name' => ['required', 'string', 'max:255'],
+            'signature_data' => ['nullable', 'string', 'max:500000'],
+            'privacy_consent' => ['accepted'],
             'remarks' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $personInCharge = $progress['checker_names']
+            ?: $schedule->completion?->person_in_charge
+            ?: 'Not recorded in checklist';
 
         $completion = MaintenancePlanCompletion::updateOrCreate(
             ['maintenance_plan_schedule_id' => $schedule->id],
             [
                 'actual_date' => $data['actual_date'],
-                'person_in_charge' => $data['person_in_charge'],
-                'signature' => $data['signature'],
+                'person_in_charge' => $personInCharge,
+                'signer_name' => $data['signer_name'],
+                // Keep the legacy text column populated for old exports; the
+                // actual drawn signature is stored in the dedicated text field.
+                'signature' => filled($data['signature_data'] ?? null) ? 'Digital signature' : null,
+                'signature_data' => $data['signature_data'] ?? null,
                 'remarks' => $data['remarks'] ?? null,
                 'completed_by' => $request->user()->id,
             ]
@@ -204,7 +391,9 @@ class PreventiveMaintenancePlanController extends Controller
             ActivityLog::makePayload([
                 'actual_date' => $completion->actual_date->format('Y-m-d'),
                 'person_in_charge' => $completion->person_in_charge,
-                'signature' => $completion->signature,
+                'signer_name' => $completion->signer_name,
+                'signature' => $completion->signature_data ? 'Digital signature' : $completion->signature,
+                'privacy_consent' => true,
                 'remarks' => $completion->remarks,
             ])
         );
@@ -218,8 +407,8 @@ class PreventiveMaintenancePlanController extends Controller
 
         return view('admin.reports.preventive-maintenance-schedule', [
             'rows' => $rows,
-            'dateFrom' => $request->query('date_from'),
-            'dateTo' => $request->query('date_to'),
+            'monthFrom' => $request->query('month_from'),
+            'monthTo' => $request->query('month_to'),
             'locationId' => $request->integer('location_id') ?: null,
             'officeId' => $request->integer('office_id') ?: null,
             'locations' => Location::with('offices')->orderBy('name')->get(),
@@ -233,7 +422,9 @@ class PreventiveMaintenancePlanController extends Controller
             'rows' => $this->reportRows($request),
             'generatedAt' => now(),
             'unitHead' => User::where('role', User::ROLE_UNIT_HEAD)->first(),
-        ])->setPaper('a4', 'landscape');
+        // 8.5 x 13 inch long-bond paper in landscape orientation.
+        // Dompdf custom paper dimensions are expressed in points (72/in).
+        ])->setPaper([0, 0, 936, 612]);
 
         return $pdf->download('preventive-maintenance-schedule-monitoring.pdf');
     }
@@ -241,7 +432,8 @@ class PreventiveMaintenancePlanController extends Controller
     /**
      * Used by the checklist controller to protect marking checked records.
      * A plan with no assignee is visible to every Admin/Unit Head; an assigned
-     * plan is visible only to that account. Super Admin remains unrestricted.
+     * plan is visible to any account in its assignment list. Super Admin
+     * remains unrestricted.
      */
     public static function canMarkDevice(User $user, Device $device): bool
     {
@@ -256,17 +448,22 @@ class PreventiveMaintenancePlanController extends Controller
         ]);
         $assignment = $device->currentAssignment;
         $office = $assignment?->office ?: $assignment?->staff?->office;
-        $location = $assignment?->location ?: $office?->location;
+        // The office (including a staff member's office) is the authoritative
+        // source when both office and location values exist. Older issuance
+        // rows can retain a stale direct location_id, which previously caused
+        // a false 403 after a PM Plan assignment was edited.
+        $officeId = $office?->id;
+        $locationId = $office?->location_id ?: $assignment?->location_id;
 
-        if (! $location) {
+        if (! $locationId) {
             return false;
         }
 
         $target = MaintenancePlanSchedule::query()
-            ->where('location_id', $location->id)
-            ->where(function ($query) use ($office) {
-                if ($office) {
-                    $query->where('office_id', $office->id)->orWhereNull('office_id');
+            ->where('location_id', $locationId)
+            ->where(function ($query) use ($officeId) {
+                if ($officeId) {
+                    $query->where('office_id', $officeId)->orWhereNull('office_id');
                 } else {
                     $query->whereNull('office_id');
                 }
@@ -277,7 +474,13 @@ class PreventiveMaintenancePlanController extends Controller
         }
 
         return $target->where(function ($query) use ($user) {
-            $query->whereNull('assigned_user_id')->orWhere('assigned_user_id', $user->id);
+            $query
+                ->where(function ($unassigned) {
+                    $unassigned->whereNull('assigned_user_id')
+                        ->whereDoesntHave('assignedUsers');
+                })
+                ->orWhere('assigned_user_id', $user->id)
+                ->orWhereHas('assignedUsers', fn ($assigned) => $assigned->whereKey($user->id));
         })->exists();
     }
 
@@ -288,17 +491,25 @@ class PreventiveMaintenancePlanController extends Controller
 
     private function authorizeSchedule(MaintenancePlanSchedule $schedule, ?User $user): void
     {
-        abort_unless($user && ($user->isSuperAdmin() || $schedule->assigned_user_id === null || (int) $schedule->assigned_user_id === (int) $user->id), 403);
+        if (! $user || $user->isSuperAdmin()) {
+            return;
+        }
+
+        $assignedUserIds = $this->assignedUserIdsForSchedule($schedule);
+        abort_unless($assignedUserIds === [] || in_array((int) $user->id, $assignedUserIds, true), 403);
     }
 
     private function reportRows(Request $request)
     {
+        $monthFrom = $this->monthStartOrNull($request->query('month_from'));
+        $monthTo = $this->monthStartOrNull($request->query('month_to'));
+
         return $this->visibleSchedules($request)
             ->when($request->integer('location_id'), fn ($query, $id) => $query->where('location_id', $id))
             ->when($request->integer('office_id'), fn ($query, $id) => $query->where('office_id', $id))
-            ->when($request->query('date_from'), fn ($query, $date) => $query->whereDate('scheduled_date', '>=', $date))
-            ->when($request->query('date_to'), fn ($query, $date) => $query->whereDate('scheduled_date', '<=', $date))
-            ->with(['location', 'office', 'latestOverride', 'completion', 'assignedUser'])
+            ->when($monthFrom, fn ($query) => $query->whereDate('schedule_month_to', '>=', $monthFrom))
+            ->when($monthTo, fn ($query) => $query->whereDate('schedule_month_from', '<=', $monthTo))
+            ->with(['location', 'office', 'latestOverride', 'completion', 'assignedUser', 'assignedUsers'])
             ->orderBy('location_id')
             ->orderBy('office_id')
             ->orderBy('scheduled_date')
@@ -313,24 +524,40 @@ class PreventiveMaintenancePlanController extends Controller
 
         return [
             'schedule' => $schedule,
-            'office' => $this->scheduleTargetLabel($schedule),
-            'original_schedule' => optional($schedule->scheduled_date)->format('m/d/Y'),
-            'override_schedule' => optional($override?->override_date)->format('m/d/Y'),
+            // Monitoring reports use the registered location and office
+            // names in a compact "Location - Office" format. The setup page
+            // continues to show the location code separately.
+            'office' => collect([
+                $schedule->location?->name,
+                $schedule->office?->name,
+            ])->filter()->join(' - ') ?: 'Unassigned location',
+            'original_schedule' => $this->formatMonthRange($schedule->schedule_month_from ?: $schedule->scheduled_date, $schedule->schedule_month_to ?: $schedule->scheduled_date),
+            'override_schedule' => $override ? $this->formatOverrideDate($override->override_date ?: $override->override_month_from) : null,
             'override_reason' => $override?->reason,
             'effective_schedule' => $progress['effective_date']->format('m/d/Y'),
             'actual_date' => $progress['actual_dates'],
             'latest_actual_date' => $progress['actual_date']?->format('Y-m-d'),
+            'person_in_charge' => $progress['checker_names'] ?: $schedule->completion?->person_in_charge,
             'total_equipment' => $progress['total'],
             'checked_equipment' => $progress['checked'],
             'is_complete' => $progress['is_complete'],
-            'completion' => $schedule->completion,
+            'completion' => $this->currentCompletion($schedule),
         ];
     }
 
     private function scheduleProgress(MaintenancePlanSchedule $schedule): array
     {
-        $effectiveDate = $schedule->latestOverride?->override_date ?? $schedule->scheduled_date;
+        $effectiveDate = $schedule->latestOverride?->override_month_from
+            ?? $schedule->latestOverride?->override_date
+            ?? $schedule->schedule_month_from
+            ?? $schedule->scheduled_date;
         $effectiveDate = $effectiveDate instanceof Carbon ? $effectiveDate->copy() : Carbon::parse($effectiveDate);
+
+        $completion = $this->currentCompletion($schedule);
+        $cycleStart = $effectiveDate->copy();
+        if (! $completion && $schedule->completion?->actual_date) {
+            $cycleStart = $cycleStart->max(Carbon::parse($schedule->completion->actual_date)->addMonthsNoOverflow($this->duplicateWindowMonths()));
+        }
 
         $devices = $this->targetDevices($schedule);
         $deviceIds = $devices->pluck('id');
@@ -338,7 +565,8 @@ class PreventiveMaintenancePlanController extends Controller
             ? collect()
             : DeviceMaintenanceRecord::query()
                 ->whereIn('device_id', $deviceIds)
-                ->whereDate('maintenance_date', '>=', $effectiveDate->toDateString())
+                ->whereDate('maintenance_date', '>=', $cycleStart->toDateString())
+                ->with('checkedBy:id,name')
                 ->orderByDesc('maintenance_date')
                 ->orderByDesc('id')
                 ->get()
@@ -357,6 +585,14 @@ class PreventiveMaintenancePlanController extends Controller
             ->values()
             ->implode(', ');
 
+        $checkerNames = $records->flatten()
+            ->map(fn ($record) => $record->checkedBy?->name)
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->implode(', ');
+
         return [
             'effective_date' => $effectiveDate,
             'total' => $devices->count(),
@@ -364,6 +600,7 @@ class PreventiveMaintenancePlanController extends Controller
             'is_complete' => $isComplete,
             'actual_date' => $actualDate,
             'actual_dates' => $actualDates,
+            'checker_names' => $checkerNames,
         ];
     }
 
@@ -395,5 +632,99 @@ class PreventiveMaintenancePlanController extends Controller
             : ($schedule->location?->name ?? 'Unassigned location');
 
         return $schedule->office?->name ? $location . ' / ' . $schedule->office->name : $location;
+    }
+
+    /**
+     * Normalize the new multi-select field while accepting the legacy
+     * assigned_user_id field from older clients and bookmarked forms.
+     *
+     * @param array<string, mixed> $data
+     * @return list<int>
+     */
+    private function assignedUserIds(array $data): array
+    {
+        $ids = collect($data['assigned_user_ids'] ?? []);
+        if (array_key_exists('assigned_user_id', $data) && filled($data['assigned_user_id'])) {
+            $ids->push($data['assigned_user_id']);
+        }
+
+        return $ids
+            ->filter(fn ($id) => is_numeric($id) && (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Return both pivot assignments and the legacy primary assignment so
+     * schedules created before the pivot migration compare correctly.
+     *
+     * @return list<int>
+     */
+    private function assignedUserIdsForSchedule(MaintenancePlanSchedule $schedule): array
+    {
+        return collect($schedule->assignedUsers()->pluck('users.id')->all())
+            ->push($schedule->assigned_user_id)
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    private function monthRange(string $from, ?string $to): array
+    {
+        $start = Carbon::createFromFormat('Y-m', $from)->startOfMonth();
+        $end = Carbon::createFromFormat('Y-m', $to ?: $from)->startOfMonth();
+
+        return [$start, $end];
+    }
+
+    private function monthStartOrNull(?string $month): ?Carbon
+    {
+        if (! $month) {
+            return null;
+        }
+
+        try {
+            return Carbon::createFromFormat('!Y-m', $month)->startOfMonth();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function formatMonthRange(mixed $from, mixed $to): string
+    {
+        $start = $from instanceof Carbon ? $from->copy() : Carbon::parse($from);
+        $end = $to instanceof Carbon ? $to->copy() : Carbon::parse($to);
+
+        return $start->format('F Y') . ($start->isSameMonth($end) ? '' : ' - ' . $end->format('F Y'));
+    }
+
+    private function formatOverrideDate(mixed $date): string
+    {
+        $value = $date instanceof Carbon ? $date->copy() : Carbon::parse($date);
+
+        return $value->format('m/d/Y');
+    }
+
+    private function duplicateWindowMonths(): int
+    {
+        return max(1, min(36, (int) SystemSetting::getValue('maintenance_checklist_duplicate_window_months', 3)));
+    }
+
+    private function currentCompletion(MaintenancePlanSchedule $schedule): ?MaintenancePlanCompletion
+    {
+        $completion = $schedule->completion;
+        if (! $completion?->actual_date) {
+            return $completion;
+        }
+
+        return Carbon::parse($completion->actual_date)->addMonthsNoOverflow($this->duplicateWindowMonths())->isFuture()
+            ? $completion
+            : null;
     }
 }

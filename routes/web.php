@@ -109,8 +109,17 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
         Route::post('/maintenance-plan', [PreventiveMaintenancePlanController::class, 'store'])
             ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.store');
+        Route::put('/maintenance-plan/{schedule}', [PreventiveMaintenancePlanController::class, 'update'])
+            ->middleware('role:super_admin')
+            ->name('admin.maintenance-plan.update');
+        Route::delete('/maintenance-plan/{schedule}', [PreventiveMaintenancePlanController::class, 'destroy'])
+            ->middleware('role:super_admin')
+            ->name('admin.maintenance-plan.destroy');
         Route::post('/maintenance-plan/{schedule}/override', [PreventiveMaintenancePlanController::class, 'override'])
             ->name('admin.maintenance-plan.override');
+        Route::delete('/maintenance-plan/{schedule}/override', [PreventiveMaintenancePlanController::class, 'resetOverride'])
+            ->middleware('role:super_admin')
+            ->name('admin.maintenance-plan.override.reset');
         Route::post('/maintenance-plan/{schedule}/complete', [PreventiveMaintenancePlanController::class, 'complete'])
             ->name('admin.maintenance-plan.complete');
         Route::middleware('role:super_admin')->group(function () {

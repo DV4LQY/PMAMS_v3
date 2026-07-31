@@ -11,7 +11,9 @@ class MaintenancePlanCompletion extends Model
         'maintenance_plan_schedule_id',
         'actual_date',
         'person_in_charge',
+        'signer_name',
         'signature',
+        'signature_data',
         'remarks',
         'completed_by',
     ];

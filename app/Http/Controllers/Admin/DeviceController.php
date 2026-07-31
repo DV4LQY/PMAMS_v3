@@ -82,7 +82,10 @@ class DeviceController extends Controller
         $selectedLocation = $locationId
             ? $locations->firstWhere('id', $locationId)
             : null;
-        $showOfficeFilter = strtoupper(trim((string) ($selectedLocation?->code ?? ''))) === 'ADMIN';
+        // Offices are scoped to whichever location is selected. Previously
+        // this was limited to the ADMIN code, which made office filtering
+        // unavailable for all other registered locations.
+        $showOfficeFilter = $selectedLocation !== null;
         $offices = $showOfficeFilter
             ? Office::where('location_id', $locationId)
                 ->with('location')
@@ -91,7 +94,11 @@ class DeviceController extends Controller
                 ->get()
             : collect();
 
-        if (!$showOfficeFilter) {
+        // The office selector is dependent on the selected location. Clear
+        // an office from an old query string when it no longer belongs to
+        // that location so the filter can never return another location's
+        // inventory.
+        if (!$showOfficeFilter || ($officeId && !$offices->contains('id', $officeId))) {
             $officeId = null;
         }
 

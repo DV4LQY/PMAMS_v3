@@ -10,12 +10,16 @@ class MaintenancePlanOverride extends Model
     protected $fillable = [
         'maintenance_plan_schedule_id',
         'override_date',
+        'override_month_from',
+        'override_month_to',
         'reason',
         'overridden_by',
     ];
 
     protected $casts = [
         'override_date' => 'date',
+        'override_month_from' => 'date',
+        'override_month_to' => 'date',
     ];
 
     public function schedule(): BelongsTo
