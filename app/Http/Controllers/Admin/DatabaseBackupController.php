@@ -10,8 +10,10 @@ use App\Models\Location;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 class DatabaseBackupController extends Controller
@@ -105,21 +107,99 @@ class DatabaseBackupController extends Controller
             return back()->withErrors(['backup' => 'Only .sql or .txt SQL backup files are allowed.']);
         }
 
-        $sql = @file_get_contents($file->getRealPath());
-        if (! is_string($sql) || trim($sql) === '') {
+        $uploadPath = $file->getRealPath();
+        if (! is_string($uploadPath) || ! is_readable($uploadPath) || (int) @filesize($uploadPath) === 0) {
             return back()->withErrors(['backup' => 'The selected SQL backup is empty or could not be read.']);
         }
 
-        $statements = $this->splitStatements($sql);
-        if ($statements === []) {
-            return back()->withErrors(['backup' => 'No executable SQL statements were found in the backup.']);
+        $maintenanceStarted = false;
+        $safetyBackup = null;
+        $executed = 0;
+
+        try {
+            // Prevent users from writing while tables are being replaced.
+            // The current request continues, then maintenance mode is removed
+            // in finally even when the restore fails.
+            if (! app()->isDownForMaintenance()) {
+                Artisan::call('down');
+                $maintenanceStarted = true;
+            }
+
+            // Always keep a rollback point before replacing the live database.
+            $safetyBackup = 'backups/pre-restore-' . now()->format('Ymd-His-u') . '.sql';
+            Storage::disk('local')->makeDirectory('backups');
+            Storage::disk('local')->put($safetyBackup, $this->buildDump());
+
+            // Process the upload as a stream so a large SQL file is not copied
+            // into a second in-memory string or statement array.
+            $executed = $this->executeRestoreFile($uploadPath);
+
+            // A backup may come from an older deployment. Run migrations after
+            // import so required columns (for example deleted_at) are restored.
+            if (Artisan::call('migrate', ['--force' => true]) !== 0) {
+                throw new \RuntimeException('Post-restore migrations did not complete successfully.');
+            }
+
+            try {
+                ActivityLog::record('restored', 'Restored a database backup SQL file.', null, [
+                    'statements' => $executed,
+                    'filename' => $file->getClientOriginalName(),
+                    'safety_backup' => $safetyBackup,
+                ]);
+            } catch (Throwable $loggingException) {
+                // A restored legacy schema must not be rolled back merely
+                // because the audit entry could not be written.
+                report($loggingException);
+            }
+
+            return back()->with('success', "Database restore completed ({$executed} SQL statements processed). A pre-restore safety backup was saved to {$safetyBackup}.");
+        } catch (Throwable $exception) {
+            report($exception);
+
+            $recovered = false;
+            if ($safetyBackup !== null && Storage::disk('local')->exists($safetyBackup)) {
+                try {
+                    $this->executeRestoreFile(Storage::disk('local')->path($safetyBackup));
+                    Artisan::call('migrate', ['--force' => true]);
+                    $recovered = true;
+                } catch (Throwable $recoveryException) {
+                    report($recoveryException);
+                }
+            }
+
+            $message = $recovered
+                ? 'The SQL restore failed. The database was automatically restored from the pre-restore safety backup; verify the application before continuing.'
+                : 'The SQL restore failed and automatic recovery could not be confirmed. Keep the pre-restore safety backup and have the database administrator verify or restore it before continuing.';
+
+            return back()->withErrors(['backup' => $message]);
+        } finally {
+            if ($maintenanceStarted) {
+                try {
+                    Artisan::call('up');
+                } catch (Throwable $maintenanceException) {
+                    report($maintenanceException);
+                }
+            }
+        }
+    }
+
+    /**
+     * Execute a SQL file incrementally. DDL is not transactional, so this is
+     * paired with the pre-restore safety backup and recovery path above.
+     */
+    private function executeRestoreFile(string $path): int
+    {
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            throw new \RuntimeException('The SQL backup could not be opened.');
         }
 
         $executed = 0;
+
         try {
             DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
-            foreach ($statements as $statement) {
+            foreach ($this->streamStatements($handle) as $statement) {
                 $normalized = trim($statement);
                 if ($normalized === '' || preg_match('/^(DELIMITER|LOCK TABLES|UNLOCK TABLES)\b/i', $normalized)) {
                     continue;
@@ -129,32 +209,119 @@ class DatabaseBackupController extends Controller
                 if (trim($normalized) === '') {
                     continue;
                 }
+
                 foreach ($this->splitLargeInsert($normalized) as $insertStatement) {
                     DB::unprepared($insertStatement);
                     $executed++;
                 }
             }
-        } catch (Throwable $exception) {
-            report($exception);
-
+        } finally {
             try {
                 DB::statement('SET FOREIGN_KEY_CHECKS=1');
-            } catch (Throwable) {
-                // Preserve the sanitized restore error if cleanup also fails.
+            } finally {
+                fclose($handle);
             }
-
-            return back()->withErrors([
-                'backup' => 'The SQL restore failed. The database may be partially restored; verify it before continuing.',
-            ]);
         }
 
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
-        ActivityLog::record('restored', 'Restored a database backup SQL file.', null, [
-            'statements' => $executed,
-            'filename' => $file->getClientOriginalName(),
-        ]);
+        if ($executed === 0) {
+            throw new \RuntimeException('No executable SQL statements were found in the backup.');
+        }
 
-        return back()->with('success', "Database restore completed ({$executed} SQL statements processed). Review the application before allowing normal users back in.");
+        return $executed;
+    }
+
+    /**
+     * Yield SQL statements without loading the complete upload into memory.
+     * This supports ordinary phpMyAdmin/MySQL dumps and preserves semicolons
+     * inside quoted values.
+     */
+    private function streamStatements($handle): \Generator
+    {
+        $buffer = '';
+        $single = false;
+        $double = false;
+        $backtick = false;
+        $lineComment = false;
+        $blockComment = false;
+
+        while (($line = fgets($handle)) !== false) {
+            if (preg_match('/^\s*DELIMITER\s+/i', $line)) {
+                continue;
+            }
+
+            $length = strlen($line);
+            for ($i = 0; $i < $length; $i++) {
+                $char = $line[$i];
+                $next = $i + 1 < $length ? $line[$i + 1] : '';
+
+                if ($lineComment) {
+                    if ($char === "\n") {
+                        $lineComment = false;
+                    }
+                    continue;
+                }
+
+                if ($blockComment) {
+                    if ($char === '*' && $next === '/') {
+                        $blockComment = false;
+                        $i++;
+                    }
+                    continue;
+                }
+
+                if (! $single && ! $double && ! $backtick) {
+                    if ($char === '#' || ($char === '-' && $next === '-' && ($i + 2 >= $length || ctype_space($line[$i + 2])))) {
+                        $lineComment = true;
+                        if ($char === '-') {
+                            $i++;
+                        }
+                        continue;
+                    }
+
+                    if ($char === '/' && $next === '*') {
+                        $blockComment = true;
+                        $i++;
+                        continue;
+                    }
+                }
+
+                if ($char === "'" && ! $double && ! $backtick) {
+                    if ($single && $next === "'") {
+                        $buffer .= $char . $next;
+                        $i++;
+                        continue;
+                    }
+                    $single = ! $single;
+                } elseif ($char === '"' && ! $single && ! $backtick) {
+                    if ($double && $next === '"') {
+                        $buffer .= $char . $next;
+                        $i++;
+                        continue;
+                    }
+                    $double = ! $double;
+                } elseif ($char === '`' && ! $single && ! $double) {
+                    $backtick = ! $backtick;
+                } elseif ($char === '\\' && ($single || $double) && $next !== '') {
+                    $buffer .= $char . $next;
+                    $i++;
+                    continue;
+                }
+
+                if ($char === ';' && ! $single && ! $double && ! $backtick) {
+                    if (trim($buffer) !== '') {
+                        yield trim($buffer);
+                    }
+                    $buffer = '';
+                    continue;
+                }
+
+                $buffer .= $char;
+            }
+        }
+
+        if (trim($buffer) !== '') {
+            yield trim($buffer);
+        }
     }
 
     private function ensureSupportedDriver(): void

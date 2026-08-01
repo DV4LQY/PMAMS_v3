@@ -1,12 +1,12 @@
 @extends('admin.layouts.app')
 
-@section('title', 'Support')
-@section('page_title', 'Support')
+@section('title', 'Contributors')
+@section('page_title', 'Contributors')
 
 @section('breadcrumb')
     <a href="{{ route('admin.dashboard') }}" class="hover:text-blue-600 dark:hover:text-blue-400">Dashboard</a>
     <span class="text-gray-400">/</span>
-    <span class="font-medium text-gray-800 dark:text-gray-100">Support</span>
+    <span class="font-medium text-gray-800 dark:text-gray-100">Contributors</span>
 @endsection
 
 @section('content')
@@ -17,10 +17,10 @@
 <div class="space-y-6">
     <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 px-6 py-8 text-white">
-            <p class="text-sm font-semibold uppercase tracking-[0.25em] text-blue-100">Support Team</p>
+            <p class="text-sm font-semibold uppercase tracking-[0.25em] text-blue-100">Contributors</p>
             <h1 class="mt-2 text-3xl font-bold">Developer Contacts</h1>
             <p class="mt-2 max-w-2xl text-sm text-blue-50">
-                Contact the development team for system support, bug reports, page updates, and maintenance requests.
+                Meet the contributors who initially built PMAMS. Contact them for bug reports, page updates, and maintenance requests.
             </p>
         </div>
 

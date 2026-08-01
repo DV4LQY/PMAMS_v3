@@ -61,7 +61,8 @@ class User extends Authenticatable
         'issuance' => 'Issuance',
         'maintenance_gallery' => 'PM Gallery',
         'scanner' => 'QR Scanner',
-        'support' => 'Support',
+        // Internal key remains "support" for backwards-compatible saved role permissions.
+        'support' => 'Contributors',
         'activity_logs' => 'Activity Logs',
         'database' => 'Backup & Restore',
         'maintenance_cleanup' => 'Checklist Cleanup',

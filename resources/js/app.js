@@ -444,7 +444,7 @@ import './bootstrap';
         if (path.startsWith('/admin/database')) return 'database';
         if (path.startsWith('/admin/maintenance-gallery')) return 'gallery';
         if (path.startsWith('/admin/scanner')) return 'scanner';
-        if (path.startsWith('/admin/support')) return 'support';
+        if (path.startsWith('/admin/support') || path.startsWith('/admin/contributors')) return 'support';
         if (path.startsWith('/admin/users')) return 'users';
         if (path.startsWith('/admin/logs')) return 'logs';
         return null;
@@ -735,6 +735,21 @@ import './bootstrap';
                     label: 'Maintained Equipment',
                     data: data.maintenance?.values || [],
                     backgroundColor: '#0ea5e9',
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }],
+            }, {
+                ...common,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            });
+
+            create('maintenancePlanStatusChart', 'bar', {
+                labels: data.maintenance_plan_status?.labels || [],
+                datasets: [{
+                    label: 'PM Plans',
+                    data: data.maintenance_plan_status?.values || [],
+                    backgroundColor: ['#f59e0b', '#3b82f6', '#22c55e'],
                     borderRadius: 6,
                     borderSkipped: false,
                 }],

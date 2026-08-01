@@ -36,7 +36,7 @@ class PermissionMiddleware
     {
         if ($route === 'admin.dashboard') return ['dashboard', null, null];
         if ($route === 'admin.scanner') return ['scanner', null, null];
-        if ($route === 'admin.support') return ['support', null, null];
+        if (in_array($route, ['admin.support', 'admin.contributors'], true)) return ['support', null, null];
         if (str_starts_with($route, 'admin.logs.')) return ['activity_logs', null, null];
         if (str_starts_with($route, 'admin.database.')) return ['database', null, null];
         if (str_starts_with($route, 'admin.maintenance-cleanup.')) return ['maintenance_cleanup', 'checklist', $this->action($route)];

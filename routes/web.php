@@ -90,6 +90,8 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
         Route::view('/org-browser', 'admin.org-browser')->name('admin.org-browser');
         Route::view('/scanner', 'admin.scanner')->name('admin.scanner');
+        // Keep the legacy support URL working while exposing the renamed Contributors page.
+        Route::view('/contributors', 'admin.support')->name('admin.contributors');
         Route::view('/support', 'admin.support')->name('admin.support');
         Route::get('/maintenance-gallery', [MaintenancePhotoController::class, 'index'])
             ->name('admin.maintenance-gallery.index');
@@ -377,6 +379,7 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
 
         // Device deletion — deleting records is admin-only system-wide
         Route::delete('admin/devices/bulk-delete', [DeviceController::class, 'bulkDestroy'])
+            ->middleware('role:super_admin')
             ->name('admin.devices.bulkDestroy');
 
         Route::delete('admin/devices/{device}', [DeviceController::class, 'destroy'])

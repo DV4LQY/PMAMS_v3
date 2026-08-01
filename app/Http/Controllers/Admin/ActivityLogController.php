@@ -26,8 +26,6 @@ class ActivityLogController extends Controller
 
     public function index(Request $request)
     {
-        $query = ActivityLog::query()->latest();
-
         // Read and normalize the query-string filters once.  In particular,
         // do not use Request::merge() and then read with query(): merge()
         // updates the input bag, while query() reads only the original URL
@@ -53,6 +51,17 @@ class ActivityLogController extends Controller
 
         $dateFrom = $normalizeDate($request->query('date_from', ''));
         $dateTo = $normalizeDate($request->query('date_to', ''));
+
+        // Do not load the complete audit table on the initial page load.
+        // Activity records are fetched only after at least one filter is
+        // selected, which keeps a large log table from becoming a bottleneck.
+        $hasFilter = $action !== ''
+            || $subjectType !== ''
+            || $userFilter !== ''
+            || $dateFrom !== ''
+            || $dateTo !== '';
+
+        $query = ActivityLog::query()->latest();
 
         if ($action !== '') {
             $query->where('action', $action);
@@ -95,7 +104,9 @@ class ActivityLogController extends Controller
             });
         }
 
-        $logs = $query->paginate(25)->withQueryString();
+        $logs = $hasFilter
+            ? $query->paginate(25)->withQueryString()
+            : ActivityLog::query()->whereRaw('1 = 0')->paginate(25)->withQueryString();
 
         // Only include actions that actually exist in the log — no blank option,
         // the "Clear filters" button handles resetting.
@@ -105,13 +116,11 @@ class ActivityLogController extends Controller
             ->orderBy('action')
             ->pluck('action');
 
-        $loggedUserIds = ActivityLog::query()
-            ->whereNotNull('user_id')
-            ->distinct()
-            ->pluck('user_id');
-
         $users = User::withTrashed()
-            ->whereIn('id', $loggedUserIds)
+            ->whereIn('id', ActivityLog::query()
+                ->select('user_id')
+                ->whereNotNull('user_id')
+                ->distinct())
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
@@ -127,14 +136,20 @@ class ActivityLogController extends Controller
             // (e.g. "College") are canonicalized to their current name
             // (e.g. "Location") so they appear as a single option instead
             // of fragmenting into two.
-            $subjectTypes = ActivityLog::all()
-                ->flatMap(function ($log) {
-                    return array_filter([
-                        $log->subject_type,
-                        data_get($log->changes, 'record_type'),
-                    ]);
-                })
+            $subjectTypes = ActivityLog::query()
+                ->select('subject_type')
+                ->whereNotNull('subject_type')
+                ->distinct()
+                ->pluck('subject_type')
+                ->merge(ActivityLog::query()
+                    ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(`changes`, '$.record_type')) as record_type")
+                    ->whereNotNull('changes')
+                    ->whereRaw('JSON_VALID(`changes`)')
+                    ->whereRaw("JSON_EXTRACT(`changes`, '$.record_type') IS NOT NULL")
+                    ->distinct()
+                    ->pluck('record_type'))
                 ->map(fn ($type) => ActivityLog::canonicalType($type))
+                ->filter()
                 ->unique()
                 ->sort()
                 ->values();
@@ -151,6 +166,7 @@ class ActivityLogController extends Controller
             'filterUser' => $userFilter,
             'filterDateFrom' => $dateFrom,
             'filterDateTo' => $dateTo,
+            'hasLogFilter' => $hasFilter,
         ]);
     }
 }

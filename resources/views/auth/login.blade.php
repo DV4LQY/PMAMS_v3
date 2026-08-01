@@ -711,7 +711,7 @@
                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M18 10a6 6 0 10-12 0v3a3 3 0 003 3h1m8-6v3a3 3 0 01-3 3h-1m-4 0h4m-4 0a2 2 0 104 0"/>
                     </svg>
-                    Need support?
+                    Meet the contributors
                 </button>
             </div>
 
@@ -732,9 +732,9 @@
         <div class="support-dialog">
             <div class="support-header">
                 <div>
-                    <div class="support-kicker">Support Team</div>
+                    <div class="support-kicker">Contributors</div>
                     <h3 id="supportTitle">Developer Contacts</h3>
-                    <p>Contact the development team for login help, bug reports, system support, page updates, and maintenance requests.</p>
+                    <p>Meet the contributors who initially built PMAMS. Contact them for bug reports, page updates, and maintenance requests.</p>
                 </div>
                 <button type="button" class="support-close" onclick="closeSupportModal()" aria-label="Close support dialog">&times;</button>
             </div>

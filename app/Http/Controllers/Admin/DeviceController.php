@@ -20,6 +20,7 @@ use App\Models\DeviceType;
 use App\Models\Office;
 use App\Models\Staff;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -54,6 +55,9 @@ class DeviceController extends Controller
     public function index(Request $request)
     {
         $q = $request->string('q')->toString();
+        $filterKeys = ['q', 'type', 'location', 'college', 'office_id', 'status', 'condition'];
+        $loadEquipment = $request->boolean('load')
+            || collect($filterKeys)->contains(fn (string $key) => $request->query->has($key));
         $openAddEquipment = $request->boolean('open_add');
         $typeId = $request->integer('type');
         $locationId = $request->integer('location') ?: $request->integer('college');
@@ -111,27 +115,37 @@ class DeviceController extends Controller
             'condition' => $condition,
         ];
 
-        $deviceQuery = Device::query()
-            ->with([
-                'type',
-                'deployedLocation',
-                'deployedOffice.location',
-                'currentAssignment.staff.office.location',
-                'currentAssignment.office.location',
-                'currentAssignment.location',
-                'latestMaintenanceRecord',
-            ])
-            ->filterInventory($filters);
+        if ($loadEquipment) {
+            $deviceQuery = Device::query()
+                ->with([
+                    'type',
+                    'deployedLocation',
+                    'deployedOffice.location',
+                    'currentAssignment.staff.office.location',
+                    'currentAssignment.office.location',
+                    'currentAssignment.location',
+                    'latestMaintenanceRecord',
+                ])
+                ->filterInventory($filters);
 
-        $filteredEquipmentCount = (clone $deviceQuery)->count();
+            $filteredEquipmentCount = (clone $deviceQuery)->count();
 
-        $devices = $deviceQuery
-            ->orderByDesc('id')
-            ->paginate(15)
-            ->withQueryString();
+            $devices = $deviceQuery
+                ->orderByDesc('id')
+                ->paginate(15)
+                ->withQueryString();
+        } else {
+            // The initial Equipment page is filter-first. Avoid querying the
+            // inventory until the user applies a filter or presses Reset.
+            $filteredEquipmentCount = 0;
+            $devices = new LengthAwarePaginator([], 0, 15, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+        }
 
         $unlinkedPeripheralDevices = collect();
-        if (auth()->user()?->isAdmin()) {
+        if ($loadEquipment && auth()->user()?->isAdmin()) {
             $unlinkedPeripheralDevices = Device::query()
                 ->with('type:id,name')
                 ->whereNull('part_of_property_number')
@@ -170,7 +184,8 @@ class DeviceController extends Controller
             'openAddEquipment',
             'addTypeId',
             'addParentPropertyNumber',
-            'returnTo'
+            'returnTo',
+            'loadEquipment'
         ));
     }
 
@@ -1202,7 +1217,9 @@ class DeviceController extends Controller
      */
     public function bulkDestroy(Request $request)
     {
-        abort_unless(Auth::user()?->isAdmin() || Auth::user()?->isUnitHead(), 403);
+        // Bulk deletion is intentionally more destructive than the single
+        // record action and is restricted to Super Admin accounts.
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
 
         $selectAll = $request->boolean('select_all');
 

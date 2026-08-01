@@ -650,7 +650,7 @@
                 -->
 
                 <a
-                    href="{{ route('admin.devices.index') }}"
+                    href="{{ route('admin.devices.index', ['load' => 1]) }}"
                     class="inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 >
                     Reset
@@ -659,7 +659,8 @@
         </form>
     </div>
 
-    @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+    @if($loadEquipment)
+    @if(auth()->user()->isSuperAdmin())
         <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <label class="inline-flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
                 <input
@@ -715,7 +716,7 @@
             @endphp
 
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+                @if(auth()->user()->isSuperAdmin())
                     <label class="mb-3 inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                         <input
                             type="checkbox"
@@ -902,7 +903,7 @@
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
                     <tr>
-                        @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+                        @if(auth()->user()->isSuperAdmin())
                             <th class="w-12 px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">
                                 <input
                                     type="checkbox"
@@ -928,7 +929,7 @@
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($devices as $d)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+                            @if(auth()->user()->isSuperAdmin())
                                 <td class="px-4 py-3 align-top">
                                     <input
                                         type="checkbox"
@@ -1060,7 +1061,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ (auth()->user()->isAdmin() || auth()->user()->isUnitHead()) ? 8 : 7 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="{{ auth()->user()->isSuperAdmin() ? 8 : 7 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                 No equipment found.
                             </td>
                         </tr>
@@ -1073,6 +1074,13 @@
             {{ $devices->links() }}
         </div>
     </div>
+
+    @else
+        <div class="rounded-2xl border border-blue-200 bg-blue-50 px-5 py-6 text-sm text-blue-800 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+            Apply a filter or press <span class="font-semibold">Reset</span> to load equipment records.
+            This keeps the initial page fast on large inventories.
+        </div>
+    @endif
 
     {{-- Shared computer name options --}}
     <datalist id="computer_name_options">
@@ -1686,7 +1694,7 @@
     @endif
 
     {{-- Bulk delete confirmation --}}
-    @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+    @if(auth()->user()->isSuperAdmin())
         <x-modal show="bulkDeleteOpen" title="Delete Selected Equipment">
             <div class="space-y-4">
                 <p class="text-sm text-gray-700 dark:text-gray-300">

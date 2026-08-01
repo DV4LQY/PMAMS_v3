@@ -430,7 +430,7 @@
         request()->routeIs('admin.database.*') => 'database',
         request()->routeIs('admin.maintenance-gallery.*') => 'gallery',
         request()->routeIs('admin.scanner') => 'scanner',
-        request()->routeIs('admin.support') => 'support',
+        (request()->routeIs('admin.support') || request()->routeIs('admin.contributors')) => 'support',
         request()->routeIs('admin.users.recycleBin') => 'user-recycle-bin',
         request()->routeIs('admin.users.*') => 'users',
         request()->routeIs('admin.logs.*') => 'logs',
@@ -495,7 +495,7 @@
 
                 <div>
                     <div class="text-xl font-bold tracking-tight dark:text-white">PMAMS</div>
-                    <div class="text-xs text-gray-500 -mt-0.5 dark:text-gray-400"> ICT Equipment Management System</div>
+                    <div class="text-xs text-gray-500 -mt-0.5 dark:text-gray-400"> Preventive Maintenance and Asset Monitoring System</div>
                 </div>
             </div>
 
@@ -702,17 +702,17 @@
                 @endif
                 @if(auth()->user() && auth()->user()->canMenu('support'))
                     <a
-                    href="{{ route('admin.support') }}"
+                    href="{{ route('admin.contributors') }}"
                     data-nav-group="support"
                     data-active="{{ $currentNavGroup === 'support' ? 'true' : 'false' }}"
                     @if($currentNavGroup === 'support') aria-current="page" @endif
                     class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition
-                    {{ request()->routeIs('admin.support') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
+                    {{ (request()->routeIs('admin.support') || request()->routeIs('admin.contributors')) ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
                 >
-                    <svg class="w-5 h-5 {{ request()->routeIs('admin.support') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 {{ (request()->routeIs('admin.support') || request()->routeIs('admin.contributors')) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18 10a6 6 0 10-12 0v3a3 3 0 003 3h1m8-6v3a3 3 0 01-3 3h-1m-4 0h4m-4 0a2 2 0 104 0"/>
                     </svg>
-                    <span>Support</span>
+                    <span>Contributors</span>
                 </a>
                 @endif
             </nav>
@@ -912,8 +912,8 @@
                                 </a>
                                 @endif
                                 @if(auth()->user()?->canMenu('support'))
-                                <a href="{{ route('admin.support') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
-                                    Support
+                                <a href="{{ route('admin.contributors') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
+                                    Contributors
                                 </a>
                                 @endif
 
