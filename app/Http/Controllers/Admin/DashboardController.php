@@ -5,6 +5,7 @@ use App\Models\Device;
 use App\Models\DeviceAssignment;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\DeviceType;
+use App\Models\MaintenancePlanSchedule;
 use App\Models\Staff;
 use Carbon\Carbon;
 class DashboardController extends Controller
@@ -126,6 +127,59 @@ class DashboardController extends Controller
             ->sortKeys()
             ->map->count();
 
+        // Preventive-maintenance status is calculated from the published PM
+        // plans and their current checklist cycle, not from equipment status.
+        // This keeps the dashboard aligned with the PM Plan page for the
+        // signed-in user's assigned schedules.
+        $maintenancePlanStatuses = collect([
+            'Pending' => 0,
+            'In Progress' => 0,
+            'Completed' => 0,
+        ]);
+
+        $maintenancePlans = MaintenancePlanSchedule::query()
+            ->visibleTo(auth()->user())
+            ->with(['latestOverride', 'completion'])
+            ->get();
+
+        foreach ($maintenancePlans as $plan) {
+            $targetDevices = Device::query()
+                ->whereHas('type', fn ($query) => $query->whereIn('name', ['Desktop', 'Laptop']))
+                ->whereHas('currentAssignment', function ($query) use ($plan) {
+                    if ($plan->office_id) {
+                        $query->where(function ($assignment) use ($plan) {
+                            $assignment->where('office_id', $plan->office_id)
+                                ->orWhereHas('staff', fn ($staff) => $staff->where('office_id', $plan->office_id));
+                        });
+                    } else {
+                        $query->where(function ($assignment) use ($plan) {
+                            $assignment->where('location_id', $plan->location_id)
+                                ->orWhereHas('office', fn ($office) => $office->where('location_id', $plan->location_id))
+                                ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $plan->location_id));
+                        });
+                    }
+                })
+                ->pluck('id');
+
+            $checked = 0;
+            if ($targetDevices->isNotEmpty()) {
+                $effectiveDate = $plan->effectiveDate();
+                $checked = DeviceMaintenanceRecord::query()
+                    ->whereIn('device_id', $targetDevices)
+                    ->whereDate('maintenance_date', '>=', $effectiveDate->toDateString())
+                    ->distinct('device_id')
+                    ->count('device_id');
+            }
+
+            $status = $targetDevices->isNotEmpty() && $checked === $targetDevices->count()
+                ? 'Completed'
+                : ($checked > 0 ? 'In Progress' : 'Pending');
+            $maintenancePlanStatuses->put(
+                $status,
+                $maintenancePlanStatuses->get($status, 0) + 1
+            );
+        }
+
         return view('admin.dashboard', compact(
             'totalDevices',
             'availableDevices',
@@ -145,6 +199,7 @@ class DashboardController extends Controller
             'devicesByOffice',
             'endUsersByLocation',
             'maintenanceSemiannually',
+            'maintenancePlanStatuses',
         ));
     }
 }

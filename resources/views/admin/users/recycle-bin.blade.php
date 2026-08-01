@@ -9,12 +9,12 @@
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Recycle Bin</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Restore deleted users and equipment. Checklist history is managed in Checklist Cleanup. Permanent deletion is available only to Super Admins.
+                Restore deleted users, equipment, locations, and PM Plans. Checklist history is managed in Checklist Cleanup. Permanent deletion is available only to Super Admins.
             </p>
         </div>
 
         <div class="flex flex-wrap gap-2">
-            <form method="POST" action="{{ route('admin.recycle-bin.restoreAll') }}" onsubmit="return confirm('Restore all deleted users and equipment from the recycle bin?')">
+            <form method="POST" action="{{ route('admin.recycle-bin.restoreAll') }}" onsubmit="return confirm('Restore all deleted users, equipment, locations, and PM Plans from the recycle bin?')">
                 @csrf
                 @method('PATCH')
                 <button type="submit" class="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
@@ -36,10 +36,12 @@
 
     @php($deletedUserCount = $deletedUsers->total())
     @php($deletedDeviceCount = $deletedDevices->total())
-    @if($deletedUserCount + $deletedDeviceCount > 0)
+    @php($deletedMaintenancePlanCount = $deletedMaintenancePlans->total())
+    @php($deletedLocationCount = $deletedLocations->total())
+    @if($deletedUserCount + $deletedDeviceCount + $deletedMaintenancePlanCount + $deletedLocationCount > 0)
         <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200" role="status">
             <p class="font-semibold">Deleted records are still present in the database.</p>
-            <p class="mt-1">{{ number_format($deletedUserCount) }} user(s) and {{ number_format($deletedDeviceCount) }} equipment record(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to manage them.</p>
+            <p class="mt-1">{{ number_format($deletedUserCount) }} user(s), {{ number_format($deletedDeviceCount) }} equipment record(s), {{ number_format($deletedLocationCount) }} location(s), and {{ number_format($deletedMaintenancePlanCount) }} PM Plan(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to manage them.</p>
         </div>
     @endif
 
@@ -83,6 +85,7 @@
         </div>
     </div>
     <div class="flex flex-wrap items-center gap-3">
+        <button type="button" onclick="restoreSelectedRecycleBin('users')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Users</button>
         <button type="button" onclick="permanentDeleteSelected('users')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Users</button>
         <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-users" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('users', this.checked)"> Delete all users in recycle bin</label>
     </div>
@@ -130,16 +133,130 @@
         </div>
     </div>
     <div class="flex flex-wrap items-center gap-3">
+        <button type="button" onclick="restoreSelectedRecycleBin('devices')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Equipment</button>
         <button type="button" onclick="permanentDeleteSelected('devices')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Equipment</button>
         <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-devices" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('devices', this.checked)"> Delete all equipment in recycle bin</label>
     </div>
     {{ $deletedDevices->links() }}
+
+    <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted PM Plans</h2>
+    <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Select</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Location / Office</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Schedule</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Assigned Admins / Unit Heads</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    @forelse($deletedMaintenancePlans as $plan)
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="maintenance_plans" value="{{ $plan->id }}" class="h-4 w-4" onchange="syncRecycleBinSelectAll('maintenance_plans')"></td>
+                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                                {{ $plan->location?->name ?? 'Unassigned location' }}{{ $plan->office?->name ? ' - ' . $plan->office->name : '' }}
+                                <span class="mt-1 block text-xs font-normal text-gray-500 dark:text-gray-400">{{ $plan->title }}</span>
+                            </td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ optional($plan->schedule_month_from ?: $plan->scheduled_date)->format('M Y') }}
+                                @if($plan->schedule_month_to && ! optional($plan->schedule_month_from ?: $plan->scheduled_date)->isSameMonth($plan->schedule_month_to))
+                                    – {{ $plan->schedule_month_to->format('M Y') }}
+                                @endif
+                                @if($plan->latestOverride)
+                                    <span class="mt-1 block text-xs text-amber-700 dark:text-amber-300">Override: {{ optional($plan->latestOverride->override_date ?: $plan->latestOverride->override_month_from)->format('m/d/Y') }}</span>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $plan->assignedUsers->pluck('name')->filter()->join(', ') ?: ($plan->assignedUser?->name ?? 'All eligible admins') }}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $plan->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <form method="POST" action="{{ route('admin.maintenance-plan.restore', $plan->id) }}">
+                                        @csrf @method('PATCH')
+                                        <button type="submit" class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Restore</button>
+                                    </form>
+                                    <button type="button" onclick="permanentDeleteSingle('maintenance_plans', {{ $plan->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Delete Permanently</button>
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted PM Plans found.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+        <button type="button" onclick="restoreSelectedRecycleBin('maintenance_plans')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected PM Plans</button>
+        <button type="button" onclick="permanentDeleteSelected('maintenance_plans')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected PM Plans</button>
+        <button type="button" onclick="permanentDeleteAll('maintenance_plans')" class="rounded-lg bg-red-800 px-3 py-2 text-sm font-semibold text-white hover:bg-red-900">Permanently Delete All PM Plans</button>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-maintenance_plans" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('maintenance_plans', this.checked)"> Delete all PM Plans in recycle bin</label>
+    </div>
+    {{ $deletedMaintenancePlans->links() }}
+
+    <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted Locations</h2>
+    <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Select</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Location</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Code</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Offices</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    @forelse($deletedLocations as $location)
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="locations" value="{{ $location->id }}" class="h-4 w-4" onchange="syncRecycleBinSelectAll('locations')"></td>
+                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $location->name }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $location->code ?: '-' }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $location->offices_count }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $location->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <form method="POST" action="{{ route('admin.locations.restore', $location->id) }}">
+                                        @csrf @method('PATCH')
+                                        <button type="submit" class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Restore</button>
+                                    </form>
+                                    <button type="button" onclick="permanentDeleteSingle('locations', {{ $location->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Delete Permanently</button>
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted locations found.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+        <button type="button" onclick="restoreSelectedRecycleBin('locations')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Locations</button>
+        <button type="button" onclick="permanentDeleteSelected('locations')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Locations</button>
+        <button type="button" onclick="permanentDeleteAll('locations')" class="rounded-lg bg-red-800 px-3 py-2 text-sm font-semibold text-white hover:bg-red-900">Permanently Delete All Locations</button>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-locations" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('locations', this.checked)"> Delete all locations in recycle bin</label>
+    </div>
+    {{ $deletedLocations->links() }}
 
     <form id="recycle-bin-permanent-delete-form" method="POST" action="{{ route('admin.recycle-bin.permanentDelete') }}" class="hidden">
         @csrf
         <input type="hidden" name="type" id="recycle-bin-delete-type">
         <input type="hidden" name="select_all" id="recycle-bin-delete-select-all" value="0">
         <input type="hidden" name="remarks" id="recycle-bin-delete-remarks">
+    </form>
+
+    <form id="recycle-bin-restore-selected-form" method="POST" action="{{ route('admin.recycle-bin.restoreSelected') }}" class="hidden">
+        @csrf
+        @method('PATCH')
+        <input type="hidden" name="type" id="recycle-bin-restore-type">
     </form>
 
     <div id="recycle-bin-remarks-modal" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="recycle-bin-remarks-title">
@@ -170,8 +287,17 @@ function openRecycleBinRemarks(action) {
     const modal = document.getElementById('recycle-bin-remarks-modal');
     const textarea = document.getElementById('recycle-bin-modal-remarks');
     const message = document.getElementById('recycle-bin-remarks-message');
+    const labels = {
+        users: 'user',
+        devices: 'equipment',
+        maintenance_plans: 'PM Plan',
+        locations: 'location',
+    };
+    const label = labels[action.type] || 'record';
     if (message) message.textContent = action.empty
-        ? 'This will permanently delete every user and equipment record in the recycle bin.'
+        ? 'This will permanently delete every user, equipment, location, and PM Plan record in the recycle bin.'
+        : action.selectAll
+            ? `This will permanently delete every deleted ${label} record in the recycle bin.`
         : 'This action permanently deletes the selected recycle-bin records and cannot be undone.';
     if (textarea) textarea.value = '';
     if (modal) {
@@ -194,6 +320,36 @@ function confirmRecycleBinRemarks() {
     const action = pendingRecycleBinDelete;
     closeRecycleBinRemarks();
     if (action) submitRecycleBinDelete(action.type, action.ids || [], action.selectAll, reason, action.empty === true);
+}
+
+function restoreSelectedRecycleBin(type) {
+    const boxes = [...document.querySelectorAll('[data-bin-checkbox="' + type + '"]:checked')];
+    if (boxes.length === 0) {
+        alert('Select at least one deleted record to restore.');
+        return;
+    }
+
+    const labels = {
+        users: 'user',
+        devices: 'equipment',
+        maintenance_plans: 'PM Plan',
+        locations: 'location',
+    };
+    const label = labels[type] || 'record';
+    if (!confirm(`Restore ${boxes.length} selected ${label} record(s) from the recycle bin?`)) return;
+
+    const form = document.getElementById('recycle-bin-restore-selected-form');
+    if (!form) return;
+    form.querySelectorAll('input[name="ids[]"]').forEach((input) => input.remove());
+    document.getElementById('recycle-bin-restore-type').value = type;
+    boxes.forEach((box) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'ids[]';
+        input.value = box.value;
+        form.appendChild(input);
+    });
+    form.submit();
 }
 
 function submitRecycleBinDelete(type, ids, selectAll, reason, emptyAll = false) {
@@ -232,6 +388,10 @@ function permanentDeleteSelected(type) {
         return;
     }
     openRecycleBinRemarks({ type, ids: boxes.map(box => box.value), selectAll, empty: false });
+}
+
+function permanentDeleteAll(type) {
+    openRecycleBinRemarks({ type, ids: [], selectAll: true, empty: false });
 }
 
 function permanentDeleteSingle(type, id) {

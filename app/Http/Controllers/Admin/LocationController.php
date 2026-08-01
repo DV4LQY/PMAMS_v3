@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\DeviceAssignment;
 use App\Models\Location;
+use App\Models\MaintenancePlanSchedule;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class LocationController extends Controller
@@ -264,6 +266,9 @@ class LocationController extends Controller
     public function destroy(Location $location)
     {
         $hasOffices = $location->offices()->exists();
+        $hasMaintenancePlans = MaintenancePlanSchedule::query()
+            ->where('location_id', $location->id)
+            ->exists();
         $hasAssignments = DeviceAssignment::query()
             ->where(function ($query) use ($location) {
                 $query->where('location_id', $location->id)
@@ -272,9 +277,9 @@ class LocationController extends Controller
             })
             ->exists();
 
-        if ($hasOffices || $hasAssignments) {
+        if ($hasOffices || $hasAssignments || $hasMaintenancePlans) {
             return back()
-                ->withErrors(['location' => 'This location cannot be deleted while it has offices or equipment assignments.'])
+                ->withErrors(['location' => 'This location cannot be deleted while it has offices, equipment assignments, or an active PM Plan.'])
                 ->with('error', 'Location deletion was blocked because this location is still in use.');
         }
 
@@ -290,6 +295,150 @@ class LocationController extends Controller
 
         $location->delete();
 
-        return redirect()->route('admin.locations.index')->with('success', 'Location deleted.');
+        return redirect()->route('admin.locations.index')
+            ->with('success', 'Location moved to the recycle bin.')
+            ->with('recycle_bin_notice', 'The deleted location is retained in the recycle bin and can be restored by a Super Admin.');
+    }
+
+    /** Move selected locations, or every active location, to the recycle bin. */
+    public function bulkDestroy(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $data = $request->validate([
+            'location_ids' => ['nullable', 'array'],
+            'location_ids.*' => ['integer', 'distinct'],
+            'select_all' => ['nullable', 'boolean'],
+        ]);
+
+        $selectAll = (bool) ($data['select_all'] ?? false);
+        $ids = collect($data['location_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();
+        if (! $selectAll && $ids->isEmpty()) {
+            return back()->withErrors(['location_ids' => 'Select at least one location or choose delete all locations.']);
+        }
+
+        $query = Location::query()->with('offices:id,location_id,name');
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $locations = $query->orderBy('id')->get();
+        if ($locations->isEmpty()) {
+            return back()->with('warning', 'No active locations matched the selected records.');
+        }
+
+        $moved = [];
+        $blocked = [];
+        DB::transaction(function () use ($locations, &$moved, &$blocked): void {
+            foreach ($locations as $location) {
+                $hasOffices = $location->offices()->exists();
+                $hasMaintenancePlans = MaintenancePlanSchedule::query()
+                    ->where('location_id', $location->id)
+                    ->exists();
+                $hasAssignments = DeviceAssignment::query()
+                    ->where(function ($query) use ($location) {
+                        $query->where('location_id', $location->id)
+                            ->orWhereHas('office', fn ($office) => $office->where('location_id', $location->id))
+                            ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $location->id));
+                    })
+                    ->exists();
+
+                if ($hasOffices || $hasAssignments || $hasMaintenancePlans) {
+                    $blocked[] = [
+                        'id' => $location->id,
+                        'name' => $location->name,
+                        'reason' => 'has offices, equipment assignments, or an active PM Plan',
+                    ];
+                    continue;
+                }
+
+                $summary = $this->buildSummary($location);
+                ActivityLog::record(
+                    'deleted',
+                    "Deleted location \"{$location->name}\"",
+                    $location,
+                    ActivityLog::makePayload(array_merge($summary, ['bulk' => true]))
+                );
+                $location->delete();
+                $moved[] = array_merge(['id' => $location->id], $summary);
+            }
+
+            if ($moved !== []) {
+                ActivityLog::record(
+                    'deleted',
+                    'Moved ' . count($moved) . ' location(s) to the recycle bin.',
+                    null,
+                    ActivityLog::makePayload([
+                        'bulk' => true,
+                        'record_type' => 'Location',
+                        'items' => $moved,
+                        'blocked' => $blocked,
+                    ])
+                );
+            }
+        });
+
+        if ($moved === []) {
+            return back()
+                ->with('warning', 'No selected locations were moved. Every selected location is still in use.')
+                ->with('recycle_bin_notice', 'Clear each location’s offices, equipment assignments, and active PM Plans before deleting it.');
+        }
+
+        $message = count($moved) . ' location(s) moved to the recycle bin.';
+        if ($blocked !== []) {
+            $message .= ' ' . count($blocked) . ' location(s) were skipped because they are still in use.';
+        }
+
+        return back()
+            ->with('success', $message)
+            ->with('recycle_bin_notice', 'Deleted locations are retained in the recycle bin and can be restored by a Super Admin.');
+    }
+
+    public function restore(int $location): \Illuminate\Http\RedirectResponse
+    {
+        $deletedLocation = Location::onlyTrashed()->findOrFail($location);
+        $summary = $this->buildSummary($deletedLocation);
+        $deletedAt = $deletedLocation->deleted_at?->toDateTimeString();
+        $deletedLocation->restore();
+
+        ActivityLog::record(
+            'restored',
+            "Restored location \"{$deletedLocation->name}\"",
+            $deletedLocation,
+            ActivityLog::makePayload(array_merge($summary, ['deleted_at' => $deletedAt]))
+        );
+
+        return back()->with('success', 'Location restored.');
+    }
+
+    public function forceDestroy(int $location): \Illuminate\Http\RedirectResponse
+    {
+        $deletedLocation = Location::onlyTrashed()->findOrFail($location);
+        $hasOffices = $deletedLocation->offices()->exists();
+        $hasMaintenancePlans = MaintenancePlanSchedule::withTrashed()
+            ->where('location_id', $deletedLocation->id)
+            ->exists();
+        $hasAssignments = DeviceAssignment::query()
+            ->where(function ($query) use ($deletedLocation) {
+                $query->where('location_id', $deletedLocation->id)
+                    ->orWhereHas('office', fn ($office) => $office->where('location_id', $deletedLocation->id))
+                    ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $deletedLocation->id));
+            })
+            ->exists();
+
+        if ($hasOffices || $hasAssignments || $hasMaintenancePlans) {
+            return back()->withErrors([
+                'location' => 'This location still has related offices, equipment assignments, or a PM Plan. Restore it first and clear those records before permanently deleting it.',
+            ]);
+        }
+
+        $summary = $this->buildSummary($deletedLocation);
+        ActivityLog::record(
+            'force_deleted',
+            "Permanently deleted location \"{$deletedLocation->name}\"",
+            null,
+            ActivityLog::makePayload($summary)
+        );
+        $deletedLocation->forceDelete();
+
+        return back()->with('success', 'Location permanently deleted.');
     }
 }

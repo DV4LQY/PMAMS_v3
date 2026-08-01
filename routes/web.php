@@ -109,6 +109,9 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
         Route::post('/maintenance-plan', [PreventiveMaintenancePlanController::class, 'store'])
             ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.store');
+        Route::post('/maintenance-plan/bulk-delete', [PreventiveMaintenancePlanController::class, 'bulkDestroy'])
+            ->middleware('role:super_admin')
+            ->name('admin.maintenance-plan.bulkDestroy');
         Route::put('/maintenance-plan/{schedule}', [PreventiveMaintenancePlanController::class, 'update'])
             ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.update');
@@ -333,6 +336,7 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
 
         // Locations — write actions
         Route::post('admin/locations', [LocationController::class, 'store'])->name('admin.locations.store');
+        Route::post('admin/locations/bulk-delete', [LocationController::class, 'bulkDestroy'])->name('admin.locations.bulkDestroy');
         Route::get('admin/locations/{location}/edit', [LocationController::class, 'edit'])->name('admin.locations.edit');
         Route::put('admin/locations/{location}', [LocationController::class, 'update'])->name('admin.locations.update');
         Route::delete('admin/locations/{location}', [LocationController::class, 'destroy'])->name('admin.locations.destroy');
@@ -391,11 +395,22 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
         Route::put('admin/users/{user}', [UserController::class, 'update'])->name('admin.users.update');
         Route::delete('admin/users/{user}', [UserController::class, 'destroy'])->name('admin.users.destroy');
         Route::patch('admin/users/{user}/restore', [UserController::class, 'restore'])->name('admin.users.restore');
+        Route::patch('admin/recycle-bin/restore-selected', [UserController::class, 'restoreSelected'])->name('admin.recycle-bin.restoreSelected');
         Route::patch('admin/recycle-bin/restore-all', [UserController::class, 'restoreAll'])->name('admin.recycle-bin.restoreAll');
         Route::delete('admin/users/{user}/force-delete', [UserController::class, 'forceDestroy'])->name('admin.users.forceDestroy');
 
         Route::patch('admin/devices/{device}/restore', [DeviceController::class, 'restore'])->name('admin.devices.restore');
         Route::delete('admin/devices/{device}/force-delete', [DeviceController::class, 'forceDestroy'])->name('admin.devices.forceDestroy');
+
+        Route::patch('admin/maintenance-plan/{schedule}/restore', [PreventiveMaintenancePlanController::class, 'restore'])
+            ->name('admin.maintenance-plan.restore');
+        Route::delete('admin/maintenance-plan/{schedule}/force-delete', [PreventiveMaintenancePlanController::class, 'forceDestroy'])
+            ->name('admin.maintenance-plan.forceDestroy');
+
+        Route::patch('admin/locations/{location}/restore', [LocationController::class, 'restore'])
+            ->name('admin.locations.restore');
+        Route::delete('admin/locations/{location}/force-delete', [LocationController::class, 'forceDestroy'])
+            ->name('admin.locations.forceDestroy');
 
         Route::post('admin/recycle-bin/permanent-delete', [UserController::class, 'permanentDelete'])
             ->name('admin.recycle-bin.permanentDelete');

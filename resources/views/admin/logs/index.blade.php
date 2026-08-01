@@ -159,7 +159,7 @@
         </div>
 
         {{-- FILTERS --}}
-        <form method="GET" class="flex flex-wrap items-end gap-3">
+        <form method="GET" action="{{ route('admin.logs.index') }}" class="flex flex-wrap items-end gap-3">
 
             <div>
                 <label class="text-sm font-medium text-gray-700">Action</label>
@@ -169,7 +169,7 @@
                     <option value="">All Actions</option>
 
                     @foreach($actions as $action)
-                        <option value="{{ $action }}" @selected(request('action') === $action)>
+                        <option value="{{ $action }}" @selected($filterAction === $action)>
                             {{ ucfirst($action) }}
                         </option>
                     @endforeach
@@ -181,21 +181,50 @@
                 <select id="recordTypeFilter" name="subject_type"
                     class="mt-1 w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
 
-                    @if(!in_array(request('action'), ['issued', 'returned']))
+                    @if(!in_array($filterAction, ['issued', 'returned']))
                         <option value="">All Types</option>
                     @endif
 
                     @foreach($subjectTypes as $type)
-                        <option value="{{ $type }}" @selected(request('subject_type') === $type)>
+                        <option value="{{ $type }}" @selected($filterSubjectType === $type)>
                             {{ $type }}
                         </option>
                     @endforeach
                 </select>
             </div>
 
-            @if(request('action') || request('subject_type'))
+            <div>
+                <label for="activityUserFilter" class="text-sm font-medium text-gray-700">User</label>
+                <select id="activityUserFilter" name="user_id"
+                    class="mt-1 w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                    <option value="">All Users</option>
+                    <option value="system" @selected($filterUser === 'system')>System</option>
+                    @foreach($users as $user)
+                        <option value="{{ $user->id }}" @selected($filterUser === (string) $user->id)>
+                            {{ $user->name ?: $user->email }}{{ $user->trashed() ? ' (deleted)' : '' }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div>
+                <label for="activityDateFrom" class="text-sm font-medium text-gray-700">Date from</label>
+                <input id="activityDateFrom" type="date" name="date_from" value="{{ $filterDateFrom }}"
+                    class="mt-1 w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+            </div>
+
+            <div>
+                <label for="activityDateTo" class="text-sm font-medium text-gray-700">Date to</label>
+                <input id="activityDateTo" type="date" name="date_to" value="{{ $filterDateTo }}"
+                    class="mt-1 w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+            </div>
+
+            @if($filterAction !== '' || $filterSubjectType !== '' || $filterUser !== '' || $filterDateFrom !== '' || $filterDateTo !== '')
                 <a href="{{ route('admin.logs.index') }}"
-                    class="inline-flex items-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+                    class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700">
                     Clear Filters
                 </a>
             @endif

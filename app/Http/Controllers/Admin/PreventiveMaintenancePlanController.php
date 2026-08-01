@@ -119,7 +119,11 @@ class PreventiveMaintenancePlanController extends Controller
 
         DB::transaction(function () use ($targets, $data, $assignedUserIds, $location, $monthFrom, $monthTo, &$created, &$duplicates, $request) {
             foreach ($targets as $office) {
-                $duplicateExists = MaintenancePlanSchedule::query()
+                // Include soft-deleted schedules in duplicate detection. This
+                // prevents publishing a second hidden copy that would later
+                // collide with the original when it is restored from the
+                // recycle bin.
+                $duplicateExists = MaintenancePlanSchedule::withTrashed()
                     ->where('location_id', $location->id)
                     ->where('office_id', $office?->id)
                     ->whereDate('schedule_month_from', $monthFrom->toDateString())
@@ -247,11 +251,10 @@ class PreventiveMaintenancePlanController extends Controller
     }
 
     /**
-     * Remove a published PM schedule. This is intentionally restricted to
-     * Super Admin because deleting a schedule also removes its temporary
-     * overrides and office-completion sign-off row through the existing
-     * foreign-key cascades. Equipment checklist history is stored separately
-     * and is not affected.
+     * Move a published PM schedule to the recycle bin. This is intentionally
+     * restricted to Super Admin. Soft deletion keeps its temporary overrides,
+     * office-completion sign-off, and assigned-admin pivot rows available for
+     * an exact restore; equipment checklist history is stored separately.
      */
     public function destroy(Request $request, MaintenancePlanSchedule $schedule)
     {
@@ -273,17 +276,177 @@ class PreventiveMaintenancePlanController extends Controller
                     'schedule_month_from' => optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m'),
                     'schedule_month_to' => optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m'),
                     'assigned_user_ids' => $this->assignedUserIdsForSchedule($schedule),
-                    'removed_override' => (bool) $schedule->latestOverride,
-                    'removed_completion' => (bool) $schedule->completion,
-                    'reason' => 'Published PM schedule removed by Super Admin.',
+                    'preserved_override' => (bool) $schedule->latestOverride,
+                    'preserved_completion' => (bool) $schedule->completion,
+                    'reason' => 'Published PM schedule moved to the recycle bin by Super Admin.',
                 ])
             );
 
             $schedule->delete();
         });
 
+        $message = 'The scheduled preventive maintenance plan was moved to the recycle bin. Its plan details and equipment checklist history were retained.';
+        if ($request->header('X-SPA-Request') === '1') {
+            $request->session()->flash('success', $message);
+            $request->session()->flash('recycle_bin_notice', 'Deleted PM Plans can be restored by a Super Admin from the Recycle Bin.');
+
+            return response()->json([
+                'redirect' => route('admin.maintenance-plan.index'),
+                'success' => $message,
+            ]);
+        }
+
         return redirect()->route('admin.maintenance-plan.index')
-            ->with('success', 'The scheduled preventive maintenance plan was removed. Equipment checklist history was retained.');
+            ->with('success', $message)
+            ->with('recycle_bin_notice', 'Deleted PM Plans can be restored by a Super Admin from the Recycle Bin.');
+    }
+
+    /** Move selected or filtered PM Plans to the recycle bin. */
+    public function bulkDestroy(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'schedule_ids' => ['nullable', 'array'],
+            'schedule_ids.*' => ['integer', 'distinct'],
+            'select_all' => ['nullable', 'boolean'],
+            'location_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'office_id' => ['nullable', 'integer', 'exists:offices,id'],
+            'month_from' => ['nullable', 'date_format:Y-m'],
+            'month_to' => ['nullable', 'date_format:Y-m'],
+        ]);
+
+        $selectAll = (bool) ($data['select_all'] ?? false);
+        $ids = collect($data['schedule_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();
+        if (! $selectAll && $ids->isEmpty()) {
+            return back()->withErrors(['schedule_ids' => 'Select at least one PM Plan or choose delete all matching the filters.']);
+        }
+
+        $monthFrom = $this->monthStartOrNull($data['month_from'] ?? null);
+        $monthTo = $this->monthStartOrNull($data['month_to'] ?? null);
+        $query = MaintenancePlanSchedule::query()
+            ->when($data['location_id'] ?? null, fn ($builder, $id) => $builder->where('location_id', $id))
+            ->when($data['office_id'] ?? null, fn ($builder, $id) => $builder->where('office_id', $id))
+            ->when($monthFrom, fn ($builder) => $builder->whereDate('schedule_month_to', '>=', $monthFrom))
+            ->when($monthTo, fn ($builder) => $builder->whereDate('schedule_month_from', '<=', $monthTo));
+
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $schedules = $query->with(['location', 'office', 'latestOverride', 'completion'])->get();
+        if ($schedules->isEmpty()) {
+            return back()->with('warning', 'No active PM Plans matched the selected records or filters.');
+        }
+
+        $items = [];
+        DB::transaction(function () use ($schedules, &$items): void {
+            foreach ($schedules as $schedule) {
+                $items[] = [
+                    'schedule_id' => $schedule->id,
+                    'target' => $this->scheduleTargetLabel($schedule),
+                    'location' => $schedule->location?->name,
+                    'office' => $schedule->office?->name,
+                    'schedule_month_from' => optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m'),
+                    'schedule_month_to' => optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m'),
+                    'preserved_override' => (bool) $schedule->latestOverride,
+                    'preserved_completion' => (bool) $schedule->completion,
+                ];
+
+                $schedule->delete();
+            }
+
+            ActivityLog::record(
+                'deleted',
+                'Moved ' . count($items) . ' preventive maintenance plan(s) to the recycle bin.',
+                null,
+                ActivityLog::makePayload([
+                    'bulk' => true,
+                    'record_type' => 'PM Plan',
+                    'items' => $items,
+                ])
+            );
+        });
+
+        $count = count($items);
+        return back()
+            ->with('success', "{$count} PM Plan(s) moved to the recycle bin. Plan details and checklist history were retained.")
+            ->with('recycle_bin_notice', 'Deleted PM Plans can be restored by a Super Admin from the Recycle Bin.');
+    }
+
+    /**
+     * Restore a PM Plan from the Super Admin recycle bin. The schedule's
+     * overrides, completion sign-off and assigned-admin pivot rows are kept
+     * while it is deleted, so restoring brings the plan back exactly as it
+     * was published.
+     */
+    public function restore(int $schedule): \Illuminate\Http\RedirectResponse
+    {
+        $deletedSchedule = MaintenancePlanSchedule::onlyTrashed()
+            ->with(['location', 'office', 'latestOverride', 'completion', 'assignedUsers'])
+            ->findOrFail($schedule);
+
+        $targetLabel = $this->scheduleTargetLabel($deletedSchedule);
+        $deletedAt = $deletedSchedule->deleted_at?->toDateTimeString();
+        $deletedSchedule->restore();
+
+        ActivityLog::record(
+            'restored',
+            'Restored preventive maintenance schedule for ' . $targetLabel,
+            $deletedSchedule,
+            ActivityLog::makePayload([
+                'schedule_id' => $deletedSchedule->id,
+                'location' => $deletedSchedule->location?->name,
+                'office' => $deletedSchedule->office?->name,
+                'deleted_at' => $deletedAt,
+                'assigned_user_ids' => $this->assignedUserIdsForSchedule($deletedSchedule),
+            ])
+        );
+
+        return back()->with('success', 'Preventive maintenance plan restored.');
+    }
+
+    /**
+     * Permanently remove a deleted PM Plan and its plan-specific rows. This is
+     * deliberately separate from the normal delete action so recycle-bin
+     * recovery remains available until Super Admin explicitly purges it.
+     */
+    public function forceDestroy(int $schedule): \Illuminate\Http\RedirectResponse
+    {
+        $deletedSchedule = MaintenancePlanSchedule::onlyTrashed()
+            ->with(['location', 'office', 'latestOverride', 'completion', 'assignedUsers'])
+            ->findOrFail($schedule);
+
+        $targetLabel = $this->scheduleTargetLabel($deletedSchedule);
+        $summary = [
+            'schedule_id' => $deletedSchedule->id,
+            'location' => $deletedSchedule->location?->name,
+            'office' => $deletedSchedule->office?->name,
+            'schedule_month_from' => optional($deletedSchedule->schedule_month_from ?: $deletedSchedule->scheduled_date)->format('Y-m'),
+            'schedule_month_to' => optional($deletedSchedule->schedule_month_to ?: $deletedSchedule->scheduled_date)->format('Y-m'),
+            'assigned_user_ids' => $this->assignedUserIdsForSchedule($deletedSchedule),
+            'removed_override' => (bool) $deletedSchedule->latestOverride,
+            'removed_completion' => (bool) $deletedSchedule->completion,
+        ];
+
+        DB::transaction(function () use ($deletedSchedule, $targetLabel, $summary): void {
+            ActivityLog::record(
+                'force_deleted',
+                'Permanently deleted preventive maintenance schedule for ' . $targetLabel,
+                null,
+                ActivityLog::makePayload($summary)
+            );
+
+            // Remove child rows explicitly before force deleting the parent.
+            // This works consistently on both MySQL and MariaDB regardless of
+            // the foreign-key cascade options in an older installation.
+            $deletedSchedule->assignedUsers()->detach();
+            $deletedSchedule->overrides()->delete();
+            $deletedSchedule->completion()->delete();
+            $deletedSchedule->forceDelete();
+        });
+
+        return back()->with('success', 'Preventive maintenance plan permanently deleted.');
     }
 
     public function override(Request $request, MaintenancePlanSchedule $schedule)

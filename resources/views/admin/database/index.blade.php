@@ -27,7 +27,7 @@
                 <div>
                     <h1 class="text-xl font-bold text-gray-900 dark:text-white">Database Backup &amp; Restore</h1>
                     <p class="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-300">
-                        Super Admin tools for exporting a portable MySQL/MariaDB SQL backup and restoring it on this PMAMS installation or an XAMPP MariaDB database.
+                        Super Admin tools for exporting a portable MySQL/MariaDB SQL backup and restoring it on this PMAMS installation or an XAMPP MariaDB database. Recycle-bin rows for Locations and PM Plans, including their related records, are included in the dump.
                     </p>
                 </div>
                 <div class="rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-600 dark:bg-gray-900 dark:text-gray-300">
@@ -74,11 +74,11 @@
                 <p class="mt-1">Restoring can replace current data and MySQL/MariaDB DDL is not fully transactional. Download a fresh backup first. In XAMPP, create/select the target database in phpMyAdmin, then use its Import tab with this SQL file.</p>
             </div>
 
-            @if(($deletedUsersCount ?? 0) + ($deletedDevicesCount ?? 0) > 0)
+            @if(($deletedUsersCount ?? 0) + ($deletedDevicesCount ?? 0) + ($deletedMaintenancePlansCount ?? 0) + ($deletedLocationsCount ?? 0) > 0)
                 <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200" role="alert">
                     <div>
                         <p class="font-semibold">Recycle Bin records detected before a database restore.</p>
-                        <p class="mt-1">{{ number_format($deletedUsersCount ?? 0) }} user(s) and {{ number_format($deletedDevicesCount ?? 0) }} equipment record(s) were moved to the recycle bin and still exist in the database. Review them before replacing tables with a restore.</p>
+                        <p class="mt-1">{{ number_format($deletedUsersCount ?? 0) }} user(s), {{ number_format($deletedDevicesCount ?? 0) }} equipment record(s), {{ number_format($deletedLocationsCount ?? 0) }} location(s), and {{ number_format($deletedMaintenancePlansCount ?? 0) }} PM Plan(s) were moved to the recycle bin and still exist in the database. Review them before replacing tables with a restore.</p>
                     </div>
                     <a href="{{ route('admin.users.recycleBin') }}" class="inline-flex shrink-0 items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">
                         Review / Permanently Delete

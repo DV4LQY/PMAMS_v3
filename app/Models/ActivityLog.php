@@ -148,6 +148,7 @@ class ActivityLog extends Model
     public const TYPE_ALIASES = [
         'College' => 'Location',
         'Device' => 'Equipment',
+        'MaintenancePlanSchedule' => 'PM Plan',
     ];
 
     public static function canonicalType(?string $type): ?string

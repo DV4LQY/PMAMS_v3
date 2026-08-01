@@ -22,6 +22,22 @@
         white-space: nowrap;
     }
 
+    .dashboard-chart-scroll {
+        overflow: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .dashboard-chart-scroll::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    .dashboard-chart-scroll::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: #cbd5e1;
+    }
+
     html.dark .dashboard-quick-actions a:hover,
     html.dark .dashboard-quick-actions button:hover {
         background-color: #1e293b !important;
@@ -123,19 +139,19 @@
 
     {{-- Alerts --}}
     @if(session('success'))
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+        <div class="notification rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
             {{ session('success') }}
         </div>
     @endif
 
     @if(session('error'))
-        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div class="notification rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {{ session('error') }}
         </div>
     @endif
 
     @if($errors->any())
-        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div class="notification rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <div class="font-semibold">Please check the form.</div>
             <ul class="mt-1 list-inside list-disc">
                 @foreach($errors->all() as $error)
@@ -257,7 +273,8 @@
             'type' => ['labels' => ($devicesByType ?? collect())->keys()->values()->all(), 'values' => ($devicesByType ?? collect())->values()->all()],
             'office' => ['labels' => ($devicesByOffice ?? collect())->keys()->values()->all(), 'values' => ($devicesByOffice ?? collect())->values()->all()],
             'end_users' => ['labels' => ($endUsersByLocation ?? collect())->keys()->values()->all(), 'values' => ($endUsersByLocation ?? collect())->values()->all()],
-            'maintenance' => ['labels' => ($maintenanceSemiannually ?? collect())->keys()->values()->all(), 'values' => ($maintenanceSemiannually ?? collect())->values()->all()]
+            'maintenance' => ['labels' => ($maintenanceSemiannually ?? collect())->keys()->values()->all(), 'values' => ($maintenanceSemiannually ?? collect())->values()->all()],
+            'maintenance_plan_status' => ['labels' => ($maintenancePlanStatuses ?? collect())->keys()->values()->all(), 'values' => ($maintenancePlanStatuses ?? collect())->values()->all()]
         ]) }}"
     >
 
@@ -266,6 +283,16 @@
             <p class="mt-1 mb-4 text-sm text-gray-500">Serviceable, unserviceable, and condemned equipment.</p>
             <div style="position:relative; height:250px;">
                 <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 class="text-base font-semibold text-gray-900">Preventive Maintenance Status</h2>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Published PM Plans by checklist progress.</p>
+            <div class="dashboard-chart-scroll max-h-[320px] rounded-lg">
+                <div style="position:relative; height:250px; min-width:460px;">
+                    <canvas id="maintenancePlanStatusChart"></canvas>
+                </div>
             </div>
         </div>
 
@@ -280,16 +307,20 @@
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 class="text-base font-semibold text-gray-900">Equipment by Office</h2>
             <p class="mt-1 mb-4 text-sm text-gray-500">Issued equipment per office.</p>
-            <div style="position:relative; height:250px;">
-                <canvas id="officeChart"></canvas>
+            <div class="dashboard-chart-scroll max-h-[360px] rounded-lg" aria-label="Scrollable equipment by office chart">
+                <div style="position:relative; height:{{ max(250, (($devicesByOffice ?? collect())->count() * 38)) }}px; min-width:720px;">
+                    <canvas id="officeChart"></canvas>
+                </div>
             </div>
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 class="text-base font-semibold text-gray-900">End Users by Location</h2>
             <p class="mt-1 mb-4 text-sm text-gray-500">Active end-user population assigned to each location.</p>
-            <div style="position:relative; height:250px;">
-                <canvas id="endUsersLocationChart"></canvas>
+            <div class="dashboard-chart-scroll max-h-[360px] rounded-lg" aria-label="Scrollable end users by location chart">
+                <div style="position:relative; height:{{ max(250, (($endUsersByLocation ?? collect())->count() * 38)) }}px; min-width:720px;">
+                    <canvas id="endUsersLocationChart"></canvas>
+                </div>
             </div>
         </div>
 
@@ -434,6 +465,26 @@
                 label: 'Equipment',
                 data: @json(array_values($devicesByCondition ?? [])),
                 backgroundColor: ['#22c55e', '#ef4444', '#6b7280'],
+                borderRadius: 6,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+
+    new Chart(document.getElementById('maintenancePlanStatusChart'), {
+        type: 'bar',
+        data: {
+              labels: @json(($maintenancePlanStatuses ?? collect())->keys()->values()->all()),
+            datasets: [{
+                label: 'PM Plans',
+                  data: @json(($maintenancePlanStatuses ?? collect())->values()->all()),
+                backgroundColor: ['#f59e0b', '#3b82f6', '#22c55e'],
                 borderRadius: 6,
                 borderSkipped: false,
             }]

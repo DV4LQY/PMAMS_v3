@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Device;
+use App\Models\MaintenancePlanSchedule;
+use App\Models\Location;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class DatabaseBackupController extends Controller
@@ -30,6 +33,12 @@ class DatabaseBackupController extends Controller
             'backupTime' => (string) SystemSetting::getValue(self::BACKUP_TIME_KEY, '02:00'),
             'deletedUsersCount' => User::onlyTrashed()->count(),
             'deletedDevicesCount' => Device::onlyTrashed()->count(),
+            'deletedMaintenancePlansCount' => Schema::hasColumn('maintenance_plan_schedules', 'deleted_at')
+                ? MaintenancePlanSchedule::onlyTrashed()->count()
+                : 0,
+            'deletedLocationsCount' => Schema::hasColumn('locations', 'deleted_at')
+                ? Location::onlyTrashed()->count()
+                : 0,
         ]);
     }
 
@@ -208,6 +217,9 @@ class DatabaseBackupController extends Controller
 
             $columnSql = implode(', ', array_map(fn ($column) => $this->quoteIdentifier($column), $columns));
             $insertPrefix = 'INSERT INTO ' . $identifier . ' (' . $columnSql . ") VALUES\n";
+            // Query the table directly rather than through an Eloquent model,
+            // so SoftDeletes rows (including deleted Locations and PM Plans)
+            // are preserved and can be restored after importing the SQL backup.
             foreach (DB::table($table)->select($columns)->get()->chunk(500) as $chunk) {
                 $rows = [];
                 $statementBytes = strlen($insertPrefix);

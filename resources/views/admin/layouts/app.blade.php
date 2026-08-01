@@ -241,6 +241,35 @@
             box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07) !important;
         }
 
+        /* Flash and inline notifications use text color only. */
+        html .notification {
+            display: inline-block !important;
+            width: fit-content !important;
+            max-width: 100% !important;
+            margin: 0 0 1rem !important;
+            padding: 0 !important;
+            background: transparent !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            border-color: transparent !important;
+            border-width: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Light-mode header gradient
+        |--------------------------------------------------------------------------
+        | A cool, low-contrast blue tint gives the application chrome a clear
+        | visual anchor without the glare of a pure-white header. The dark
+        | theme continues to use its existing neutral header colors.
+        */
+        html:not(.dark) .admin-header {
+            background: linear-gradient(110deg, #f8fbff 0%, #eef5ff 52%, #e5efff 100%) !important;
+            border-bottom-color: #c7d8f2 !important;
+        }
+
         /*
         |--------------------------------------------------------------------------
         | Shared interaction and accessibility baseline
@@ -364,6 +393,22 @@
             background-color: rgba(30, 58, 138, 0.35) !important;
             border-left-color: #60a5fa;
             color: #93c5fd !important;
+        }
+
+        /* Shared equipment actions must remain identical after SPA swaps. */
+        .equipment-action-button {
+            display: inline-flex !important;
+            width: auto !important;
+            min-width: 0 !important;
+            height: 44px !important;
+            min-height: 44px !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding-right: 0.75rem !important;
+            padding-left: 0.75rem !important;
+            line-height: 1.25 !important;
+            text-align: center;
+            white-space: nowrap;
         }
 
     </style>
@@ -710,7 +755,7 @@
     @endpersist
 
     <div class="lg:ml-64 min-h-screen print:ml-0">
-        <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200 dark:bg-gray-800/90 dark:border-gray-700 print:hidden">
+        <header class="admin-header sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200 dark:bg-gray-800/90 dark:border-gray-700 print:hidden">
             <div class="h-16 px-3 sm:px-6 flex items-center justify-between">
                 <div class="flex items-center gap-3 min-w-0">
                     <button
@@ -890,13 +935,13 @@
 
         <main id="main-content" class="p-3 sm:p-6" data-current-nav-group="{{ $currentNavGroup }}">
             @if (session('success'))
-                <div class="mb-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-green-700 shadow-sm dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
+                <div class="notification mb-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-green-700 shadow-sm dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
                     {{ session('success') }}
                 </div>
             @endif
 
             @if (session('warning'))
-                <div class="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                <div class="notification mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
                     {{ session('warning') }}
                 </div>
             @endif
@@ -915,7 +960,7 @@
             @endif
 
             @if (session('error'))
-                <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+                <div class="notification mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
                     {{ session('error') }}
                 </div>
             @endif

@@ -15,13 +15,13 @@
     </div>
 
     @if(session('success'))
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300">
+        <div class="notification rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300">
             {{ session('success') }}
         </div>
     @endif
 
     @if($errors->any())
-        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
+        <div class="notification rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
             <div class="font-semibold">Please fix the following:</div>
             <ul class="mt-2 list-inside list-disc space-y-1">
                 @foreach($errors->all() as $error)

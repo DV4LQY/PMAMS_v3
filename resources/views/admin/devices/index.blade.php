@@ -809,7 +809,7 @@
                 <div class="mt-4 flex flex-wrap gap-2">
                     <a
                         href="{{ route('admin.devices.show', $d) }}"
-                        class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                        class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
                     >
                         View
                     </a>
@@ -817,14 +817,14 @@
                     @if($isComputerDevice)
                         <a
                             href="{{ route('admin.devices.history', $d) }}"
-                            class="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
+                            class="equipment-action-button rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
                         >
                             History
                         </a>
 
                         <a
                             href="{{ route('admin.devices.checklist.form', $d) }}"
-                            class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                            class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                         >
                             Mark Checked
                         </a>
@@ -832,7 +832,7 @@
                         <button
                             type="button"
                             title="Link this peripheral to a Desktop or Laptop"
-                            class="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                            class="equipment-action-button inline-flex items-center justify-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
                             x-on:click="openLink({ id: {{ $d->id }}, property_number: @js($d->property_number), type: @js($d->type?->name ?? 'Peripheral') })"
                         >
                             <span aria-hidden="true">&#128279;</span> Link
@@ -841,7 +841,7 @@
 
                     <button
                         type="button"
-                        class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
+                        class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
                         x-on:click="openEdit({
                             id: {{ $d->id }},
                             device_type_id: '{{ $d->device_type_id }}',
@@ -881,7 +881,7 @@
                     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
                         <button
                             type="button"
-                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                            class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
                             x-on:click="openDelete({{ $d->id }})"
                         >
                             Delete
@@ -972,7 +972,7 @@
                                 <div class="flex items-center gap-2">
                                     <a
                                         href="{{ route('admin.devices.show', $d) }}"
-                                        class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                                        class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
                                     >
                                         View
                                     </a>
@@ -986,14 +986,14 @@
                                     @if($isComputerDevice)
                                         <a
                                             href="{{ route('admin.devices.history', $d) }}"
-                                            class="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
+                                            class="equipment-action-button rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
                                         >
                                             History
                                         </a>
 
                                         <a
                                             href="{{ route('admin.devices.checklist.form', $d) }}"
-                                            class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                                            class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                                         >
                                             Mark Checked
                                         </a>
@@ -1001,7 +1001,7 @@
                                         <button
                                             type="button"
                                             title="Link this peripheral to a Desktop or Laptop"
-                                            class="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                                            class="equipment-action-button inline-flex items-center justify-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
                                             x-on:click="openLink({ id: {{ $d->id }}, property_number: @js($d->property_number), type: @js($d->type?->name ?? 'Peripheral') })"
                                         >
                                             <span aria-hidden="true">&#128279;</span> Link
@@ -1010,7 +1010,7 @@
 
                                     <button
                                         type="button"
-                                        class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
+                                        class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
                                         x-on:click="openEdit({
                                             id: {{ $d->id }},
                                             device_type_id: '{{ $d->device_type_id }}',
@@ -1049,7 +1049,7 @@
                                     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
                                         <button
                                             type="button"
-                                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                            class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
                                             x-on:click="openDelete({{ $d->id }})"
                                         >
                                             Delete
@@ -1753,4 +1753,18 @@
         </div>
     </x-modal>
 </div>
+<style>
+    /* Keep every equipment action predictable on cards and desktop tables. */
+    .equipment-action-button {
+        display: inline-flex;
+        width: auto;
+        min-width: 0;
+        min-height: 44px !important;
+        align-items: center;
+        justify-content: center;
+        line-height: 1.25;
+        text-align: center;
+        white-space: nowrap;
+    }
+</style>
 @endsection

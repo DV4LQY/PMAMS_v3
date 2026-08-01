@@ -117,15 +117,39 @@
                 </select>
                 <input type="month" name="month_from" value="{{ $monthFrom }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month from">
                 <input type="month" name="month_to" value="{{ $monthTo }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month to">
-                <button class="rounded-lg bg-gray-700 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">Filter</button>
-                <a href="{{ route('admin.maintenance-plan.index') }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Reset</a>
+                <button class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg bg-gray-700 px-3 text-sm font-semibold text-white hover:bg-gray-800">Filter</button>
+                <a href="{{ route('admin.maintenance-plan.index') }}" class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Reset</a>
             </form>
         </div>
+
+        @if(auth()->user()?->isSuperAdmin())
+            <form id="pm-plan-bulk-delete-form" method="POST" action="{{ route('admin.maintenance-plan.bulkDestroy') }}" class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return submitPmPlanBulkDelete(event)">
+                @csrf
+                <input type="hidden" name="select_all" id="pm-plan-delete-select-all" value="0">
+                <input type="hidden" name="location_id" value="{{ $selectedLocationId }}">
+                <input type="hidden" name="office_id" value="{{ $selectedOfficeId }}">
+                <input type="hidden" name="month_from" value="{{ $monthFrom }}">
+                <input type="hidden" name="month_to" value="{{ $monthTo }}">
+                <label class="inline-flex items-center gap-2 text-xs font-semibold text-red-800 dark:text-red-200">
+                    <input type="checkbox" data-pm-plan-page-master onchange="togglePmPlanPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                    Select page
+                </label>
+                <button type="submit" class="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Delete selected</button>
+                <button type="button" class="rounded-lg bg-red-800 px-3 py-2 text-xs font-semibold text-white hover:bg-red-900" onclick="submitPmPlanBulkDeleteAll()">Delete all matching filters</button>
+                <span id="pm-plan-selection-count" class="text-xs text-red-800 dark:text-red-200">0 selected</span>
+                <span class="text-xs text-red-700 dark:text-red-300">Deletion moves plans to the recycle bin; assignments and completion history are retained.</span>
+            </form>
+        @endif
 
         <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
             <table class="min-w-[1180px] w-full text-left text-sm">
                 <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
                     <tr>
+                        @if(auth()->user()?->isSuperAdmin())
+                            <th class="w-12 px-4 py-3 text-center">
+                                <input type="checkbox" aria-label="Select all PM Plans on this page" data-pm-plan-page-master onchange="togglePmPlanPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                            </th>
+                        @endif
                         <th class="px-4 py-3">Office / Location</th>
                         <th class="px-4 py-3">Original schedule</th>
                         <th class="px-4 py-3 text-amber-700 dark:text-amber-300">Override schedule</th>
@@ -138,6 +162,11 @@
                     @forelse($schedules as $row)
                         @php($schedule = $row['schedule'])
                         <tr class="align-top hover:bg-gray-50 dark:hover:bg-gray-900/30">
+                            @if(auth()->user()?->isSuperAdmin())
+                                <td class="px-4 py-4 text-center">
+                                    <input type="checkbox" value="{{ $schedule->id }}" data-pm-plan-checkbox onchange="syncPmPlanSelection()" aria-label="Select PM Plan {{ $row['office'] }}" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                </td>
+                            @endif
                             <td class="px-4 py-4">
                                 <div class="font-semibold text-gray-900 dark:text-white">{{ $row['office'] }}</div>
                                 <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ $schedule->title }}</div>
@@ -207,10 +236,10 @@
                                                 <button class="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Save schedule</button>
                                             </form>
                                         </details>
-                                        <form method="POST" action="{{ route('admin.maintenance-plan.destroy', $schedule) }}" data-spa-form="true" class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return confirm('Remove this published PM schedule? Its override and completion sign-off will be removed, but equipment checklist history will be retained.')">
+                                        <form method="POST" action="{{ route('admin.maintenance-plan.destroy', $schedule) }}" data-spa-form="true" class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return confirm('Move this published PM schedule to the recycle bin? Its schedule, assignments, override, and completion details can be restored later.')">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Remove scheduled PM plan</button>
+                                            <button type="submit" class="w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Move PM plan to recycle bin</button>
                                         </form>
                                     @endif
                                     <details class="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20">
@@ -238,7 +267,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">No preventive maintenance schedules match the selected filters.</td></tr>
+                        <tr><td colspan="{{ auth()->user()?->isSuperAdmin() ? 7 : 6 }}" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">No preventive maintenance schedules match the selected filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -372,6 +401,63 @@
                 });
             },
         };
+    }
+
+    function pmPlanSelectionBoxes() {
+        return Array.from(document.querySelectorAll('[data-pm-plan-checkbox]'));
+    }
+
+    function syncPmPlanSelection() {
+        const boxes = pmPlanSelectionBoxes();
+        const selected = boxes.filter((box) => box.checked).length;
+        const count = document.getElementById('pm-plan-selection-count');
+        if (count) count.textContent = `${selected} selected`;
+
+        document.querySelectorAll('[data-pm-plan-page-master]').forEach((master) => {
+            master.checked = boxes.length > 0 && selected === boxes.length;
+            master.indeterminate = selected > 0 && selected < boxes.length;
+        });
+    }
+
+    function togglePmPlanPageSelection(master) {
+        pmPlanSelectionBoxes().forEach((box) => { box.checked = master.checked; });
+        syncPmPlanSelection();
+    }
+
+    function preparePmPlanBulkForm(selectAll) {
+        const form = document.getElementById('pm-plan-bulk-delete-form');
+        if (!form) return null;
+        form.querySelectorAll('input[name="schedule_ids[]"]').forEach((input) => input.remove());
+        form.querySelector('#pm-plan-delete-select-all').value = selectAll ? '1' : '0';
+        if (!selectAll) {
+            pmPlanSelectionBoxes().filter((box) => box.checked).forEach((box) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'schedule_ids[]';
+                input.value = box.value;
+                form.appendChild(input);
+            });
+        }
+        return form;
+    }
+
+    function submitPmPlanBulkDelete(event) {
+        event.preventDefault();
+        const selected = pmPlanSelectionBoxes().filter((box) => box.checked);
+        if (!selected.length) {
+            window.alert('Select at least one PM Plan first.');
+            return false;
+        }
+        if (!window.confirm(`Move ${selected.length} selected PM Plan(s) to the recycle bin?`)) return false;
+        const form = preparePmPlanBulkForm(false);
+        if (form) form.submit();
+        return false;
+    }
+
+    function submitPmPlanBulkDeleteAll() {
+        if (!window.confirm('Move every PM Plan matching the current filters, including plans on other pages, to the recycle bin?')) return;
+        const form = preparePmPlanBulkForm(true);
+        if (form) form.submit();
     }
 </script>
 @endsection

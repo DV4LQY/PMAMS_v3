@@ -485,7 +485,7 @@
                     @if($isComputerType)
                         <a
                             href="{{ route('admin.devices.history', $device) }}"
-                            class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                            class="equipment-action-button rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
                         >
                             History
                         </a>
@@ -495,7 +495,7 @@
                         href="{{ route('admin.scanner', ['start' => 1]) }}"
                         aria-label="Scan QR code"
                         title="Open QR scanner"
-                        class="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600"
+                        class="equipment-action-button inline-flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600"
                     >
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                             <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
@@ -504,14 +504,14 @@
                         Scan QR
                     </a>
 
-                    <button type="button" x-on:click="openReissue()" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
+                    <button type="button" x-on:click="openReissue()" class="equipment-action-button rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
                         Reissue
                     </button>
 
                     @if($isComputerType)
                         <a
                             href="{{ route('admin.devices.checklist.form', $device) }}"
-                            class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                            class="equipment-action-button rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
                         >
                             Mark as Checked
                         </a>
@@ -522,7 +522,7 @@
                         type="button"
                         data-open-modal="edit-device-modal"
                         x-on:click="openEdit()"
-                        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                        class="equipment-action-button rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                     >
                         Edit Specs
                     </button>
@@ -537,7 +537,7 @@
                             @method('PATCH')
                             <button
                                 type="submit"
-                                class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                                class="equipment-action-button rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
                             >
                                 Unlink
                             </button>
@@ -555,7 +555,7 @@
 
                             <button
                                 type="submit"
-                                class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                                class="equipment-action-button rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
                             >
                                 Delete
                             </button>

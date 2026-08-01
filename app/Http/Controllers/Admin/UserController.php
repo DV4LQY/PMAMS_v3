@@ -8,6 +8,8 @@ use App\Models\Device;
 use App\Models\DeviceAssignment;
 use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
+use App\Models\MaintenancePlanSchedule;
+use App\Models\Location;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -156,7 +158,21 @@ class UserController extends Controller
             ->paginate(15, ['*'], 'devices_page')
             ->withQueryString();
 
-        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedDevices'));
+        $deletedMaintenancePlans = MaintenancePlanSchedule::onlyTrashed()
+            ->with(['location', 'office', 'assignedUser', 'assignedUsers', 'latestOverride', 'completion'])
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('id')
+            ->paginate(15, ['*'], 'plans_page')
+            ->withQueryString();
+
+        $deletedLocations = Location::onlyTrashed()
+            ->withCount('offices')
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('id')
+            ->paginate(15, ['*'], 'locations_page')
+            ->withQueryString();
+
+        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedDevices', 'deletedMaintenancePlans', 'deletedLocations'));
     }
 
     public function permanentDelete(Request $request)
@@ -164,7 +180,7 @@ class UserController extends Controller
         abort_unless($request->user()?->isSuperAdmin(), 403);
 
         $data = $request->validate([
-            'type' => ['required', Rule::in(['users', 'devices', 'all'])],
+            'type' => ['required', Rule::in(['users', 'devices', 'maintenance_plans', 'locations', 'all'])],
             'ids' => ['nullable', 'array'],
             'ids.*' => ['integer', 'distinct'],
             'select_all' => ['nullable', 'boolean'],
@@ -185,7 +201,7 @@ class UserController extends Controller
             return back()->withErrors(['ids' => 'Select at least one recycle-bin record or choose the empty-bin action.']);
         }
 
-        $types = $type === 'all' ? ['users', 'devices'] : [$type];
+        $types = $type === 'all' ? ['users', 'devices', 'maintenance_plans', 'locations'] : [$type];
         $deletedCounts = [];
 
         DB::transaction(function () use ($types, $selectAll, $ids, $data, &$deletedCounts) {
@@ -193,6 +209,8 @@ class UserController extends Controller
                 $deletedCounts[$currentType] = match ($currentType) {
                     'users' => $this->permanentlyDeleteUsers($selectAll, $ids),
                     'devices' => $this->permanentlyDeleteDevices($selectAll, $ids),
+                    'maintenance_plans' => $this->permanentlyDeleteMaintenancePlans($selectAll, $ids),
+                    'locations' => $this->permanentlyDeleteLocations($selectAll, $ids),
                 };
             }
         });
@@ -268,6 +286,60 @@ class UserController extends Controller
         }
 
         return $devices->count();
+    }
+
+    private function permanentlyDeleteMaintenancePlans(bool $selectAll, $ids): int
+    {
+        $query = MaintenancePlanSchedule::onlyTrashed();
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $plans = $query->get();
+        foreach ($plans as $plan) {
+            // Keep this path in sync with the single-record PM Plan purge.
+            // The schedule's checklist history is stored separately and is
+            // intentionally not deleted here.
+            $plan->assignedUsers()->detach();
+            $plan->overrides()->delete();
+            $plan->completion()->delete();
+            $plan->forceDelete();
+        }
+
+        return $plans->count();
+    }
+
+    private function permanentlyDeleteLocations(bool $selectAll, $ids): int
+    {
+        $query = Location::onlyTrashed();
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $locations = $query->get();
+        $deletedCount = 0;
+        foreach ($locations as $location) {
+            // A normal location delete is blocked while it has offices,
+            // assignments, or an active PM Plan. Keep the same protection for
+            // bulk/permanent deletion so a recycle-bin action cannot orphan
+            // dependent records.
+            $hasAssignments = DeviceAssignment::query()
+                ->where(function ($assignment) use ($location) {
+                    $assignment->where('location_id', $location->id)
+                        ->orWhereHas('office', fn ($office) => $office->where('location_id', $location->id))
+                        ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $location->id));
+                })
+                ->exists();
+
+            if ($location->offices()->exists() || $hasAssignments || MaintenancePlanSchedule::withTrashed()->where('location_id', $location->id)->exists()) {
+                continue;
+            }
+
+            $location->forceDelete();
+            $deletedCount++;
+        }
+
+        return $deletedCount;
     }
 
     public function store(Request $request)
@@ -470,6 +542,93 @@ class UserController extends Controller
         return back()->with('success', 'User restored.');
     }
 
+    /** Restore selected records from one recycle-bin section. */
+    public function restoreSelected(Request $request)
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $data = $request->validate([
+            'type' => ['required', Rule::in(['users', 'devices', 'maintenance_plans', 'locations'])],
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'distinct'],
+        ]);
+
+        $type = $data['type'];
+        $ids = collect($data['ids'])->map(fn ($id) => (int) $id)->filter()->values();
+        $restored = DB::transaction(fn () => match ($type) {
+            'users' => $this->restoreSelectedUsers($ids),
+            'devices' => $this->restoreSelectedDevices($ids),
+            'maintenance_plans' => $this->restoreSelectedMaintenancePlans($ids),
+            'locations' => $this->restoreSelectedLocations($ids),
+        });
+
+        $labels = [
+            'users' => 'user',
+            'devices' => 'equipment',
+            'maintenance_plans' => 'PM Plan',
+            'locations' => 'location',
+        ];
+        $label = $labels[$type];
+
+        if ($restored === 0) {
+            return back()->with('warning', "No selected {$label} records were found in the recycle bin.");
+        }
+
+        ActivityLog::record(
+            'restored',
+            "Restored {$restored} selected {$label} record(s) from the recycle bin.",
+            null,
+            ActivityLog::makePayload([
+                'bulk' => true,
+                'record_type' => $label,
+                'ids' => $ids->all(),
+                'restored' => $restored,
+            ])
+        );
+
+        return back()->with('success', "Restored {$restored} selected {$label} record(s) from the recycle bin.");
+    }
+
+    private function restoreSelectedUsers($ids): int
+    {
+        $records = User::onlyTrashed()->whereIn('id', $ids)->get();
+        foreach ($records as $record) {
+            $record->restore();
+        }
+
+        return $records->count();
+    }
+
+    private function restoreSelectedDevices($ids): int
+    {
+        $records = Device::onlyTrashed()->whereIn('id', $ids)->get();
+        foreach ($records as $record) {
+            $record->restore();
+        }
+
+        return $records->count();
+    }
+
+    private function restoreSelectedMaintenancePlans($ids): int
+    {
+        $records = MaintenancePlanSchedule::onlyTrashed()->whereIn('id', $ids)->get();
+        foreach ($records as $record) {
+            $record->restore();
+        }
+
+        return $records->count();
+    }
+
+    private function restoreSelectedLocations($ids): int
+    {
+        $records = Location::onlyTrashed()->whereIn('id', $ids)->get();
+        foreach ($records as $record) {
+            $record->restore();
+        }
+
+        return $records->count();
+    }
+
     /** Restore every record currently held in the recycle bin. */
     public function restoreAll(Request $request)
     {
@@ -477,8 +636,10 @@ class UserController extends Controller
 
         $restoredUsers = 0;
         $restoredDevices = 0;
+        $restoredMaintenancePlans = 0;
+        $restoredLocations = 0;
 
-        DB::transaction(function () use (&$restoredUsers, &$restoredDevices): void {
+        DB::transaction(function () use (&$restoredUsers, &$restoredDevices, &$restoredMaintenancePlans, &$restoredLocations): void {
             $deletedUsers = User::onlyTrashed()->get();
             foreach ($deletedUsers as $deletedUser) {
                 $deletedUser->restore();
@@ -491,17 +652,31 @@ class UserController extends Controller
             }
             $restoredDevices = $deletedDevices->count();
 
+            $deletedMaintenancePlans = MaintenancePlanSchedule::onlyTrashed()->get();
+            foreach ($deletedMaintenancePlans as $deletedMaintenancePlan) {
+                $deletedMaintenancePlan->restore();
+            }
+            $restoredMaintenancePlans = $deletedMaintenancePlans->count();
+
+            $deletedLocations = Location::onlyTrashed()->get();
+            foreach ($deletedLocations as $deletedLocation) {
+                $deletedLocation->restore();
+            }
+            $restoredLocations = $deletedLocations->count();
+
         });
 
-        $total = $restoredUsers + $restoredDevices;
+        $total = $restoredUsers + $restoredDevices + $restoredMaintenancePlans + $restoredLocations;
         if ($total > 0) {
             ActivityLog::record(
                 'restored',
-                'Restored all user and equipment records from the recycle bin.',
+                'Restored all user, equipment, location, and PM Plan records from the recycle bin.',
                 null,
                 ActivityLog::makePayload([
                     'users_restored' => $restoredUsers,
                     'equipment_restored' => $restoredDevices,
+                    'maintenance_plans_restored' => $restoredMaintenancePlans,
+                    'locations_restored' => $restoredLocations,
                 ])
             );
         }

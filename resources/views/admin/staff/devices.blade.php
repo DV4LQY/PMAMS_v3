@@ -128,13 +128,13 @@
 
     {{-- Alerts --}}
     @if(session('error'))
-        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+        <div class="notification rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
             {{ session('error') }}
         </div>
     @endif
 
     @if($errors->any())
-        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+        <div class="notification rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
             <div class="font-semibold">Please check the form.</div>
             <ul class="mt-1 list-inside list-disc">
                 @foreach($errors->all() as $error)

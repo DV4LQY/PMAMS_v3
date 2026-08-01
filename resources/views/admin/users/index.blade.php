@@ -82,13 +82,13 @@
             <a
                 href="{{ route('admin.users.recycleBin') }}"
                 wire:navigate
-                class="inline-flex items-center rounded-xl bg-gray-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-600"
+                class="inline-flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-gray-700 px-4 text-sm font-medium text-white shadow-sm hover:bg-gray-600"
             >
                 Recycle Bin
             </a>
             <button
                 type="button"
-                class="shrink-0 inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                class="inline-flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-blue-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                 @click="openAdd()"
             >
                 + Add User

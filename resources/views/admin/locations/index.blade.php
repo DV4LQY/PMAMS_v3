@@ -260,12 +260,33 @@ document.addEventListener('livewire:navigated', () => {
         @endif
     </div>
 
+    @if(auth()->user()->isAdmin())
+        <form id="location-bulk-delete-form" method="POST" action="{{ route('admin.locations.bulkDestroy') }}" class="flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return submitLocationBulkDelete(event)">
+            @csrf
+            <input type="hidden" name="select_all" id="location-delete-select-all" value="0">
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-red-800 dark:text-red-200">
+                <input type="checkbox" data-location-page-master onchange="toggleLocationPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                Select page
+            </label>
+            <button type="submit" class="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Delete selected</button>
+            <button type="button" class="rounded-lg bg-red-800 px-3 py-2 text-xs font-semibold text-white hover:bg-red-900" onclick="submitLocationBulkDeleteAll()">Delete all locations</button>
+            <span id="location-selection-count" class="text-xs text-red-800 dark:text-red-200">0 selected</span>
+            <span class="text-xs text-red-700 dark:text-red-300">Locations with offices, assignments, or active PM Plans are skipped.</span>
+        </form>
+    @endif
+
     {{-- Mobile cards --}}
     <div class="grid grid-cols-1 gap-3 md:hidden">
         @forelse ($locations as $c)
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <div class="space-y-3">
-                    <div>
+                    <div class="flex items-start justify-between gap-3">
+                        @if(auth()->user()->isAdmin())
+                            <label class="inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                <input type="checkbox" value="{{ $c->id }}" data-location-checkbox onchange="syncLocationSelection()" aria-label="Select location {{ $c->name }}" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                Select
+                            </label>
+                        @endif
                         <a
                             class="font-semibold text-blue-700 hover:underline dark:text-blue-400"
                             href="{{ route('admin.offices.index', $c, false) }}"
@@ -301,7 +322,7 @@ document.addEventListener('livewire:navigated', () => {
                     <div class="flex flex-wrap gap-2 pt-1">
                         <a
                             href="{{ route('admin.devices.index', ['location' => $c->id]) }}"
-                            class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                            class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                         >
                             View Equipment
                         </a>
@@ -309,7 +330,7 @@ document.addEventListener('livewire:navigated', () => {
                         @if(auth()->user()->isAdmin() || auth()->user()->isCustodian())
                             <button
                                 type="button"
-                                class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                                class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
                                 @click="openIssue({
                                     id: {{ $c->id }},
                                     name: @js($c->name),
@@ -324,7 +345,7 @@ document.addEventListener('livewire:navigated', () => {
                         @if(auth()->user()->isAdmin())
                             <button
                                 type="button"
-                                class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
+                                class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
                                 @click="openEdit({
                                     id: {{ $c->id }},
                                     name: @js($c->name),
@@ -336,7 +357,7 @@ document.addEventListener('livewire:navigated', () => {
 
                             <button
                                 type="button"
-                                class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
                                 @click="openDelete({{ $c->id }})"
                             >
                                 Delete
@@ -358,6 +379,11 @@ document.addEventListener('livewire:navigated', () => {
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
                     <tr>
+                        @if(auth()->user()->isAdmin())
+                            <th class="w-12 px-4 py-3 text-center">
+                                <input type="checkbox" aria-label="Select all locations on this page" data-location-page-master onchange="toggleLocationPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                            </th>
+                        @endif
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Name</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Code</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Offices</th>
@@ -370,6 +396,11 @@ document.addEventListener('livewire:navigated', () => {
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse ($locations as $c)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            @if(auth()->user()->isAdmin())
+                                <td class="px-4 py-3 text-center">
+                                    <input type="checkbox" value="{{ $c->id }}" data-location-checkbox onchange="syncLocationSelection()" aria-label="Select location {{ $c->name }}" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                </td>
+                            @endif
                             <td class="px-4 py-3">
                                 <a
                                     class="font-medium text-blue-700 hover:underline dark:text-blue-400"
@@ -393,7 +424,7 @@ document.addEventListener('livewire:navigated', () => {
                                 <div class="flex items-center gap-2">
                                     <a
                                         href="{{ route('admin.devices.index', ['location' => $c->id]) }}"
-                                        class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                                        class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                                     >
                                         View Equipment
                                     </a>
@@ -401,7 +432,7 @@ document.addEventListener('livewire:navigated', () => {
                                     @if(auth()->user()->isAdmin() || auth()->user()->isCustodian())
                                         <button
                                             type="button"
-                                            class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                                            class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
                                             @click="openIssue({
                                                 id: {{ $c->id }},
                                                 name: @js($c->name),
@@ -416,7 +447,7 @@ document.addEventListener('livewire:navigated', () => {
                                     @if(auth()->user()->isAdmin())
                                         <button
                                             type="button"
-                                            class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
+                                            class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
                                             @click="openEdit({
                                                 id: {{ $c->id }},
                                                 name: @js($c->name),
@@ -428,7 +459,7 @@ document.addEventListener('livewire:navigated', () => {
 
                                         <button
                                             type="button"
-                                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                            class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
                                             @click="openDelete({{ $c->id }})"
                                         >
                                             Delete
@@ -441,7 +472,7 @@ document.addEventListener('livewire:navigated', () => {
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="{{ auth()->user()->isAdmin() ? 8 : 7 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                 No locations found.
                             </td>
                         </tr>
@@ -760,7 +791,7 @@ document.addEventListener('livewire:navigated', () => {
     <x-modal show="deleteOpen" title="Delete Location">
         <div class="space-y-3">
             <div class="text-sm text-gray-700 dark:text-gray-300">
-                Are you sure you want to delete this location?
+                Are you sure you want to move this location to the recycle bin? It can be restored by a Super Admin.
             </div>
 
 
@@ -775,7 +806,7 @@ document.addEventListener('livewire:navigated', () => {
                 @csrf
                 @method('DELETE')
 
-                <button type="submit" x-ref="confirmDeleteBtn" class="rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600">Confirm</button>
+                <button type="submit" x-ref="confirmDeleteBtn" class="rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600">Move to Recycle Bin</button>
 
                 <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600" @click="deleteOpen = false">
                     Cancel
@@ -785,3 +816,67 @@ document.addEventListener('livewire:navigated', () => {
     </x-modal>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    function locationSelectionBoxes() {
+        // The page renders both mobile cards and the desktop table. Only use
+        // the currently visible copy so a row is never submitted twice.
+        return Array.from(document.querySelectorAll('[data-location-checkbox]'))
+            .filter((box) => box.offsetParent !== null);
+    }
+
+    function syncLocationSelection() {
+        const boxes = locationSelectionBoxes();
+        const selected = boxes.filter((box) => box.checked).length;
+        const count = document.getElementById('location-selection-count');
+        if (count) count.textContent = `${selected} selected`;
+
+        document.querySelectorAll('[data-location-page-master]').forEach((master) => {
+            master.checked = boxes.length > 0 && selected === boxes.length;
+            master.indeterminate = selected > 0 && selected < boxes.length;
+        });
+    }
+
+    function toggleLocationPageSelection(master) {
+        locationSelectionBoxes().forEach((box) => { box.checked = master.checked; });
+        syncLocationSelection();
+    }
+
+    function prepareLocationBulkForm(selectAll) {
+        const form = document.getElementById('location-bulk-delete-form');
+        if (!form) return null;
+        form.querySelectorAll('input[name="location_ids[]"]').forEach((input) => input.remove());
+        form.querySelector('#location-delete-select-all').value = selectAll ? '1' : '0';
+        if (!selectAll) {
+            locationSelectionBoxes().filter((box) => box.checked).forEach((box) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'location_ids[]';
+                input.value = box.value;
+                form.appendChild(input);
+            });
+        }
+        return form;
+    }
+
+    function submitLocationBulkDelete(event) {
+        event.preventDefault();
+        const selected = locationSelectionBoxes().filter((box) => box.checked);
+        if (!selected.length) {
+            window.alert('Select at least one location first.');
+            return false;
+        }
+        if (!window.confirm(`Move ${selected.length} selected location(s) to the recycle bin?`)) return false;
+        const form = prepareLocationBulkForm(false);
+        if (form) form.submit();
+        return false;
+    }
+
+    function submitLocationBulkDeleteAll() {
+        if (!window.confirm('Move every active location, including locations on other pages, to the recycle bin? Locations still in use will be skipped.')) return;
+        const form = prepareLocationBulkForm(true);
+        if (form) form.submit();
+    }
+</script>
+@endpush

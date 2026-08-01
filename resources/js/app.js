@@ -70,7 +70,11 @@ import './bootstrap';
         if (!(form instanceof HTMLFormElement) || form.method.toUpperCase() !== 'GET' ||
             form.hasAttribute('wire:navigate') || form.dataset.noSpa === 'true') return;
 
-        const action = new URL(form.action || window.location.href, window.location.href);
+        // Read the attribute instead of the form.action property. A control
+        // named "action" (such as the activity-log filter) shadows the
+        // native HTMLFormElement.action property and would otherwise produce
+        // a URL like /admin/[object%20HTMLSelectElement].
+        const action = new URL(form.getAttribute('action') || window.location.href, window.location.href);
         const sameOrigin = action.origin === window.location.origin ||
             (isLocalHost(action.hostname) && isLocalHost(window.location.hostname));
         if (!sameOrigin) return;
@@ -115,7 +119,7 @@ import './bootstrap';
         });
 
         try {
-            const action = new URL(form.action || window.location.href, window.location.href);
+            const action = new URL(form.getAttribute('action') || window.location.href, window.location.href);
             const response = await fetch(action.href, {
                 method: (form.getAttribute('method') || 'POST').toUpperCase(),
                 body: new FormData(form),
@@ -363,7 +367,7 @@ import './bootstrap';
             if (!blob || blob.size > 10 * 1024 * 1024) throw new Error('The captured photo is larger than 10 MB.');
             const data = new FormData(form);
             data.append('equipment_photo', blob, 'equipment-photo.jpg');
-            const response = await fetch(form.action, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
+            const response = await fetch(form.getAttribute('action') || window.location.href, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
             if (!response.ok) throw new Error('Photo upload failed.');
             const result = await response.json();
             image.src = `${result.photo_url}?v=${Date.now()}`;
@@ -389,7 +393,7 @@ import './bootstrap';
         if (!form || !status) return;
         setBusy(true);
         try {
-            const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
+            const response = await fetch(form.getAttribute('action') || window.location.href, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
             if (!response.ok) throw new Error('Photo delete failed.');
             const result = await response.json();
             image?.classList.add('hidden');

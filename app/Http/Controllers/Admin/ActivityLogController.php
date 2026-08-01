@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class ActivityLogController extends Controller
@@ -27,22 +28,60 @@ class ActivityLogController extends Controller
     {
         $query = ActivityLog::query()->latest();
 
-        $action = $request->query('action');
+        // Read and normalize the query-string filters once.  In particular,
+        // do not use Request::merge() and then read with query(): merge()
+        // updates the input bag, while query() reads only the original URL
+        // query bag.  That made the special Issued/Returned filter appear to
+        // select Equipment in the UI without actually applying that filter.
+        $action = trim((string) $request->query('action', ''));
+        $subjectType = trim((string) $request->query('subject_type', ''));
+        $userFilter = trim((string) $request->query('user_id', ''));
 
-        if ($action) {
+        // Date inputs are normalized before being used in whereDate clauses so
+        // malformed bookmarked URLs cannot produce misleading results.
+        $normalizeDate = static function ($value): string {
+            $value = trim((string) $value);
+
+            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+                return '';
+            }
+
+            [$year, $month, $day] = array_map('intval', explode('-', $value));
+
+            return checkdate($month, $day, $year) ? $value : '';
+        };
+
+        $dateFrom = $normalizeDate($request->query('date_from', ''));
+        $dateTo = $normalizeDate($request->query('date_to', ''));
+
+        if ($action !== '') {
             $query->where('action', $action);
+        }
+
+        if ($userFilter === 'system') {
+            $query->whereNull('user_id');
+        } elseif (ctype_digit($userFilter) && (int) $userFilter > 0) {
+            $query->where('user_id', (int) $userFilter);
+        }
+
+        if ($dateFrom !== '') {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+
+        if ($dateTo !== '') {
+            $query->whereDate('created_at', '<=', $dateTo);
         }
 
         // Issued/Returned logs are always Equipment logs.
         if (in_array($action, ['issued', 'returned'])) {
-            $request->merge([
-                'subject_type' => 'Equipment',
-            ]);
+            $subjectType = 'Equipment';
         }
 
-        $subjectType = $request->query('subject_type');
+        // Accept bookmarked/legacy links such as subject_type=Device while
+        // keeping the current UI label (Equipment) canonical.
+        $subjectType = ActivityLog::canonicalType($subjectType) ?? '';
 
-        if ($subjectType) {
+        if ($subjectType !== '') {
             $matchTypes = $this->typesMatching($subjectType);
 
             $query->where(function ($q) use ($matchTypes) {
@@ -65,6 +104,16 @@ class ActivityLogController extends Controller
             ->distinct()
             ->orderBy('action')
             ->pluck('action');
+
+        $loggedUserIds = ActivityLog::query()
+            ->whereNotNull('user_id')
+            ->distinct()
+            ->pluck('user_id');
+
+        $users = User::withTrashed()
+            ->whereIn('id', $loggedUserIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
 
         // Same — only non-null subject types that exist.
         // Issued/Returned logs only apply to Equipment.
@@ -92,6 +141,16 @@ class ActivityLogController extends Controller
 
         }
 
-        return view('admin.logs.index', compact('logs', 'actions', 'subjectTypes'));
+        return view('admin.logs.index', [
+            'logs' => $logs,
+            'actions' => $actions,
+            'subjectTypes' => $subjectTypes,
+            'filterAction' => $action,
+            'filterSubjectType' => $subjectType,
+            'users' => $users,
+            'filterUser' => $userFilter,
+            'filterDateFrom' => $dateFrom,
+            'filterDateTo' => $dateTo,
+        ]);
     }
 }
