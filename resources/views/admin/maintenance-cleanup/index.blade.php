@@ -36,23 +36,31 @@
             <button class="cleanup-filter-button justify-self-start rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white">Filter deleted history</button>
         </form>
 
+        @if($deletedRecords->total() > 0)
+        <div class="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                <input id="deleted-checklist-select-all" type="checkbox" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" onchange="toggleCleanupAll(this.checked)" aria-label="Select all deleted checklist records matching the current filters">
+                Select all deleted checklist records matching the current filters
+            </label>
+            <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($deletedRecords->total()) }} matching</span>
+        </div>
+        @endif
+
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Deleted checklist records</h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">These records are soft-deleted and remain recoverable until permanently deleted.</p>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
+            @if($deletedRecords->total() > 0)
+            <div id="cleanup-bulk-actions" class="hidden flex flex-wrap items-center gap-3">
                 <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                     <input id="deleted-checklist-select-page" type="checkbox" class="h-4 w-4" onchange="toggleCleanupPage(this.checked)">
                     Select page
                 </label>
-                <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                    <input id="deleted-checklist-select-all" type="checkbox" class="h-4 w-4" onchange="toggleCleanupAll(this.checked)">
-                    Select all matching the filter across every page
-                </label>
                 <button type="button" onclick="restoreSelectedDeletedChecklists()" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore selected</button>
                 <button type="button" onclick="openCleanupBulkDeleteRemarks()" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently delete selected</button>
             </div>
+            @endif
         </div>
 
         <div class="overflow-x-auto">
@@ -144,17 +152,22 @@ function cleanupBoxes() {
 function toggleCleanupPage(checked) {
     cleanupBoxes().forEach((box) => { box.checked = checked; });
     if (!checked) document.getElementById('deleted-checklist-select-all').checked = false;
+    syncCleanupSelection();
 }
 
 function toggleCleanupAll(checked) {
     document.getElementById('deleted-checklist-select-page').checked = checked;
     cleanupBoxes().forEach((box) => { box.checked = checked; });
+    syncCleanupSelection();
 }
 
 function syncCleanupSelection() {
     const boxes = cleanupBoxes();
-    document.getElementById('deleted-checklist-select-all').checked = false;
-    document.getElementById('deleted-checklist-select-page').checked = boxes.length > 0 && boxes.every((box) => box.checked);
+    const allMatching = document.getElementById('deleted-checklist-select-all');
+    const selected = boxes.filter((box) => box.checked).length;
+    if (allMatching?.checked && boxes.some((box) => !box.checked)) allMatching.checked = false;
+    document.getElementById('deleted-checklist-select-page').checked = boxes.length > 0 && selected === boxes.length;
+    document.getElementById('cleanup-bulk-actions')?.classList.toggle('hidden', selected === 0 && !allMatching?.checked);
 }
 
 function restoreCleanupRecords(ids, selectAll = false) {

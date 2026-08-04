@@ -503,6 +503,28 @@
             touch-action: manipulation;
         }
 
+        /* Compact table/card actions intentionally use a smaller visual button.
+           Keep this rule after the global 44px touch baseline so SPA-rendered
+           links and buttons remain exactly the same size. */
+        .action-icon-button {
+            display: inline-flex !important;
+            width: 36px !important;
+            min-width: 36px !important;
+            height: 36px !important;
+            min-height: 36px !important;
+            padding: 0 !important;
+            align-items: center !important;
+            justify-content: center !important;
+            line-height: 1 !important;
+        }
+
+        .action-icon-button > svg {
+            display: block !important;
+            width: 16px !important;
+            height: 16px !important;
+            flex: 0 0 16px !important;
+        }
+
         :where(input:not([type="checkbox"]):not([type="radio"]), select) {
             min-height: 44px;
         }
@@ -1155,7 +1177,7 @@
 
         <main id="main-content" class="p-3 sm:p-6" data-current-nav-group="{{ $currentNavGroup }}">
             @if (session('success'))
-                <div class="notification mb-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-green-700 shadow-sm dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
+                <div class="notification mb-4 px-1 py-1 text-emerald-600 dark:text-emerald-400" role="status" aria-live="polite">
                     {{ session('success') }}
                 </div>
             @endif

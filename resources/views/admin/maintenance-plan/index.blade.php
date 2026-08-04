@@ -123,8 +123,16 @@
             </form>
         </div>
 
-        @if(auth()->user()?->isSuperAdmin())
-            <form id="pm-plan-bulk-delete-form" method="POST" action="{{ route('admin.maintenance-plan.bulkDestroy') }}" class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return submitPmPlanBulkDelete(event)">
+        @if(auth()->user()?->isSuperAdmin() && $schedules->total() > 0)
+            <div class="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <input id="pm-plan-select-all-matching" type="checkbox" onchange="togglePmPlanAllMatching(this.checked)" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" aria-label="Select all PM Plans matching the current filters">
+                    Select all PM Plans matching the current filters
+                </label>
+                <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($schedules->total()) }} matching</span>
+            </div>
+
+            <form id="pm-plan-bulk-delete-form" method="POST" action="{{ route('admin.maintenance-plan.bulkDestroy') }}" class="mb-4 hidden flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return submitPmPlanBulkDelete(event)">
                 @csrf
                 <input type="hidden" name="select_all" id="pm-plan-delete-select-all" value="0">
                 <input type="hidden" name="location_id" value="{{ $selectedLocationId }}">
@@ -136,8 +144,7 @@
                     Select page
                 </label>
                 <button type="submit" class="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Delete selected</button>
-                <button type="button" class="rounded-lg bg-red-800 px-3 py-2 text-xs font-semibold text-white hover:bg-red-900" onclick="submitPmPlanBulkDeleteAll()">Delete all matching filters</button>
-                <span id="pm-plan-selection-count" class="text-xs text-red-800 dark:text-red-200">0 selected</span>
+                <span id="pm-plan-selection-count" class="text-xs text-red-800 dark:text-red-200"><strong>0</strong> selected</span>
                 <span class="text-xs text-red-700 dark:text-red-300">Deletion moves plans to the recycle bin; assignments and completion history are retained.</span>
             </form>
         @endif
@@ -216,54 +223,88 @@
                                 @endif
                             </td>
                             <td class="px-4 py-4">
-                                <div class="flex min-w-[220px] flex-col gap-2">
+                                <div class="flex min-w-[220px] flex-wrap items-center gap-2">
                                     @if(auth()->user()?->isSuperAdmin())
-                                        <details class="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/20">
-                                            <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-blue-800 dark:text-blue-200">Edit published schedule</summary>
-                                            <form method="POST" action="{{ route('admin.maintenance-plan.update', $schedule) }}" data-spa-form="true" class="space-y-2 border-t border-blue-200 p-3 dark:border-blue-900/60">
-                                                @csrf @method('PUT')
-                                                <div class="grid grid-cols-2 gap-2">
-                                                    <input type="month" name="schedule_month_from" value="{{ optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                                                    <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                                                </div>
-                                                @php($scheduleAssignedIds = $schedule->assignedUsers->pluck('id')->merge([$schedule->assigned_user_id])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all())
-                                                <label class="block text-[11px] font-semibold text-gray-600 dark:text-gray-300">Assigned Admin</label>
-                                                <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                                                    @foreach($admins as $admin)<option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $scheduleAssignedIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>@endforeach
-                                                </select>
-                                                <p class="text-[11px] text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin.</p>
-                                                <input type="text" name="title" value="{{ $schedule->title }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                                                <textarea name="notes" rows="2" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $schedule->notes }}</textarea>
-                                                <button class="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Save schedule</button>
-                                            </form>
-                                        </details>
-                                        <form method="POST" action="{{ route('admin.maintenance-plan.destroy', $schedule) }}" data-spa-form="true" class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return confirm('Move this published PM schedule to the recycle bin? Its schedule, assignments, override, and completion details can be restored later.')">
+                                        <button type="button" data-open-modal="pm-plan-edit-{{ $schedule->id }}" title="Edit published schedule" aria-label="Edit published schedule" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-blue-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-900">
+                                            <x-action-icon-symbol icon="edit" />
+                                            <span class="sr-only">Edit published schedule</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit published schedule</span>
+                                        </button>
+                                        <form method="POST" action="{{ route('admin.maintenance-plan.destroy', $schedule) }}" data-spa-form="true" class="inline-flex border-0 bg-transparent p-0" onsubmit="return confirm('Move this published PM schedule to the recycle bin? Its schedule, assignments, override, and completion details can be restored later.')">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Move PM plan to recycle bin</button>
+                                            <x-action-icon type="submit" icon="recycle" variant="red" label="Move PM plan to recycle bin" />
                                         </form>
                                     @endif
-                                    <details class="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20">
-                                        <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-200">Override schedule</summary>
-                                        <form method="POST" action="{{ route('admin.maintenance-plan.override', $schedule) }}" data-spa-form="true" class="space-y-2 border-t border-amber-200 p-3 dark:border-amber-900/60">
-                                            @csrf
-                                            <input type="date" name="override_date" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white" aria-label="Override date">
-                                            <textarea name="reason" rows="2" required maxlength="2000" placeholder="Required reason / remarks" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white"></textarea>
-                                            <button class="w-full rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700">Save override</button>
-                                        </form>
-                                        @if(auth()->user()?->isSuperAdmin() && $row['override_schedule'])
-                                            <form method="POST" action="{{ route('admin.maintenance-plan.override.reset', $schedule) }}" data-spa-form="true" class="border-t border-amber-200 p-3 dark:border-amber-900/60" onsubmit="return confirm('Remove this temporary override and restore the approved published schedule?')">
-                                                @csrf
-                                                @method('DELETE')
-                                                <button type="submit" class="w-full rounded-lg bg-gray-700 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500">Reset / remove override</button>
-                                            </form>
-                                        @endif
-                                    </details>
+                                    <button type="button" data-open-modal="pm-plan-override-{{ $schedule->id }}" title="Override schedule" aria-label="Override schedule" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:focus:ring-offset-gray-900">
+                                            <x-action-icon-symbol icon="calendar" />
+                                            <span class="sr-only">Override schedule</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Override schedule</span>
+                                    </button>
                                     @if($row['is_complete'])
-                                        <button type="button" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700" @click="openCompletion({{ $schedule->id }}, @js(route('admin.maintenance-plan.complete', $schedule)), @js(['actual_date' => $row['completion']?->actual_date?->format('Y-m-d') ?? $row['latest_actual_date'] ?? now()->toDateString(), 'person_in_charge' => $row['person_in_charge'] ?? '', 'signer_name' => $row['completion']?->signer_name ?? '', 'signature_data' => $row['completion']?->signature_data ?? '', 'remarks' => $row['completion']?->remarks ?? '']))">
-                                            {{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}
+                                        <button type="button" title="{{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}" aria-label="{{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}" class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-gray-900" @click="openCompletion({{ $schedule->id }}, @js(route('admin.maintenance-plan.complete', $schedule)), @js(['actual_date' => $row['completion']?->actual_date?->format('Y-m-d') ?? $row['latest_actual_date'] ?? now()->toDateString(), 'person_in_charge' => $row['person_in_charge'] ?? '', 'signer_name' => $row['completion']?->signer_name ?? '', 'signature_data' => $row['completion']?->signature_data ?? '', 'remarks' => $row['completion']?->remarks ?? '']))">
+                                            <x-action-icon-symbol icon="clipboard" />
+                                            <span class="sr-only">{{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">{{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}</span>
                                         </button>
                                     @endif
+                                </div>
+                                @if(auth()->user()?->isSuperAdmin())
+                                    @php($scheduleAssignedIds = $schedule->assignedUsers->pluck('id')->merge([$schedule->assigned_user_id])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all())
+                                    <div id="pm-plan-edit-{{ $schedule->id }}" role="dialog" aria-modal="true" style="display:none" class="fixed inset-0 z-[80] overflow-y-auto bg-gray-950/70 p-4">
+                                        <div class="flex min-h-full items-center justify-center">
+                                            <div class="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+                                                <div class="mb-4 flex items-start justify-between gap-4">
+                                                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Edit published schedule</h2>
+                                                    <button type="button" data-native-modal-close="pm-plan-edit-{{ $schedule->id }}" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close">&times;</button>
+                                                </div>
+                                                <form method="POST" action="{{ route('admin.maintenance-plan.update', $schedule) }}" data-spa-form="true" class="space-y-3">
+                                                    @csrf @method('PUT')
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <input type="month" name="schedule_month_from" value="{{ optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                        <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                    </div>
+                                                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin</label>
+                                                    <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                        @foreach($admins as $admin)<option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $scheduleAssignedIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>@endforeach
+                                                    </select>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin.</p>
+                                                    <input type="text" name="title" value="{{ $schedule->title }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" placeholder="Schedule title">
+                                                    <textarea name="notes" rows="3" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $schedule->notes }}</textarea>
+                                                    <div class="flex justify-end gap-2 pt-2">
+                                                        <button type="button" data-native-modal-close="pm-plan-edit-{{ $schedule->id }}" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
+                                                        <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save schedule</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
+                                <div id="pm-plan-override-{{ $schedule->id }}" role="dialog" aria-modal="true" style="display:none" class="fixed inset-0 z-[80] overflow-y-auto bg-gray-950/70 p-4">
+                                    <div class="flex min-h-full items-center justify-center">
+                                        <div class="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+                                            <div class="mb-4 flex items-start justify-between gap-4">
+                                                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Override schedule</h2>
+                                                <button type="button" data-native-modal-close="pm-plan-override-{{ $schedule->id }}" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close">&times;</button>
+                                            </div>
+                                            <form method="POST" action="{{ route('admin.maintenance-plan.override', $schedule) }}" data-spa-form="true" class="space-y-3">
+                                                @csrf
+                                                <input type="date" name="override_date" value="{{ optional($schedule->latestOverride?->override_date)->format('Y-m-d') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" aria-label="Override date">
+                                                <textarea name="reason" rows="4" required maxlength="2000" placeholder="Required reason / remarks" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $row['override_reason'] ?? '' }}</textarea>
+                                                <div class="flex justify-end gap-2 pt-2">
+                                                    <button type="button" data-native-modal-close="pm-plan-override-{{ $schedule->id }}" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
+                                                    <button class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">Save override</button>
+                                                </div>
+                                            </form>
+                                            @if(auth()->user()?->isSuperAdmin() && $row['override_schedule'])
+                                                <form method="POST" action="{{ route('admin.maintenance-plan.override.reset', $schedule) }}" data-spa-form="true" class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700" onsubmit="return confirm('Remove this temporary override and restore the approved published schedule?')">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" class="w-full rounded-lg bg-gray-600 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400">Reset / remove override</button>
+                                                </form>
+                                            @endif
+                                        </div>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -412,7 +453,15 @@
         const boxes = pmPlanSelectionBoxes();
         const selected = boxes.filter((box) => box.checked).length;
         const count = document.getElementById('pm-plan-selection-count');
-        if (count) count.textContent = `${selected} selected`;
+        const allMatching = document.getElementById('pm-plan-select-all-matching');
+        const actionBar = document.getElementById('pm-plan-bulk-delete-form');
+
+        if (allMatching?.checked && boxes.some((box) => !box.checked)) {
+            allMatching.checked = false;
+            document.getElementById('pm-plan-delete-select-all').value = '0';
+        }
+        if (count) count.innerHTML = `<strong>${allMatching?.checked ? '{{ number_format($schedules->total()) }}' : selected}</strong> selected${allMatching?.checked ? ' across filtered results' : ''}`;
+        if (actionBar) actionBar.classList.toggle('hidden', selected === 0 && !allMatching?.checked);
 
         document.querySelectorAll('[data-pm-plan-page-master]').forEach((master) => {
             master.checked = boxes.length > 0 && selected === boxes.length;
@@ -421,7 +470,20 @@
     }
 
     function togglePmPlanPageSelection(master) {
+        const allMatching = document.getElementById('pm-plan-select-all-matching');
+        if (allMatching) allMatching.checked = false;
+        document.getElementById('pm-plan-delete-select-all').value = '0';
         pmPlanSelectionBoxes().forEach((box) => { box.checked = master.checked; });
+        syncPmPlanSelection();
+    }
+
+    function togglePmPlanAllMatching(checked) {
+        document.getElementById('pm-plan-delete-select-all').value = checked ? '1' : '0';
+        pmPlanSelectionBoxes().forEach((box) => { box.checked = checked; });
+        document.querySelectorAll('[data-pm-plan-page-master]').forEach((master) => {
+            master.checked = checked;
+            master.indeterminate = false;
+        });
         syncPmPlanSelection();
     }
 
@@ -444,13 +506,16 @@
 
     function submitPmPlanBulkDelete(event) {
         event.preventDefault();
+        const allMatching = document.getElementById('pm-plan-select-all-matching')?.checked === true;
         const selected = pmPlanSelectionBoxes().filter((box) => box.checked);
-        if (!selected.length) {
+        if (!allMatching && !selected.length) {
             window.alert('Select at least one PM Plan first.');
             return false;
         }
-        if (!window.confirm(`Move ${selected.length} selected PM Plan(s) to the recycle bin?`)) return false;
-        const form = preparePmPlanBulkForm(false);
+        if (!window.confirm(allMatching
+            ? 'Move every PM Plan matching the current filters, including plans on other pages, to the recycle bin?'
+            : `Move ${selected.length} selected PM Plan(s) to the recycle bin?`)) return false;
+        const form = preparePmPlanBulkForm(allMatching);
         if (form) form.submit();
         return false;
     }

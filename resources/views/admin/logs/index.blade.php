@@ -159,6 +159,7 @@
         </div>
 
         {{-- FILTERS --}}
+        <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <form method="GET" action="{{ route('admin.logs.index') }}" class="flex flex-wrap items-end gap-3">
 
             <div>
@@ -230,6 +231,7 @@
             @endif
 
         </form>
+        </div>
 
         @if(!$hasLogFilter)
             <div class = "text-sm">

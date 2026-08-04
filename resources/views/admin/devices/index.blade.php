@@ -808,41 +808,31 @@
                 @endif
 
                 <div class="mt-4 flex flex-wrap gap-2">
-                    <a
-                        href="{{ route('admin.devices.show', $d) }}"
-                        class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
-                    >
-                        View
-                    </a>
+                    <x-action-icon tag="a" href="{{ route('admin.devices.show', $d) }}" icon="eye" variant="green" label="View equipment" />
 
                     @if($isComputerDevice)
-                        <a
-                            href="{{ route('admin.devices.history', $d) }}"
-                            class="equipment-action-button rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-                        >
-                            History
-                        </a>
+                        <x-action-icon tag="a" href="{{ route('admin.devices.history', $d) }}" icon="history" variant="purple" label="Equipment history" />
 
-                        <a
-                            href="{{ route('admin.devices.checklist.form', $d) }}"
-                            class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                        >
-                            Mark Checked
-                        </a>
+                        <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
                     @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin())
                         <button
                             type="button"
                             title="Link this peripheral to a Desktop or Laptop"
-                            class="equipment-action-button inline-flex items-center justify-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                            aria-label="Link this peripheral to a Desktop or Laptop"
+                            class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:focus:ring-offset-gray-900"
                             x-on:click="openLink({ id: {{ $d->id }}, property_number: @js($d->property_number), type: @js($d->type?->name ?? 'Peripheral') })"
                         >
-                            <span aria-hidden="true">&#128279;</span> Link
+                            <x-action-icon-symbol icon="link" />
+                            <span class="sr-only">Link this peripheral to a Desktop or Laptop</span>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Link peripheral</span>
                         </button>
                     @endif
 
                     <button
                         type="button"
-                        class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
+                        title="Edit equipment specs"
+                        aria-label="Edit equipment specs"
+                        class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-gray-700 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-600 dark:hover:bg-gray-500 dark:focus:ring-offset-gray-900"
                         x-on:click="openEdit({
                             id: {{ $d->id }},
                             device_type_id: '{{ $d->device_type_id }}',
@@ -876,17 +866,21 @@
                             }
                         })"
                     >
-                        Edit Specs
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M15.232 5.232 18.768 8.768M4 20h4l10.5-10.5a2.121 2.121 0 0 0-3-3L5 17v3Z"></path>
+                        </svg>
+                        <span class="sr-only">Edit equipment specs</span>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit equipment specs</span>
                     </button>
 
                     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
-                        <button
+                        <x-action-icon
                             type="button"
-                            class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                            icon="trash"
+                            variant="red"
+                            label="Delete equipment"
                             x-on:click="openDelete({{ $d->id }})"
-                        >
-                            Delete
-                        </button>
+                        />
                     @endif
                 </div>
             </div>
@@ -971,12 +965,7 @@
                             </td>
                             <td class="whitespace-nowrap px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    <a
-                                        href="{{ route('admin.devices.show', $d) }}"
-                                        class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
-                                    >
-                                        View
-                                    </a>
+                                    <x-action-icon tag="a" href="{{ route('admin.devices.show', $d) }}" icon="eye" variant="green" label="View equipment" />
 
                                     @php
                                         $deviceTypeName = strtolower($d->type?->name ?? '');
@@ -985,33 +974,28 @@
                                     @endphp
 
                                     @if($isComputerDevice)
-                                        <a
-                                            href="{{ route('admin.devices.history', $d) }}"
-                                            class="equipment-action-button rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600"
-                                        >
-                                            History
-                                        </a>
+                                        <x-action-icon tag="a" href="{{ route('admin.devices.history', $d) }}" icon="history" variant="purple" label="Equipment history" />
 
-                                        <a
-                                            href="{{ route('admin.devices.checklist.form', $d) }}"
-                                            class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                                        >
-                                            Mark Checked
-                                        </a>
-                                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin())
+                                        <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
+                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin())
                                         <button
                                             type="button"
                                             title="Link this peripheral to a Desktop or Laptop"
-                                            class="equipment-action-button inline-flex items-center justify-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                                            aria-label="Link this peripheral to a Desktop or Laptop"
+                                            class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:focus:ring-offset-gray-900"
                                             x-on:click="openLink({ id: {{ $d->id }}, property_number: @js($d->property_number), type: @js($d->type?->name ?? 'Peripheral') })"
                                         >
-                                            <span aria-hidden="true">&#128279;</span> Link
+                                            <x-action-icon-symbol icon="link" />
+                                            <span class="sr-only">Link this peripheral to a Desktop or Laptop</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Link peripheral</span>
                                         </button>
                                     @endif
 
                                     <button
                                         type="button"
-                                        class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-600 dark:hover:bg-gray-500"
+                                        title="Edit equipment specs"
+                                        aria-label="Edit equipment specs"
+                                        class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-gray-700 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-600 dark:hover:bg-gray-500 dark:focus:ring-offset-gray-900"
                                         x-on:click="openEdit({
                                             id: {{ $d->id }},
                                             device_type_id: '{{ $d->device_type_id }}',
@@ -1044,17 +1028,21 @@
                                             }
                                         })"
                                     >
-                                        Edit Specs
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M15.232 5.232 18.768 8.768M4 20h4l10.5-10.5a2.121 2.121 0 0 0-3-3L5 17v3Z"></path>
+                                        </svg>
+                                        <span class="sr-only">Edit equipment specs</span>
+                                        <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit equipment specs</span>
                                     </button>
 
                                     @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
-                                        <button
+                                        <x-action-icon
                                             type="button"
-                                            class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                            icon="trash"
+                                            variant="red"
+                                            label="Delete equipment"
                                             x-on:click="openDelete({{ $d->id }})"
-                                        >
-                                            Delete
-                                        </button>
+                                        />
                                     @endif
                                 </div>
                             </td>
@@ -1140,7 +1128,7 @@
                 'lockEquipmentType' => true,
             ])
 
-            <div class="flex gap-2 pt-2">
+            <div class="flex justify-end gap-2 pt-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
                     Save Changes
                 </button>
@@ -1451,7 +1439,7 @@
                 ></textarea>
             </div>
 
-            <div class="flex gap-2 pt-2">
+            <div class="flex justify-end gap-2 pt-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
                     Save Changes
                 </button>
@@ -1773,6 +1761,25 @@
         line-height: 1.25;
         text-align: center;
         white-space: nowrap;
+    }
+
+    .action-icon-button {
+        display: inline-flex !important;
+        width: 36px !important;
+        min-width: 36px !important;
+        height: 36px !important;
+        min-height: 36px !important;
+        padding: 0 !important;
+        align-items: center !important;
+        justify-content: center !important;
+        line-height: 1 !important;
+    }
+
+    .action-icon-button > svg {
+        display: block !important;
+        width: 16px !important;
+        height: 16px !important;
+        flex: 0 0 16px !important;
     }
 </style>
 @endsection

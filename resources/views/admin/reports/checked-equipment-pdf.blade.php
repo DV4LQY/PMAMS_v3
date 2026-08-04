@@ -22,8 +22,24 @@
             color: #111827;
         }
 
+        /*
+         * Each manually generated sheet fills exactly one printable content
+         * area (8.5in minus the configured top and bottom page margins).
+         * Keeping the header/footer inside the sheet lets every office use
+         * its own historical checklist data instead of repeating page one's
+         * office across the complete PDF.
+         */
+        .pdf-page {
+            position: relative;
+            height: 610px;
+        }
+
+        .pdf-page.force-page-break {
+            page-break-after: always;
+        }
+
         .page-header {
-            position: fixed;
+            position: absolute;
             top: -82px;
             left: 0;
             right: 0;
@@ -31,7 +47,7 @@
         }
 
         .page-footer {
-            position: fixed;
+            position: absolute;
             left: 0;
             right: 0;
             bottom: -74px;
@@ -133,20 +149,36 @@
             position: absolute;
             top: 101px;
             left: 52px;
-            width: 380px;
+            width: 330px;
+            height: 15px;
             font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .office-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            line-height: 13px;
         }
 
         .office-line {
-            width: 115px;
+            position: absolute;
+            top: -1px;
+            left: 72px;
+            width: 260px;
             text-align: center;
             height: 14px;
+            white-space: nowrap;
         }
 
         .office-line .line-value {
             display: block;
             position: relative;
-            top: -2px;
+            top: -1px;
+            line-height: 12px;
+            white-space: nowrap;
+            overflow: visible;
         }
 
         .form-title {
@@ -164,14 +196,11 @@
         /* TABLE AREA ONLY - header and footer are intentionally unchanged. */
         .content {
             width: 96%;
-            margin-top: 45px;
+            /* Keep the first table header below the Office/Unit underline. */
+            margin-top: 48px;
             padding: 0;
             margin-left: auto;
             margin-right: auto;
-        }
-
-        .page-break {
-            page-break-after: always;
         }
 
         .remarks-cell,
@@ -367,26 +396,8 @@
         $records = collect($records);
     }
 
-    $firstRecord = $records->first() ?? null;
-    $firstDevice = $firstRecord?->device;
-    $firstData = $firstRecord?->checklist_data ?? [];
-    $firstData = is_array($firstData) ? $firstData : [];
-    $firstAssignment = $firstDevice?->currentAssignment;
-    $firstStaff = $firstRecord?->staff ?? $firstAssignment?->staff;
-    $firstOffice = $firstRecord?->office ?? $firstStaff?->office;
-    $firstLocation = $firstRecord?->location ?? $firstOffice?->location;
-
     // Fixed header unit based on the official printed form.
     $fixedUnitName = 'Information and Communications Technology Unit';
-
-    $officeUnitCode = data_get($firstData, 'snapshot.location_code')
-        ?? data_get($firstData, 'snapshot.office')
-        ?? $firstLocation?->code
-        ?? $firstOffice?->name
-        ?? '';
-
-    $dateSource = $firstRecord?->maintenance_date ?? now();
-    $dateText = \Carbon\Carbon::parse($dateSource)->format('m/d/Y');
 
     $logoPath = public_path('images/catsu-logo.png');
 
@@ -415,6 +426,46 @@
         return is_array($data) ? $data : [];
     };
 
+    /*
+     * Resolve the office from the saved checklist snapshot first. This is
+     * deliberately historical: if equipment is later transferred, its old
+     * checklist stays under the office where the maintenance was performed.
+     */
+    $getRecordOfficeContext = function ($record) use ($getChecklistData) {
+        $data = $getChecklistData($record);
+        $snapshot = data_get($data, 'snapshot', []);
+        $snapshot = is_array($snapshot) ? $snapshot : [];
+
+        $assignment = $record->device?->currentAssignment;
+        $staff = $record->staff ?? $assignment?->staff;
+        $office = $record->office ?? $assignment?->office ?? $staff?->office;
+        $location = $record->location ?? $assignment?->location ?? $office?->location;
+
+        $officeId = data_get($snapshot, 'office_id') ?? $record->office_id ?? $office?->id;
+        $locationId = data_get($snapshot, 'location_id') ?? $record->location_id ?? $location?->id;
+        $officeName = trim((string) (data_get($snapshot, 'office') ?? $office?->name ?? ''));
+        $locationCode = trim((string) (data_get($snapshot, 'location_code') ?? $location?->code ?? ''));
+        $locationName = trim((string) (data_get($snapshot, 'location') ?? $location?->name ?? ''));
+
+        // The specific office is the clearest Office/Unit value. Older
+        // records without an office fall back to their saved location code.
+        $display = $officeName !== ''
+            ? $officeName
+            : ($locationCode !== '' ? $locationCode : ($locationName !== '' ? $locationName : 'Unassigned'));
+
+        $key = $officeId
+            ? 'office:' . $officeId
+            : ($locationId
+                ? 'location:' . $locationId . ':' . mb_strtolower($display)
+                : 'snapshot:' . mb_strtolower($display));
+
+        return [
+            'key' => $key,
+            'display' => $display,
+            'sort' => mb_strtolower(($locationCode !== '' ? $locationCode . ' ' : '') . $display),
+        ];
+    };
+
     $displayComputerPeripheral = function ($record) use ($getChecklistData) {
         $device = $record->device;
 
@@ -431,10 +482,6 @@
 
         return trim($computerName);
     };
-
-    $checkedByText = $firstRecord?->checkedBy?->name
-        ?? auth()->user()->name
-        ?? '';
 
     /*
      * Dynamic page split for DOMPDF.
@@ -479,46 +526,83 @@
         return min($rowUnitsPerPage, $units);
     };
 
+    /*
+     * Sort and paginate within an office group. A page is flushed whenever
+     * the office changes, even when space remains, so records from the next
+     * office can never appear beneath the previous office heading.
+     */
+    $records = $records
+        ->sort(function ($left, $right) use ($getRecordOfficeContext) {
+            $leftOffice = $getRecordOfficeContext($left);
+            $rightOffice = $getRecordOfficeContext($right);
+
+            return [$leftOffice['sort'], (string) $left->maintenance_date, (int) $left->id]
+                <=> [$rightOffice['sort'], (string) $right->maintenance_date, (int) $right->id];
+        })
+        ->values();
+
     $recordPages = collect();
-    $currentRows = collect();
-    $currentUnits = 0;
 
-    foreach ($records as $pageRecord) {
-        $units = $estimateRowUnits($pageRecord);
+    foreach ($records->groupBy(fn ($pageRecord) => $getRecordOfficeContext($pageRecord)['key']) as $officeRecords) {
+        $currentRows = collect();
+        $currentUnits = 0;
 
-        if ($currentRows->isNotEmpty() && (($currentUnits + $units) > $rowUnitsPerPage)) {
+        foreach ($officeRecords as $pageRecord) {
+            $units = $estimateRowUnits($pageRecord);
+
+            if ($currentRows->isNotEmpty() && (($currentUnits + $units) > $rowUnitsPerPage)) {
+                $firstPageRecord = $currentRows->first()['record'];
+                $recordPages->push([
+                    'rows' => $currentRows,
+                    'used_units' => $currentUnits,
+                    'office' => $getRecordOfficeContext($firstPageRecord),
+                ]);
+
+                $currentRows = collect();
+                $currentUnits = 0;
+            }
+
+            $currentRows->push([
+                'record' => $pageRecord,
+                'units' => $units,
+            ]);
+
+            $currentUnits += $units;
+        }
+
+        if ($currentRows->isNotEmpty()) {
+            $firstPageRecord = $currentRows->first()['record'];
             $recordPages->push([
                 'rows' => $currentRows,
                 'used_units' => $currentUnits,
+                'office' => $getRecordOfficeContext($firstPageRecord),
             ]);
-
-            $currentRows = collect();
-            $currentUnits = 0;
         }
-
-        $currentRows->push([
-            'record' => $pageRecord,
-            'units' => $units,
-        ]);
-
-        $currentUnits += $units;
-    }
-
-    if ($currentRows->isNotEmpty()) {
-        $recordPages->push([
-            'rows' => $currentRows,
-            'used_units' => $currentUnits,
-        ]);
     }
 
     if ($recordPages->isEmpty()) {
         $recordPages->push([
             'rows' => collect(),
             'used_units' => 0,
+            'office' => ['key' => 'empty', 'display' => '', 'sort' => ''],
         ]);
     }
 @endphp
 
+@foreach($recordPages as $pageIndex => $page)
+@php
+    $pageRows = $page['rows'];
+    $usedUnits = $page['used_units'];
+    $pageFirstRecord = data_get($pageRows->first(), 'record');
+    $pageOfficeUnit = data_get($page, 'office.display', '');
+    $pageDateSource = $pageFirstRecord?->maintenance_date ?? now();
+    $pageDateText = \Carbon\Carbon::parse($pageDateSource)->format('m/d/Y');
+    $pageCheckedByText = $pageFirstRecord?->checkedBy?->name
+        ?? auth()->user()?->name
+        ?? '';
+@endphp
+
+<div class="pdf-page {{ ! $loop->last ? 'force-page-break' : '' }}">
 <div class="page-header">
     <table class="header-table">
         <tr>
@@ -542,14 +626,14 @@
 
     <div class="header-date">
         Date:
-        <span class="line date-line">{{ $dateText }}</span>
+        <span class="line date-line">{{ $pageDateText }}</span>
     </div>
 
     <div class="blue-rule-top"></div>
 
     <div class="office-line-wrap">
-        Office/Unit:
-        <span class="line office-line"><span class="line-value">{{ $officeUnitCode }}</span></span>
+        <span class="office-label">Office/Unit:</span>
+        <span class="line office-line"><span class="line-value">{{ $pageOfficeUnit }}</span></span>
     </div>
 
     <div class="form-title">PREVENTIVE MAINTENANCE CHECKLIST</div>
@@ -560,10 +644,10 @@
         <tr>
             <td style="width: 50%">
                 <span class="sig-label">Checked by:</span>
-                <span class="sig-name-line">{{ $checkedByText }}</span>
+                <span class="sig-name-line">{{ $pageCheckedByText }}</span>
                 <br> <br>
                 <span class="sig-label">Date:</span>
-                <span class="sig-date-line">{{ $dateText }}</span>
+                <span class="sig-date-line">{{ $pageDateText }}</span>
             </td>
 
             <td style="width: 50%; text-align: right">
@@ -586,12 +670,6 @@
         <span class="effectivity">Effectivity Date: September 12, 2024</span>
     </div>
 </div>
-
-@foreach($recordPages as $pageIndex => $page)
-@php
-    $pageRows = $page['rows'];
-    $usedUnits = $page['used_units'];
-@endphp
 
 <div class="content">
     <table class="main-table">
@@ -724,10 +802,7 @@
         </tbody>
     </table>
 </div>
-
-@if(! $loop->last)
-    <div class="page-break"></div>
-@endif
+</div>
 @endforeach
 </body>
 </html>

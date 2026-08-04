@@ -5,6 +5,13 @@
 
 @section('content')
 <div class="space-y-5">
+    @php
+        $deletedUserCount = $deletedUsers->total();
+        $deletedDeviceCount = $deletedDevices->total();
+        $deletedMaintenancePlanCount = $deletedMaintenancePlans->total();
+        $deletedLocationCount = $deletedLocations->total();
+        $hasDeletedRecords = ($deletedUserCount + $deletedDeviceCount + $deletedMaintenancePlanCount + $deletedLocationCount) > 0;
+    @endphp
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Recycle Bin</h1>
@@ -14,6 +21,7 @@
         </div>
 
         <div class="flex flex-wrap gap-2">
+            @if($hasDeletedRecords)
             <form method="POST" action="{{ route('admin.recycle-bin.restoreAll') }}" onsubmit="return confirm('Restore all deleted users, equipment, locations, and PM Plans from the recycle bin?')">
                 @csrf
                 @method('PATCH')
@@ -24,6 +32,7 @@
             <button type="button" onclick="emptyRecycleBin()" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
                 Permanently Delete All
             </button>
+            @endif
             <a href="{{ route('admin.users.index') }}" wire:navigate class="inline-flex items-center justify-center rounded-xl bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600">
                 Back to Users
             </a>
@@ -34,11 +43,7 @@
         Restoring returns the record to the active list. Permanent deletion cannot be undone.
     </div>
 
-    @php($deletedUserCount = $deletedUsers->total())
-    @php($deletedDeviceCount = $deletedDevices->total())
-    @php($deletedMaintenancePlanCount = $deletedMaintenancePlans->total())
-    @php($deletedLocationCount = $deletedLocations->total())
-    @if($deletedUserCount + $deletedDeviceCount + $deletedMaintenancePlanCount + $deletedLocationCount > 0)
+    @if($hasDeletedRecords)
         <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200" role="status">
             <p class="font-semibold">Deleted records are still present in the database.</p>
             <p class="mt-1">{{ number_format($deletedUserCount) }} user(s), {{ number_format($deletedDeviceCount) }} equipment record(s), {{ number_format($deletedLocationCount) }} location(s), and {{ number_format($deletedMaintenancePlanCount) }} PM Plan(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to manage them.</p>
@@ -46,6 +51,15 @@
     @endif
 
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Deleted Users</h2>
+    @if($deletedUsers->total() > 0)
+    <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <input id="delete-all-users" type="checkbox" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" onchange="toggleRecycleBinSelection('users', this.checked)" aria-label="Select all deleted users matching the current filters">
+            Select all deleted users matching the current filters
+        </label>
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($deletedUsers->total()) }} matching</span>
+    </div>
+    @endif
     <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -84,14 +98,24 @@
             </table>
         </div>
     </div>
-    <div class="flex flex-wrap items-center gap-3">
+    @if($deletedUsers->total() > 0)
+    <div id="recycle-actions-users" class="hidden flex flex-wrap items-center gap-3">
         <button type="button" onclick="restoreSelectedRecycleBin('users')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Users</button>
         <button type="button" onclick="permanentDeleteSelected('users')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Users</button>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-users" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('users', this.checked)"> Delete all users in recycle bin</label>
     </div>
+    @endif
     {{ $deletedUsers->links() }}
 
     <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted Equipment</h2>
+    @if($deletedDevices->total() > 0)
+    <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <input id="delete-all-devices" type="checkbox" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" onchange="toggleRecycleBinSelection('devices', this.checked)" aria-label="Select all deleted equipment matching the current filters">
+            Select all deleted equipment matching the current filters
+        </label>
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($deletedDevices->total()) }} matching</span>
+    </div>
+    @endif
     <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -132,14 +156,24 @@
             </table>
         </div>
     </div>
-    <div class="flex flex-wrap items-center gap-3">
+    @if($deletedDevices->total() > 0)
+    <div id="recycle-actions-devices" class="hidden flex flex-wrap items-center gap-3">
         <button type="button" onclick="restoreSelectedRecycleBin('devices')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Equipment</button>
         <button type="button" onclick="permanentDeleteSelected('devices')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Equipment</button>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-devices" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('devices', this.checked)"> Delete all equipment in recycle bin</label>
     </div>
+    @endif
     {{ $deletedDevices->links() }}
 
     <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted PM Plans</h2>
+    @if($deletedMaintenancePlans->total() > 0)
+    <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <input id="delete-all-maintenance_plans" type="checkbox" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" onchange="toggleRecycleBinSelection('maintenance_plans', this.checked)" aria-label="Select all deleted PM Plans matching the current filters">
+            Select all deleted PM Plans matching the current filters
+        </label>
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($deletedMaintenancePlans->total()) }} matching</span>
+    </div>
+    @endif
     <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -191,15 +225,24 @@
             </table>
         </div>
     </div>
-    <div class="flex flex-wrap items-center gap-3">
+    @if($deletedMaintenancePlans->total() > 0)
+    <div id="recycle-actions-maintenance_plans" class="hidden flex flex-wrap items-center gap-3">
         <button type="button" onclick="restoreSelectedRecycleBin('maintenance_plans')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected PM Plans</button>
         <button type="button" onclick="permanentDeleteSelected('maintenance_plans')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected PM Plans</button>
-        <button type="button" onclick="permanentDeleteAll('maintenance_plans')" class="rounded-lg bg-red-800 px-3 py-2 text-sm font-semibold text-white hover:bg-red-900">Permanently Delete All PM Plans</button>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-maintenance_plans" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('maintenance_plans', this.checked)"> Delete all PM Plans in recycle bin</label>
     </div>
+    @endif
     {{ $deletedMaintenancePlans->links() }}
 
     <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted Locations</h2>
+    @if($deletedLocations->total() > 0)
+    <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <input id="delete-all-locations" type="checkbox" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" onchange="toggleRecycleBinSelection('locations', this.checked)" aria-label="Select all deleted locations matching the current filters">
+            Select all deleted locations matching the current filters
+        </label>
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($deletedLocations->total()) }} matching</span>
+    </div>
+    @endif
     <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -238,12 +281,12 @@
             </table>
         </div>
     </div>
-    <div class="flex flex-wrap items-center gap-3">
+    @if($deletedLocations->total() > 0)
+    <div id="recycle-actions-locations" class="hidden flex flex-wrap items-center gap-3">
         <button type="button" onclick="restoreSelectedRecycleBin('locations')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Locations</button>
         <button type="button" onclick="permanentDeleteSelected('locations')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Locations</button>
-        <button type="button" onclick="permanentDeleteAll('locations')" class="rounded-lg bg-red-800 px-3 py-2 text-sm font-semibold text-white hover:bg-red-900">Permanently Delete All Locations</button>
-        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input id="delete-all-locations" type="checkbox" class="h-4 w-4" onchange="toggleRecycleBinSelection('locations', this.checked)"> Delete all locations in recycle bin</label>
     </div>
+    @endif
     {{ $deletedLocations->links() }}
 
     <form id="recycle-bin-permanent-delete-form" method="POST" action="{{ route('admin.recycle-bin.permanentDelete') }}" class="hidden">
@@ -406,14 +449,15 @@ function toggleRecycleBinSelection(type, checked) {
     document.querySelectorAll('[data-bin-checkbox="' + type + '"]').forEach((box) => {
         box.checked = checked;
     });
+    syncRecycleBinSelectAll(type);
 }
 
 function syncRecycleBinSelectAll(type) {
     const master = document.getElementById('delete-all-' + type);
-    if (!master) return;
-
     const boxes = [...document.querySelectorAll('[data-bin-checkbox="' + type + '"]')];
-    master.checked = boxes.length > 0 && boxes.every((box) => box.checked);
+    const selected = boxes.filter((box) => box.checked).length;
+    if (master?.checked && boxes.some((box) => !box.checked)) master.checked = false;
+    document.getElementById('recycle-actions-' + type)?.classList.toggle('hidden', selected === 0 && !master?.checked);
 }
 
 document.getElementById('recycle-bin-remarks-modal')?.addEventListener('click', (event) => {

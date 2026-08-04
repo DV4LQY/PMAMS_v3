@@ -485,9 +485,13 @@
                     @if($isComputerType)
                         <a
                             href="{{ route('admin.devices.history', $device) }}"
-                            class="equipment-action-button rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                            title="View equipment history"
+                            aria-label="View equipment history"
+                            class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-purple-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900"
                         >
-                            History
+                            <x-action-icon-symbol icon="history" />
+                            <span class="sr-only">View equipment history</span>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">View equipment history</span>
                         </a>
                     @endif
 
@@ -495,25 +499,29 @@
                         href="{{ route('admin.scanner', ['start' => 1]) }}"
                         aria-label="Scan QR code"
                         title="Open QR scanner"
-                        class="equipment-action-button inline-flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600"
+                        class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-violet-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-violet-500 dark:hover:bg-violet-600 dark:focus:ring-offset-gray-900"
                     >
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
-                            <path d="M7 8h1M11 8h1M16 8h1M7 12h1M11 12h5M7 16h5M16 16h1"/>
-                        </svg>
-                        Scan QR
+                        <x-action-icon-symbol icon="qr" />
+                        <span class="sr-only">Scan QR code</span>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Scan QR code</span>
                     </a>
 
-                    <button type="button" x-on:click="openReissue()" class="equipment-action-button rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
-                        Reissue
+                    <button type="button" x-on:click="openReissue()" title="Reissue equipment" aria-label="Reissue equipment" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-cyan-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900">
+                        <x-action-icon-symbol icon="issue" />
+                        <span class="sr-only">Reissue equipment</span>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Reissue equipment</span>
                     </button>
 
                     @if($isComputerType)
                         <a
                             href="{{ route('admin.devices.checklist.form', $device) }}"
-                            class="equipment-action-button rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                            title="Mark equipment as checked"
+                            aria-label="Mark equipment as checked"
+                            class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-green-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-green-500 dark:hover:bg-green-600 dark:focus:ring-offset-gray-900"
                         >
-                            Mark as Checked
+                            <x-action-icon-symbol icon="check" />
+                            <span class="sr-only">Mark equipment as checked</span>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Mark equipment as checked</span>
                         </a>
                     @endif
 
@@ -522,9 +530,15 @@
                         type="button"
                         data-open-modal="edit-device-modal"
                         x-on:click="openEdit()"
-                        class="equipment-action-button rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                        title="Edit equipment specifications"
+                        aria-label="Edit equipment specifications"
+                        class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-gray-700 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-600 dark:hover:bg-gray-500 dark:focus:ring-offset-gray-900"
                     >
-                        Edit Specs
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M15.232 5.232 18.768 8.768M4 20h4l10.5-10.5a2.121 2.121 0 0 0-3-3L5 17v3Z"></path>
+                        </svg>
+                        <span class="sr-only">Edit equipment specifications</span>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit equipment specifications</span>
                     </button>
 
                     @if(auth()->user()->isAdmin() && $device->part_of_property_number)
@@ -537,9 +551,13 @@
                             @method('PATCH')
                             <button
                                 type="submit"
-                                class="equipment-action-button rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                                title="Unlink peripheral"
+                                aria-label="Unlink peripheral"
+                                class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900"
                             >
-                                Unlink
+                                <x-action-icon-symbol icon="link" />
+                                <span class="sr-only">Unlink peripheral</span>
+                                <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Unlink peripheral</span>
                             </button>
                         </form>
                     @endif
@@ -555,9 +573,13 @@
 
                             <button
                                 type="submit"
-                                class="equipment-action-button rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                                title="Delete equipment"
+                                aria-label="Delete equipment"
+                                class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-900"
                             >
-                                Delete
+                                <x-action-icon-symbol icon="trash" />
+                                <span class="sr-only">Delete equipment</span>
+                                <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Delete equipment</span>
                             </button>
                         </form>
                     @endif

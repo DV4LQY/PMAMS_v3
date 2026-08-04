@@ -261,17 +261,38 @@ document.addEventListener('livewire:navigated', () => {
     </div>
 
     @if(auth()->user()->isAdmin())
-        <form id="location-bulk-delete-form" method="POST" action="{{ route('admin.locations.bulkDestroy') }}" class="flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return submitLocationBulkDelete(event)">
+        <form id="location-bulk-delete-form"
+              method="POST"
+              action="{{ route('admin.locations.bulkDestroy') }}"
+              data-location-total="{{ $locations->total() }}"
+              class="space-y-3"
+              onsubmit="return submitLocationBulkDelete(event)">
             @csrf
             <input type="hidden" name="select_all" id="location-delete-select-all" value="0">
-            <label class="inline-flex items-center gap-2 text-xs font-semibold text-red-800 dark:text-red-200">
-                <input type="checkbox" data-location-page-master onchange="toggleLocationPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
-                Select page
-            </label>
-            <button type="submit" class="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Delete selected</button>
-            <button type="button" class="rounded-lg bg-red-800 px-3 py-2 text-xs font-semibold text-white hover:bg-red-900" onclick="submitLocationBulkDeleteAll()">Delete all locations</button>
-            <span id="location-selection-count" class="text-xs text-red-800 dark:text-red-200">0 selected</span>
-            <span class="text-xs text-red-700 dark:text-red-300">Locations with offices, assignments, or active PM Plans are skipped.</span>
+
+            <div class="flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <label class="inline-flex items-center gap-3 text-base font-semibold text-gray-700 dark:text-gray-200">
+                    <input type="checkbox"
+                           data-location-all-master
+                           onchange="toggleAllMatchingLocations(this)"
+                           class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700">
+                    Select all locations matching the current filters
+                </label>
+                <span class="shrink-0 text-sm text-gray-500 dark:text-gray-400">{{ number_format($locations->total()) }} matching</span>
+            </div>
+
+            <div id="location-bulk-actions"
+                 hidden
+                 class="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+                <div>
+                    <span id="location-selection-count">0 locations selected.</span>
+                    <span class="block text-xs text-red-700 dark:text-red-300">Locations with offices, assignments, or active PM Plans are skipped.</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="submit" class="rounded-lg bg-red-600 px-3 py-2 font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600">Delete selected</button>
+                    <button type="button" class="rounded-lg bg-white px-3 py-2 font-medium text-red-700 hover:bg-red-100 dark:bg-gray-800 dark:text-red-300 dark:hover:bg-gray-700" onclick="clearLocationSelection()">Clear selection</button>
+                </div>
+            </div>
         </form>
     @endif
 
@@ -320,47 +341,52 @@ document.addEventListener('livewire:navigated', () => {
                     </div>
 
                     <div class="flex flex-wrap gap-2 pt-1">
-                        <a
-                            href="{{ route('admin.devices.index', ['location' => $c->id]) }}"
-                            class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                        >
-                            View Equipment
-                        </a>
+                        <x-action-icon tag="a" href="{{ route('admin.devices.index', ['location' => $c->id]) }}" icon="monitor" variant="blue" label="View equipment" />
 
                         @if(auth()->user()->isAdmin() || auth()->user()->isCustodian())
                             <button
                                 type="button"
-                                class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                                title="Issue equipment"
+                                aria-label="Issue equipment"
+                                class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-green-500 dark:hover:bg-green-600 dark:focus:ring-offset-gray-900"
                                 @click="openIssue({
                                     id: {{ $c->id }},
                                     name: @js($c->name),
                                     code: @js($c->code ?? ''),
                                     offices: @js($c->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values())
-                                })"
-                            >
-                                Issue Equipment
+                                })">
+                                <x-action-icon-symbol icon="issue" />
+                                <span class="sr-only">Issue equipment</span>
+                                <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Issue equipment</span>
                             </button>
                         @endif
 
                         @if(auth()->user()->isAdmin())
                             <button
                                 type="button"
-                                class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
+                                title="Edit location"
+                                aria-label="Edit location"
+                                class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-700 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-900"
                                 @click="openEdit({
                                     id: {{ $c->id }},
                                     name: @js($c->name),
                                     code: @js($c->code ?? '')
-                                })"
-                            >
-                                Edit
+                                })">
+                                <x-action-icon-symbol icon="edit" />
+                                <span class="sr-only">Edit location</span>
+                                <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit location</span>
                             </button>
 
                             <button
                                 type="button"
-                                class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                title="Delete location"
+                                aria-label="Delete location"
+                                class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-900"
                                 @click="openDelete({{ $c->id }})"
                             >
-                                Delete
+                                <x-action-icon-symbol icon="trash" />
+                                <span class="sr-only">Delete location</span>
+                                <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Delete location</span>
                             </button>
                         @endif
                     </div>
@@ -422,47 +448,52 @@ document.addEventListener('livewire:navigated', () => {
 
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex items-center gap-2">
-                                    <a
-                                        href="{{ route('admin.devices.index', ['location' => $c->id]) }}"
-                                        class="equipment-action-button rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                                    >
-                                        View Equipment
-                                    </a>
+                                    <x-action-icon tag="a" href="{{ route('admin.devices.index', ['location' => $c->id]) }}" icon="monitor" variant="blue" label="View equipment" />
 
                                     @if(auth()->user()->isAdmin() || auth()->user()->isCustodian())
                                         <button
                                             type="button"
-                                            class="equipment-action-button rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                                            title="Issue equipment"
+                                            aria-label="Issue equipment"
+                                            class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-green-500 dark:hover:bg-green-600 dark:focus:ring-offset-gray-900"
                                             @click="openIssue({
                                                 id: {{ $c->id }},
                                                 name: @js($c->name),
                                                 code: @js($c->code ?? ''),
                                                 offices: @js($c->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values())
-                                            })"
-                                        >
-                                            Issue Equipment
+                                            })">
+                                            <x-action-icon-symbol icon="issue" />
+                                            <span class="sr-only">Issue equipment</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Issue equipment</span>
                                         </button>
                                     @endif
 
                                     @if(auth()->user()->isAdmin())
                                         <button
                                             type="button"
-                                            class="equipment-action-button rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
+                                            title="Edit location"
+                                            aria-label="Edit location"
+                                            class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-700 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-900"
                                             @click="openEdit({
                                                 id: {{ $c->id }},
                                                 name: @js($c->name),
                                                 code: @js($c->code ?? '')
-                                            })"
-                                        >
-                                            Edit
+                                            })">
+                                            <x-action-icon-symbol icon="edit" />
+                                            <span class="sr-only">Edit location</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit location</span>
                                         </button>
 
                                         <button
                                             type="button"
-                                            class="equipment-action-button rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                            title="Delete location"
+                                            aria-label="Delete location"
+                                            class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-900"
                                             @click="openDelete({{ $c->id }})"
                                         >
-                                            Delete
+                                            <x-action-icon-symbol icon="trash" />
+                                            <span class="sr-only">Delete location</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Delete location</span>
                                         </button>
                                     @else
                                         <span class="text-xs text-gray-400 dark:text-gray-500">View only</span>
@@ -826,11 +857,37 @@ document.addEventListener('livewire:navigated', () => {
             .filter((box) => box.offsetParent !== null);
     }
 
-    function syncLocationSelection() {
+    function locationAllMatchingSelected() {
+        return document.getElementById('location-delete-select-all')?.value === '1';
+    }
+
+    function syncLocationSelection(options = {}) {
         const boxes = locationSelectionBoxes();
         const selected = boxes.filter((box) => box.checked).length;
+        const selectAllInput = document.getElementById('location-delete-select-all');
+        let allMatching = locationAllMatchingSelected();
+
+        if (allMatching && !options.preserveAllMatching && selected < boxes.length) {
+            allMatching = false;
+            if (selectAllInput) selectAllInput.value = '0';
+        }
+
         const count = document.getElementById('location-selection-count');
-        if (count) count.textContent = `${selected} selected`;
+        const actions = document.getElementById('location-bulk-actions');
+        const form = document.getElementById('location-bulk-delete-form');
+        const total = Number(form?.dataset.locationTotal || 0);
+
+        if (count) {
+            count.textContent = allMatching
+                ? `${total} locations selected across all matching pages.`
+                : `${selected} location${selected === 1 ? '' : 's'} selected on this page.`;
+        }
+
+        if (actions) actions.hidden = !(allMatching || selected > 0);
+
+        document.querySelectorAll('[data-location-all-master]').forEach((master) => {
+            master.checked = allMatching;
+        });
 
         document.querySelectorAll('[data-location-page-master]').forEach((master) => {
             master.checked = boxes.length > 0 && selected === boxes.length;
@@ -838,8 +895,28 @@ document.addEventListener('livewire:navigated', () => {
         });
     }
 
-    function toggleLocationPageSelection(master) {
+    function toggleAllMatchingLocations(master) {
+        const selectAllInput = document.getElementById('location-delete-select-all');
+        if (selectAllInput) selectAllInput.value = master.checked ? '1' : '0';
         locationSelectionBoxes().forEach((box) => { box.checked = master.checked; });
+        syncLocationSelection({ preserveAllMatching: true });
+    }
+
+    function toggleLocationPageSelection(master) {
+        const selectAllInput = document.getElementById('location-delete-select-all');
+        if (selectAllInput) selectAllInput.value = '0';
+        locationSelectionBoxes().forEach((box) => { box.checked = master.checked; });
+        syncLocationSelection();
+    }
+
+    function clearLocationSelection() {
+        const selectAllInput = document.getElementById('location-delete-select-all');
+        if (selectAllInput) selectAllInput.value = '0';
+        locationSelectionBoxes().forEach((box) => { box.checked = false; });
+        document.querySelectorAll('[data-location-all-master], [data-location-page-master]').forEach((master) => {
+            master.checked = false;
+            master.indeterminate = false;
+        });
         syncLocationSelection();
     }
 
@@ -863,20 +940,27 @@ document.addEventListener('livewire:navigated', () => {
     function submitLocationBulkDelete(event) {
         event.preventDefault();
         const selected = locationSelectionBoxes().filter((box) => box.checked);
-        if (!selected.length) {
+        const selectAll = locationAllMatchingSelected();
+        const formElement = document.getElementById('location-bulk-delete-form');
+        const total = Number(formElement?.dataset.locationTotal || 0);
+
+        if (!selectAll && !selected.length) {
             window.alert('Select at least one location first.');
             return false;
         }
-        if (!window.confirm(`Move ${selected.length} selected location(s) to the recycle bin?`)) return false;
-        const form = prepareLocationBulkForm(false);
+
+        const selectedCount = selectAll ? total : selected.length;
+        if (!window.confirm(`Move ${selectedCount} selected location(s) to the recycle bin? Locations still in use will be skipped.`)) return false;
+        const form = prepareLocationBulkForm(selectAll);
         if (form) form.submit();
         return false;
     }
 
-    function submitLocationBulkDeleteAll() {
-        if (!window.confirm('Move every active location, including locations on other pages, to the recycle bin? Locations still in use will be skipped.')) return;
-        const form = prepareLocationBulkForm(true);
-        if (form) form.submit();
+    function initializeLocationBulkSelection() {
+        window.setTimeout(syncLocationSelection, 0);
     }
+
+    document.addEventListener('DOMContentLoaded', initializeLocationBulkSelection);
+    document.addEventListener('livewire:navigated', initializeLocationBulkSelection);
 </script>
 @endpush

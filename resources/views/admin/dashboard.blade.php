@@ -341,25 +341,25 @@
     {{-- Recent Tables --}}
     <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {{-- Recent Issued Equipment --}}
-        <div class="rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+        <div class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-700">
                 <div>
-                    <h2 class="text-base font-semibold text-gray-900">Recent Issued Equipment</h2>
-                    <p class="mt-1 text-sm text-gray-500">Latest equipment assigned to staff.</p>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Recent Issued Equipment</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest equipment assigned to staff.</p>
                 </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-left text-sm">
-                    <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                    <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
                         <tr>
                             <th class="px-5 py-3 font-semibold">Equipment</th>
                             <th class="px-5 py-3 font-semibold">Issued To</th>
                             <th class="px-5 py-3 font-semibold">Date</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200">
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         @forelse($recentIssuedDevices as $assignment)
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30">
                                 <td class="px-5 py-4">
                                     @if($assignment->device)
                                         <a href="{{ route('admin.devices.show', $assignment->device) }}" class="font-medium text-blue-600 hover:underline">{{ $assignment->device->property_number }}</a>
@@ -368,18 +368,18 @@
                                         <span class="text-gray-400">Equipment deleted</span>
                                     @endif
                                 </td>
-                                <td class="px-5 py-4 text-gray-700">
+                                <td class="px-5 py-4 text-gray-700 dark:text-gray-300">
                                     @if($assignment->staff)
-                                        <div class="font-medium text-gray-900">{{ $assignment->staff->last_name }}, {{ $assignment->staff->first_name }}</div>
-                                        <div class="mt-1 text-xs text-gray-500">{{ $assignment->staff->office?->name ?? 'No office' }}</div>
+                                        <div class="font-medium text-gray-900 dark:text-white">{{ $assignment->staff->last_name }}, {{ $assignment->staff->first_name }}</div>
+                                        <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ $assignment->staff->office?->name ?? 'No office' }}</div>
                                     @else
                                         <span class="text-gray-400">Staff deleted</span>
                                     @endif
                                 </td>
-                                <td class="px-5 py-4 text-gray-700">{{ $assignment->issued_at ? $assignment->issued_at->format('M d, Y') : '-' }}</td>
+                                <td class="px-5 py-4 text-gray-700 dark:text-gray-300">{{ $assignment->issued_at ? $assignment->issued_at->format('M d, Y') : '-' }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="3" class="px-5 py-8 text-center text-gray-500">No issued equipment yet.</td></tr>
+                            <tr><td colspan="3" class="px-5 py-8 text-center text-gray-500 dark:text-gray-400">No issued equipment yet.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -387,25 +387,25 @@
         </div>
 
         {{-- Recent Maintenance Records --}}
-        <div class="rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+        <div class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-700">
                 <div>
-                    <h2 class="text-base font-semibold text-gray-900">Recent Maintenance Records</h2>
-                    <p class="mt-1 text-sm text-gray-500">Latest checked or maintained equipment.</p>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Recent Maintenance Records</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest checked or maintained equipment.</p>
                 </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-left text-sm">
-                    <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                    <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
                         <tr>
                             <th class="px-5 py-3 font-semibold">Equipment</th>
                             <th class="px-5 py-3 font-semibold">Date</th>
                             <th class="px-5 py-3 font-semibold">Remarks</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200">
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         @forelse($recentMaintenanceRecords as $record)
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30">
                                 <td class="px-5 py-4">
                                     @if($record->device)
                                         <a href="{{ route('admin.devices.show', $record->device) }}" class="font-medium text-blue-600 hover:underline">{{ $record->device->property_number }}</a>
@@ -414,11 +414,11 @@
                                         <span class="text-gray-400">Equipment deleted</span>
                                     @endif
                                 </td>
-                                <td class="px-5 py-4 text-gray-700">{{ $record->maintenance_date ? $record->maintenance_date->format('M d, Y') : '-' }}</td>
-                                <td class="px-5 py-4 text-gray-700"><div class="max-w-xs truncate">{{ $record->remarks ?: '-' }}</div></td>
+                                <td class="px-5 py-4 text-gray-700 dark:text-gray-300">{{ $record->maintenance_date ? $record->maintenance_date->format('M d, Y') : '-' }}</td>
+                                <td class="px-5 py-4 text-gray-700 dark:text-gray-300"><div class="max-w-xs truncate">{{ $record->remarks ?: '-' }}</div></td>
                             </tr>
                         @empty
-                            <tr><td colspan="3" class="px-5 py-8 text-center text-gray-500">No maintenance records yet.</td></tr>
+                            <tr><td colspan="3" class="px-5 py-8 text-center text-gray-500 dark:text-gray-400">No maintenance records yet.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
