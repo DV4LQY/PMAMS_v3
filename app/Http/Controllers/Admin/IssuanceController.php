@@ -10,21 +10,38 @@ use App\Models\Location;
 use App\Models\Office;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Maatwebsite\Excel\Facades\Excel;
 
 class IssuanceController extends Controller
 {
     public function index(Request $request)
     {
-        $assignments = $this->issuedAssignmentsQuery($request)
-            ->latest('issued_at')
-            ->paginate(25)
-            ->withQueryString();
+        $loadReport = $request->boolean('load')
+            || collect(['q', 'type_id', 'location_id', 'college_id', 'office_id'])
+                ->contains(fn (string $key) => $request->query->has($key));
+
+        $assignments = $loadReport
+            ? $this->issuedAssignmentsQuery($request)
+                ->latest('issued_at')
+                ->paginate(25)
+                ->withQueryString()
+            : new LengthAwarePaginator(
+                [],
+                0,
+                25,
+                1,
+                [
+                    'path' => $request->url(),
+                    'query' => $request->query(),
+                ]
+            );
 
         $locationId = ($request->integer('location_id') ?: $request->integer('college_id')) ?: null;
 
         return view('admin.issuance.index', [
             'assignments' => $assignments,
+            'loadReport' => $loadReport,
             'types' => DeviceType::orderBy('name')->get(),
             'locations' => Location::orderBy('name')->get(),
             'offices' => Office::with('location')

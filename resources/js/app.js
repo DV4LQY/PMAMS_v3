@@ -38,6 +38,185 @@ import './bootstrap';
     // points at a different local host/port.
     window.adminBasePath = currentBasePath();
 
+    // Keep the active theme visually stable while Livewire replaces the
+    // current page.  The incoming body can momentarily be detached before
+    // its classes are applied; disabling transitions for that short window
+    // prevents a white background flash in dark mode.
+    const syncThemeBeforeNavigationPaint = () => {
+        if (typeof window.getSavedTheme === 'function' && typeof window.setTheme === 'function') {
+            window.setTheme(window.getSavedTheme());
+        }
+    };
+    const navigationUsesDarkTheme = () => {
+        const mode = typeof window.getSavedTheme === 'function'
+            ? window.getSavedTheme()
+            : (window.localStorage.getItem('theme') || 'system');
+
+        return mode === 'dark' || (
+            mode === 'system' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches
+        );
+    };
+    let navigationEndFrame = 0;
+    let navigationEndTimer = 0;
+    let navigationCanvasFrame = 0;
+    let navigationPaintLocked = false;
+    const cancelNavigationCanvasLock = () => {
+        if (navigationCanvasFrame && typeof window.cancelAnimationFrame === 'function') {
+            window.cancelAnimationFrame(navigationCanvasFrame);
+        }
+        navigationCanvasFrame = 0;
+    };
+    const cancelNavigationRelease = () => {
+        if (navigationEndFrame && typeof window.cancelAnimationFrame === 'function') {
+            window.cancelAnimationFrame(navigationEndFrame);
+        }
+        navigationEndFrame = 0;
+        window.clearTimeout(navigationEndTimer);
+        navigationEndTimer = 0;
+    };
+    const markNavigationStart = () => {
+        // A second filter/navigation can start before the previous two-frame
+        // release completes. Cancel that release or it can remove the guard
+        // in the middle of the newer navigation and reintroduce the flash.
+        cancelNavigationRelease();
+        cancelNavigationCanvasLock();
+        navigationPaintLocked = true;
+        syncThemeBeforeNavigationPaint();
+        document.documentElement.classList.add('is-navigating');
+
+        // Keep repainting the persisted chrome until Livewire has finished
+        // morphing the filtered page. This covers browsers that briefly apply
+        // the incoming light-mode body/sidebar styles between two animation
+        // frames, even though the `dark` class is already present.
+        const lockCanvas = () => {
+            const root = document.documentElement;
+            // Never infer the theme from the DOM during a Livewire swap.
+            // The incoming document can temporarily remove both the `dark`
+            // class and data attribute. Reading that transient state caused
+            // this loop itself to paint the active sidebar item light.
+            const dark = navigationUsesDarkTheme();
+            root.classList.toggle('dark', dark);
+            root.classList.add('is-navigating');
+            root.dataset.pmamsTheme = dark ? 'dark' : 'light';
+            root.style.backgroundColor = dark ? '#0f172a' : '#f5f5f4';
+            root.style.colorScheme = dark ? 'dark' : 'light';
+            root.style.setProperty('--pmams-sidebar-bg', dark ? '#1f2937' : '#fafaf9');
+            root.style.setProperty('--pmams-sidebar-border', dark ? '#374151' : '#d1d5db');
+            root.style.setProperty('--pmams-sidebar-active-bg', dark ? 'rgba(30, 58, 138, 0.3)' : '#eff6ff');
+            root.style.setProperty('--pmams-sidebar-active-text', dark ? '#60a5fa' : '#1d4ed8');
+            root.style.setProperty('--pmams-sidebar-active-icon', dark ? '#60a5fa' : '#2563eb');
+            root.style.setProperty('--pmams-sidebar-link-text', dark ? '#d1d5db' : '#374151');
+            root.style.setProperty('--pmams-sidebar-link-icon', dark ? '#9ca3af' : '#6b7280');
+            root.style.setProperty('--pmams-sidebar-link-hover-bg', dark ? '#374151' : '#f3f4f6');
+            root.style.setProperty('--pmams-sidebar-link-hover-text', dark ? '#f3f4f6' : '#1f2937');
+            root.style.setProperty('--pmams-sidebar-scrollbar-thumb', dark ? '#6b7280' : '#a8a29e');
+            if (document.body) {
+                document.body.style.backgroundColor = dark ? '#0f172a' : '#f5f5f4';
+            }
+            const sidebar = document.querySelector('[data-admin-sidebar]');
+            if (sidebar) {
+                sidebar.dataset.theme = dark ? 'dark' : 'light';
+                sidebar.style.backgroundColor = dark ? '#1f2937' : '#fafaf9';
+                sidebar.style.borderRightColor = dark ? '#374151' : '#d1d5db';
+                sidebar.querySelectorAll('nav a[data-active]').forEach((link) => {
+                    const active = link.dataset.active === 'true';
+                    link.style.backgroundColor = active
+                        ? (dark ? 'rgba(30, 58, 138, 0.3)' : '#eff6ff')
+                        : 'transparent';
+                    link.style.color = active
+                        ? (dark ? '#60a5fa' : '#1d4ed8')
+                        : (dark ? '#d1d5db' : '#374151');
+
+                    const icon = link.querySelector('svg');
+                    if (icon) {
+                        icon.style.color = active
+                            ? (dark ? '#60a5fa' : '#2563eb')
+                            : (dark ? '#9ca3af' : '#6b7280');
+                    }
+                });
+            }
+            if (navigationPaintLocked && typeof window.requestAnimationFrame === 'function') {
+                navigationCanvasFrame = window.requestAnimationFrame(lockCanvas);
+            } else {
+                navigationCanvasFrame = 0;
+            }
+        };
+        lockCanvas();
+    };
+    // Expose the same early guard for inline controls and other page scripts.
+    // Native mobile select menus can paint one frame after `change` but before
+    // the form's submit event, so callers need a way to lock the theme canvas
+    // before requesting the filtered page.
+    window.prepareAdminNavigation = markNavigationStart;
+    const markNavigationEnd = () => {
+        // Livewire swaps the body before emitting `navigated`. Re-apply the
+        // saved theme before removing the no-transition guard so a filtered
+        // result cannot paint once with the default light body background.
+        //
+        // Keep the guard for two animation frames. The navigation-state
+        // listener runs after this listener and closes the persisted mobile
+        // sidebar in the same `livewire:navigated` turn. Removing the guard
+        // immediately lets the sidebar's transform transition run for one
+        // frame, which is the white flash users see in dark mode.
+        syncThemeBeforeNavigationPaint();
+        cancelNavigationRelease();
+
+        const release = () => {
+            navigationPaintLocked = false;
+            cancelNavigationCanvasLock();
+            syncThemeBeforeNavigationPaint();
+            document.documentElement.classList.remove('is-navigating');
+        };
+
+        if (typeof window.requestAnimationFrame === 'function') {
+            navigationEndFrame = window.requestAnimationFrame(() => {
+                navigationEndFrame = window.requestAnimationFrame(() => {
+                    navigationEndFrame = 0;
+                    release();
+                });
+            });
+        } else {
+            navigationEndTimer = window.setTimeout(release, 50);
+        }
+    };
+    document.addEventListener('livewire:navigate', markNavigationStart);
+    document.addEventListener('livewire:navigating', markNavigationStart);
+    document.addEventListener('livewire:navigated', markNavigationEnd);
+    window.addEventListener('pageshow', markNavigationEnd);
+
+    // Filter forms are submitted by requestSubmit() as the user changes a
+    // search field or select. Capture that submit before the delegated SPA
+    // handler below so the no-transition guard is active before the incoming
+    // page controls are painted. This prevents a dark-mode input from briefly
+    // showing its light (white) background during the filter request.
+    const isFilterForm = (form) => Boolean(form.querySelector(
+        'input[type="search"], input[name="q"], input[name*="date"], input[name*="filter"], select'
+    ));
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.method.toUpperCase() !== 'GET' ||
+            form.hasAttribute('wire:navigate') || form.dataset.noSpa === 'true' || !isFilterForm(form)) {
+            return;
+        }
+
+        markNavigationStart();
+    }, true);
+
+    // A select's native popup closes before submit is dispatched. Start the
+    // guard during capture-phase change handling so the persisted sidebar and
+    // document canvas cannot fall back to the light palette in that gap.
+    document.addEventListener('change', (event) => {
+        const control = event.target;
+        const form = control && control.form;
+        if (!(form instanceof HTMLFormElement) || form.method.toUpperCase() !== 'GET' ||
+            form.hasAttribute('wire:navigate') || form.dataset.noSpa === 'true' || !isFilterForm(form)) {
+            return;
+        }
+
+        markNavigationStart();
+    }, true);
+
     document.addEventListener('livewire:navigated', () => {
         const url = new URL(window.location.href);
         if (!url.searchParams.has('_spa_refresh')) return;
@@ -559,6 +738,24 @@ import './bootstrap';
         const link = event.target.closest('aside nav a[data-nav-group][href]');
         if (!link || event.defaultPrevented || event.button !== 0) return;
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+        // Start the no-transition guard before Alpine closes the mobile menu
+        // and before the delegated SPA handler begins fetching the next page.
+        // Otherwise the persisted sidebar can briefly animate/flash during a
+        // route change even though the page itself is navigating without a
+        // full reload.
+        const target = new URL(link.href, window.location.href);
+        const targetPath = typeof window.adminLocalNavigatePath === 'function'
+            ? window.adminLocalNavigatePath(target)
+            : `${target.pathname}${target.search}${target.hash}`;
+        const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        if (targetPath !== currentPath) {
+            if (typeof window.prepareAdminNavigation === 'function') {
+                window.prepareAdminNavigation();
+            } else {
+                document.documentElement.classList.add('is-navigating');
+            }
+        }
 
         refreshSidebarActiveState(link.dataset.navGroup);
         setSidebarOpen(false);

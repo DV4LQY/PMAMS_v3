@@ -314,13 +314,13 @@
 
                     <div class="mt-4 flex flex-wrap gap-2">
                         <a href="{{ route('admin.staff.devices.index', $s) }}"
-                            class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-green-600 hover:bg-green-700">
                             Equipment
                         </a>
 
                         @if(auth()->user()->isAdmin())
                             <button type="button"
-                                class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black" @click="openEdit({
+                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-gray-900 hover:bg-black" @click="openEdit({
                                             id: {{ $s->id }},
                                             first_name: @js($s->first_name),
                                             last_name: @js($s->last_name),
@@ -333,7 +333,7 @@
                             </button>
 
                             <button type="button"
-                                class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700"
                                 @click="openDelete({{ $s->id }})">
                                 Delete
                             </button>
@@ -393,13 +393,13 @@
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     <div class="flex items-center gap-2">
                                         <a href="{{ route('admin.staff.devices.index', $s) }}"
-                                            class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+                                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-green-600 hover:bg-green-700">
                                             Equipment
                                         </a>
 
                                         @if(auth()->user()->isAdmin())
                                             <button type="button"
-                                                class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
+                                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-gray-900 hover:bg-black"
                                                 @click="openEdit({
                                                             id: {{ $s->id }},
                                                             first_name: @js($s->first_name),
@@ -413,7 +413,7 @@
                                             </button>
 
                                             <button type="button"
-                                                class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700"
                                                 @click="openDelete({{ $s->id }})">
                                                 Delete
                                             </button>

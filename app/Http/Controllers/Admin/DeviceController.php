@@ -19,6 +19,7 @@ use App\Models\Location;
 use App\Models\DeviceType;
 use App\Models\Office;
 use App\Models\Staff;
+use App\Models\SystemSetting;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\Rule;
@@ -34,6 +35,7 @@ class DeviceController extends Controller
 {
     private const IMPORT_MAX_ERRORS = 50;
     private const IMPORT_MAX_COLUMNS = 40;
+    private const AUTO_PROPERTY_SEQUENCE_KEY = 'device_auto_property_sequence';
 
     /** @var array<string, array<string, mixed>> */
     private array $importLookupCache = [
@@ -1980,6 +1982,10 @@ class DeviceController extends Controller
      * Generate a readable, unique temporary property number for an inventory
      * row that does not have one yet. The format is:
      * EQUIPMENTTYPE-TempID-YYYYMMDD-####
+     *
+     * The four-digit suffix is one persistent sequence shared by every
+     * equipment type and date. This prevents the counter from restarting at
+     * 0001 when the date or equipment type changes.
      */
     private function generateAutoPropertyNumber(?string $equipmentType): string
     {
@@ -1989,27 +1995,46 @@ class DeviceController extends Controller
             : $this->propertyNumberSegment($equipmentType, 'EQUIPMENT', 30);
         $dateSegment = now()->format('Ymd');
         $prefix = "{$typeSegment}-TempID-{$dateSegment}-";
+        return DB::transaction(function () use ($dateSegment, $prefix): string {
+            // Soft-deleted equipment still owns its unique property number.
+            // Include recycle-bin records so a newly generated number cannot
+            // collide with a record that has only been moved out of inventory.
+            $usedNumbers = Device::withTrashed()
+                ->where('property_number', 'like', '%-TempID-%')
+                ->pluck('property_number')
+                ->map(fn ($number) => strtoupper((string) $number))
+                ->all();
 
-        // Soft-deleted equipment still owns its unique property number. Include
-        // recycle-bin records so a newly generated number cannot collide with
-        // a record that has only been moved out of the active inventory list.
-        $usedNumbers = Device::withTrashed()
-            ->where('property_number', 'like', $prefix . '%')
-            ->pluck('property_number')
-            ->map(fn ($number) => strtoupper((string) $number))
-            ->all();
+            $usedNumbers = array_merge($usedNumbers, array_map('strtoupper', $this->generatedPropertyNumbers));
+            $sequence = 0;
+            $sequencePatternRegex = '/-TEMPID-\d{8}-(\d+)$/i';
 
-        $usedNumbers = array_merge($usedNumbers, array_map('strtoupper', $this->generatedPropertyNumbers));
-        $sequence = 1;
+            foreach ($usedNumbers as $usedNumber) {
+                if (preg_match($sequencePatternRegex, (string) $usedNumber, $matches)) {
+                    $sequence = max($sequence, (int) $matches[1]);
+                }
+            }
 
-        do {
-            $candidate = $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
-            $sequence++;
-        } while (in_array(strtoupper($candidate), $usedNumbers, true));
+            // Persist the counter so it cannot reset even if older generated
+            // records are permanently deleted from the recycle bin.
+            $sequenceSetting = SystemSetting::query()
+                ->lockForUpdate()
+                ->firstOrCreate(
+                    ['key' => self::AUTO_PROPERTY_SEQUENCE_KEY],
+                    ['value' => '0']
+                );
+            $sequence = max($sequence, (int) $sequenceSetting->value);
 
-        $this->generatedPropertyNumbers[] = $candidate;
+            do {
+                $sequence++;
+                $candidate = $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            } while (in_array(strtoupper($candidate), $usedNumbers, true));
 
-        return $candidate;
+            $sequenceSetting->update(['value' => (string) $sequence]);
+            $this->generatedPropertyNumbers[] = $candidate;
+
+            return $candidate;
+        });
     }
 
     private function propertyNumberSegment(?string $value, string $fallback, int $maxLength): string

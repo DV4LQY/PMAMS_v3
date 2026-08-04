@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\AllAssetsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Location;
 use App\Models\Device;
@@ -11,6 +12,8 @@ use App\Models\Office;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends Controller
 {
@@ -21,21 +24,37 @@ class ReportController extends Controller
 
     public function assets(Request $request)
     {
-        $devicesQuery = $this->filteredAssetsQuery($request);
+        $loadReport = $this->shouldLoadReport($request, [
+            'q',
+            'type_id',
+            'location_id',
+            'college_id',
+            'office_id',
+        ]);
 
-        $devices = $devicesQuery
-            ->orderByDesc('id')
-            ->paginate(25)
-            ->withQueryString();
+        $devices = $loadReport
+            ? $this->filteredAssetsQuery($request)
+                ->orderByDesc('id')
+                ->paginate(25)
+                ->withQueryString()
+            : $this->emptyReportPaginator($request);
 
         return view('admin.reports.assets', array_merge([
             'devices' => $devices,
+            'loadReport' => $loadReport,
             'selectedTypeId' => $request->integer('type_id'),
             'selectedLocationId' => ($request->integer('location_id') ?: $request->integer('college_id')),
             'selectedCollegeId' => ($request->integer('location_id') ?: $request->integer('college_id')), // backward-compatible variable for existing report views,
             'selectedOfficeId' => $request->integer('office_id'),
             'q' => $request->string('q')->toString(),
         ], $this->filterOptions(($request->integer('location_id') ?: $request->integer('college_id')) ?: null)));
+    }
+
+    public function assetsExport(Request $request)
+    {
+        $filename = 'all-assets-' . now()->format('Y-m-d-His') . '.xlsx';
+
+        return Excel::download(new AllAssetsExport($request->query()), $filename);
     }
 
     public function accounts(Request $request)
@@ -76,6 +95,15 @@ class ReportController extends Controller
 
     public function checkedEquipment(Request $request)
     {
+        $loadReport = $this->shouldLoadReport($request, [
+            'checker_id',
+            'admin_id',
+            'type_id',
+            'location_id',
+            'date_from',
+            'date_to',
+            'q',
+        ]);
         $canViewAllCheckedReports = $this->canViewAllCheckedReports();
         $checkerId = $request->integer('checker_id') ?: $request->integer('admin_id') ?: null;
         if (! $canViewAllCheckedReports) {
@@ -87,23 +115,28 @@ class ReportController extends Controller
         $dateTo = $request->query('date_to');
         $q = $request->string('q')->toString();
 
-        $records = $this->checkedEquipmentQuery($request)
-            ->orderByDesc('maintenance_date')
-            ->orderByDesc('id')
-            ->paginate(25)
-            ->withQueryString();
+        $records = $loadReport
+            ? $this->checkedEquipmentQuery($request)
+                ->orderByDesc('maintenance_date')
+                ->orderByDesc('id')
+                ->paginate(25)
+                ->withQueryString()
+            : $this->emptyReportPaginator($request);
 
-        $checkerSummary = DeviceMaintenanceRecord::query()
-            ->selectRaw('checked_by, COUNT(*) as total')
-            ->whereNotNull('checked_by')
-            ->when(! $canViewAllCheckedReports, fn ($query) => $query->where('checked_by', auth()->id()))
-            ->with('checkedBy')
-            ->groupBy('checked_by')
-            ->orderByDesc('total')
-            ->get();
+        $checkerSummary = $loadReport
+            ? DeviceMaintenanceRecord::query()
+                ->selectRaw('checked_by, COUNT(*) as total')
+                ->whereNotNull('checked_by')
+                ->when(! $canViewAllCheckedReports, fn ($query) => $query->where('checked_by', auth()->id()))
+                ->with('checkedBy')
+                ->groupBy('checked_by')
+                ->orderByDesc('total')
+                ->get()
+            : collect();
 
         return view('admin.reports.checked-equipment', [
             'records' => $records,
+            'loadReport' => $loadReport,
             'adminSummary' => $checkerSummary,
             'checkerSummary' => $checkerSummary,
             'adminUsers' => $canViewAllCheckedReports ? User::orderBy('name')->get() : User::whereKey(auth()->id())->get(),
@@ -332,12 +365,13 @@ class ReportController extends Controller
             || (int) $record->checked_by === (int) auth()->id();
     }
 
-    private function filteredAssetsQuery(Request $request)
+    public static function assetsQuery(Request|array $request)
     {
-        $typeId = $request->integer('type_id') ?: null;
-        $locationId = ($request->integer('location_id') ?: $request->integer('college_id')) ?: null;
-        $officeId = $request->integer('office_id') ?: null;
-        $q = $request->string('q')->toString();
+        $input = $request instanceof Request ? $request->query() : $request;
+        $typeId = (int) ($input['type_id'] ?? 0) ?: null;
+        $locationId = ((int) ($input['location_id'] ?? 0) ?: (int) ($input['college_id'] ?? 0)) ?: null;
+        $officeId = (int) ($input['office_id'] ?? 0) ?: null;
+        $q = trim((string) ($input['q'] ?? ''));
 
         return Device::query()
             ->with([
@@ -379,6 +413,11 @@ class ReportController extends Controller
             });
     }
 
+    private function filteredAssetsQuery(Request $request)
+    {
+        return self::assetsQuery($request);
+    }
+
     private function filterOptions(?int $locationId = null): array
     {
         return [
@@ -390,6 +429,30 @@ class ReportController extends Controller
                 ->orderBy('name')
                 ->get(),
         ];
+    }
+
+    /**
+     * Reports deliberately start with no result query. A filter submission or
+     * an explicit Reset (?load=1) opts in to loading the report data.
+     */
+    private function shouldLoadReport(Request $request, array $filterKeys): bool
+    {
+        return $request->boolean('load')
+            || collect($filterKeys)->contains(fn (string $key) => $request->query->has($key));
+    }
+
+    private function emptyReportPaginator(Request $request): LengthAwarePaginator
+    {
+        return new LengthAwarePaginator(
+            [],
+            0,
+            25,
+            1,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
     }
 
     private function checklistItems(): array

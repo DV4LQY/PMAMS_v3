@@ -18,7 +18,7 @@
         </h1>
 
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Generate inventory, account, and checklist equipment reports.
+            Generate inventory, schedule monitoring, maintenance checklist, and other equipment reports.
         </p>
     </div>
 
@@ -37,7 +37,7 @@
             </h2>
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                Filter all equipment by equipment type, location, office, or keyword.
+                Generate reports for all equipment by type, location, office, or in keyword.
             </p>
         </a>
 
@@ -55,7 +55,7 @@
             </h2>
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                Review active equipment issued to registered end users and export issuance reports.
+                Verify active equipment issued to registered end users and generate issuance reports.
             </p>
         </a>
         @endif
@@ -92,7 +92,7 @@
             </h2>
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                See equipment with completed checklists, grouped by admin account and date.
+                Review and generate reports for checked equipment with completed checklist.
             </p>
         </a>
 
@@ -110,7 +110,7 @@
             </h2>
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                Compare the original plan, approved overrides, actual checklist dates, in-charge person, signature, and remarks by office.
+                Review and generate reports for preventive maintenance schedules, re-scheduled dates, actual checklist dates, person in-charge, signature, and remarks by office.
             </p>
         </a>
         @endif

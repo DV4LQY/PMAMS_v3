@@ -1076,7 +1076,7 @@
     </div>
 
     @else
-        <div class="rounded-2xl border border-blue-200 bg-blue-50 px-5 py-6 text-sm text-blue-800 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+        <div class="text-sm">
             Apply a filter or press <span class="font-semibold">Reset</span> to load equipment records.
             This keeps the initial page fast on large inventories.
         </div>
@@ -1106,7 +1106,7 @@
 
             @include('admin.devices._add-equipment-fields')
 
-            <div class="flex gap-2 pt-2">
+            <div class="flex justify-end gap-2 pt-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
                     Save Equipment
                 </button>

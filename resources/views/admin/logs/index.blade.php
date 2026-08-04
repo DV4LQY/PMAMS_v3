@@ -232,10 +232,9 @@
         </form>
 
         @if(!$hasLogFilter)
-            <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-800">
+            <div class = "text-sm">
                 Select an Action, Record type, User, or date range to load activity logs.
-                This prevents the full audit history from loading before it is needed.
-            </div>
+           </div>
         @else
         {{-- MOBILE VIEW --}}
         <div class="grid gap-3 md:hidden">

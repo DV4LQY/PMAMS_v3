@@ -16,15 +16,26 @@
     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">All Assets Report</h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Automatically filters by equipment type, college, office, or search text.</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a filter or press Reset to load the asset records.</p>
         </div>
 
-        <a
-            href="{{ route('admin.reports.index') }}"
-            class="no-print inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-        >
-            Back to Reports
-        </a>
+        <div class="flex flex-wrap items-center gap-2">
+            @if($loadReport)
+                <a
+                    href="{{ route('admin.reports.assets.export', request()->query()) }}"
+                    data-no-spa="true"
+                    class="no-print inline-flex items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+                >
+                    Export Report
+                </a>
+            @endif
+            <a
+                href="{{ route('admin.reports.index') }}"
+                class="no-print inline-flex items-center justify-center rounded-xl bg-gray-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600"
+            >
+                Back to Reports
+            </a>
+        </div>
     </div>
 
     <div class="no-print rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
@@ -87,7 +98,7 @@
 
             <div class="flex gap-2">
                 <a
-                    href="{{ route('admin.reports.assets') }}"
+                    href="{{ route('admin.reports.assets', ['load' => 1]) }}"
                     class="inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                 >
                     Reset
@@ -96,10 +107,11 @@
         </form>
 
         <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Filters apply automatically. Press Enter while searching to filter immediately.
+            Filters apply automatically. Press Enter while searching to filter immediately. The report stays unloaded until a filter is applied or Reset is pressed.
         </p>
     </div>
 
+    @if($loadReport)
     <div id="print-area" class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
         <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-700">
             <div>
@@ -107,13 +119,6 @@
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ number_format($devices->total()) }} result(s)</p>
             </div>
 
-            <button
-                type="button"
-                onclick="window.print()"
-                class="no-print rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white"
-            >
-                Print
-            </button>
         </div>
 
         <div class="overflow-x-auto">
@@ -178,6 +183,12 @@
             {{ $devices->links() }}
         </div>
     </div>
+    @else
+        <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900/50">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Asset report is ready</h2>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Apply a filter or press Reset to load the equipment records.</p>
+        </div>
+    @endif
 </div>
 
 <script>

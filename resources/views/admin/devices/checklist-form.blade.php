@@ -702,8 +702,8 @@
                     name="remarks"
                     x-model="remarks"
                     x-on:input="remarksEdited = true"
-                    rows="4"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    rows="3"
+                    class="min-h-[7rem] w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     placeholder="Optional remarks; automatic text will appear when applicable"
                 ></textarea>
  
@@ -714,8 +714,8 @@
                 <textarea
                     name="corrective_action"
                     x-model="correctiveAction"
-                    rows="4"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    rows="3"
+                    class="min-h-[7rem] w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     placeholder="Optional corrective action"
                 ></textarea>
             </div>
@@ -724,31 +724,29 @@
         <div class="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
             <label for="maintenance-photo" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Maintenance photo <span class="font-normal text-gray-500">(optional, maximum 10 MB)</span></label>
             <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">Take a rear-camera photo or upload an existing image. The photo is saved in the Maintenance Photo Gallery and linked to this checklist record.</p>
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,18rem)_1fr]">
-                <div class="relative aspect-[4/3] overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
-                    <video id="checklist-camera-preview" class="hidden h-full w-full object-cover" autoplay playsinline muted></video>
+            <div class="w-full max-w-[22.5rem]">
+                <div class="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
                     <img id="checklist-photo-preview" class="hidden h-full w-full object-contain" alt="Maintenance photo preview">
+                    <video id="checklist-camera-preview" class="hidden h-full w-full object-contain" autoplay muted playsinline></video>
                     <div id="checklist-photo-placeholder" class="flex h-full items-center justify-center px-3 text-center text-xs text-gray-500 dark:text-gray-400">No photo selected</div>
-                    <canvas id="checklist-camera-canvas" class="hidden"></canvas>
                 </div>
-                <div class="flex flex-wrap content-start gap-2">
-                    <button id="checklist-camera-start" type="button" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Take photo</button>
-                    <button id="checklist-camera-capture" type="button" class="hidden rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Capture</button>
-                    <button id="checklist-camera-stop" type="button" class="hidden rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-500">Stop camera</button>
-                    <label for="maintenance-photo" class="cursor-pointer rounded-lg bg-gray-600 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-500">Upload photo</label>
-                    <input id="maintenance-photo" name="maintenance_photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" class="sr-only">
-                    <div id="checklist-photo-name" class="w-full text-xs text-gray-500 dark:text-gray-400">No photo selected.</div>
+                <div class="mt-3 flex flex-wrap justify-center gap-2">
+                    <button id="checklist-camera-start" type="button" class="inline-flex min-w-[8rem] items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-blue-700">Take photo</button>
+                    <label for="maintenance-photo" class="inline-flex min-w-[8rem] cursor-pointer items-center justify-center rounded-lg bg-gray-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-gray-500">Upload photo</label>
+                    <input id="maintenance-photo" name="maintenance_photo" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only">
+                    <input id="maintenance-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" class="sr-only">
+                    <div id="checklist-photo-name" class="w-full text-center text-xs text-gray-500 dark:text-gray-400">No photo selected.</div>
                 </div>
             </div>
         </div>
 
-        <div class="sticky bottom-3 z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-800/95 sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
+        <div class="sticky bottom-3 z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3  dark:border-gray-700 dark:bg-gray-800/95 sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
             <span class="text-xs text-gray-500 dark:text-gray-400" x-show="!checklistReady" x-cloak>Complete every row to enable saving.</span>
             <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300" x-show="checklistReady" x-cloak>Ready to save</span>
             <div class="ml-auto flex flex-wrap justify-end gap-2">
             <a
                 href="{{ route('admin.devices.show', $device) }}"
-                class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                class="inline-flex min-w-[4.5rem] items-center justify-center rounded-lg bg-gray-100 px-4 py-2 text-center text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
             >
                 Cancel
             </a>
@@ -1083,37 +1081,150 @@
 (function () {
     if (window.__checklistCameraReady) return;
     window.__checklistCameraReady = true;
-    let stream = null;
     function initChecklistCamera() {
         const form = document.getElementById('maintenance-photo')?.form;
-        const video = document.getElementById('checklist-camera-preview');
-        const canvas = document.getElementById('checklist-camera-canvas');
         const image = document.getElementById('checklist-photo-preview');
+        const video = document.getElementById('checklist-camera-preview');
         const placeholder = document.getElementById('checklist-photo-placeholder');
         const input = document.getElementById('maintenance-photo');
-        const start = document.getElementById('checklist-camera-start');
-        const capture = document.getElementById('checklist-camera-capture');
-        const stop = document.getElementById('checklist-camera-stop');
+        const cameraInput = document.getElementById('maintenance-camera');
+        const cameraButton = document.getElementById('checklist-camera-start');
         const name = document.getElementById('checklist-photo-name');
-        if (!form || !video || !input || form.dataset.cameraReady === '1') return;
+        if (!form || !input || !cameraInput || !cameraButton || !video || form.dataset.cameraReady === '1') return;
         form.dataset.cameraReady = '1';
-        const stopCamera = () => { if (stream) stream.getTracks().forEach(track => track.stop()); stream = null; window.__checklistCameraStream = null; video.pause?.(); video.srcObject = null; video.classList.add('hidden'); capture.classList.add('hidden'); stop.classList.add('hidden'); start.classList.remove('hidden'); };
-        const showFile = (file) => { if (!file) return; image.src = URL.createObjectURL(file); image.classList.remove('hidden'); placeholder.classList.add('hidden'); name.textContent = file.name || 'Captured photo'; };
-        input.addEventListener('change', () => showFile(input.files?.[0]));
-        start.addEventListener('click', async () => {
-            if (!navigator.mediaDevices?.getUserMedia) { input.click(); return; }
-            try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); window.__checklistCameraStream = stream; video.srcObject = stream; await video.play(); video.classList.remove('hidden'); image.classList.add('hidden'); placeholder.classList.add('hidden'); start.classList.add('hidden'); capture.classList.remove('hidden'); stop.classList.remove('hidden'); }
-            catch (error) { input.click(); }
+        let stream = null;
+        let capturedFile = null;
+
+        const stopCamera = () => {
+            stream?.getTracks().forEach((track) => track.stop());
+            stream = null;
+            video.pause();
+            video.srcObject = null;
+            video.classList.add('hidden');
+            cameraButton.textContent = 'Take photo';
+        };
+
+        const showFile = (file) => {
+            if (!file) return;
+            image.src = URL.createObjectURL(file);
+            image.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+            name.textContent = file.name || 'Captured photo';
+        };
+
+        const setCapturedFile = (file) => {
+            capturedFile = file;
+            try {
+                const transfer = new DataTransfer();
+                transfer.items.add(file);
+                input.files = transfer.files;
+            } catch (error) {
+                // The submit handler below sends capturedFile directly when
+                // this browser does not expose a writable FileList.
+            }
+            cameraInput.removeAttribute('name');
+            input.name = 'maintenance_photo';
+            showFile(file);
+        };
+
+        const takeSnapshot = () => {
+            if (!stream || !video.videoWidth || !video.videoHeight) return;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const file = new File([blob], `maintenance-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                stopCamera();
+                setCapturedFile(file);
+            }, 'image/jpeg', 0.92);
+        };
+
+        const startCamera = async () => {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                cameraInput.click();
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { facingMode: { ideal: 'environment' } },
+                });
+                image.classList.add('hidden');
+                placeholder.classList.add('hidden');
+                video.classList.remove('hidden');
+                video.srcObject = stream;
+                await video.play();
+                cameraButton.textContent = 'Use camera photo';
+                name.textContent = 'Camera is ready. Click “Use camera photo” to save the photo.';
+            } catch (error) {
+                stopCamera();
+                name.textContent = 'Camera permission was not available. You can upload a photo instead.';
+            }
+        };
+
+        cameraButton.addEventListener('click', () => {
+            if (stream) {
+                takeSnapshot();
+                return;
+            }
+            startCamera();
         });
-        capture.addEventListener('click', () => { if (!stream || !video.videoWidth) return; const size = Math.min(video.videoWidth, video.videoHeight); canvas.width = 1280; canvas.height = 1280; canvas.getContext('2d').drawImage(video, (video.videoWidth-size)/2, (video.videoHeight-size)/2, size, size, 0, 0, 1280, 1280); canvas.toBlob(blob => { if (!blob || blob.size > 10 * 1024 * 1024) return; const file = new File([blob], 'maintenance-photo.jpg', { type: 'image/jpeg' }); const transfer = new DataTransfer(); transfer.items.add(file); input.files = transfer.files; showFile(file); stopCamera(); }, 'image/jpeg', 0.9); });
-        stop.addEventListener('click', stopCamera);
+
+        input.addEventListener('change', () => {
+            stopCamera();
+            capturedFile = null;
+            cameraInput.removeAttribute('name');
+            input.name = 'maintenance_photo';
+            showFile(input.files?.[0]);
+        });
+        cameraInput.addEventListener('change', () => {
+            const file = cameraInput.files?.[0];
+            if (!file) return;
+            capturedFile = null;
+            input.removeAttribute('name');
+            cameraInput.name = 'maintenance_photo';
+            showFile(file);
+        });
+
+        form.addEventListener('submit', async (event) => {
+            stopCamera();
+            if (!capturedFile) return;
+
+            // Some browsers do not allow a generated File to be assigned to
+            // an <input type=file>. Submit the captured Blob directly so it
+            // still reaches Laravel as maintenance_photo.
+            event.preventDefault();
+            const submitButtons = form.querySelectorAll('button[type="submit"]');
+            submitButtons.forEach((button) => { button.disabled = true; });
+            try {
+                const payload = new FormData(form);
+                payload.set('maintenance_photo', capturedFile, capturedFile.name || 'maintenance-photo.jpg');
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: payload,
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'text/html' },
+                });
+                if (!response.ok) throw new Error('Checklist photo upload failed.');
+                const next = new URL(response.url, window.location.href);
+                const path = window.adminLocalNavigatePath
+                    ? window.adminLocalNavigatePath(next)
+                    : `${next.pathname}${next.search}${next.hash}`;
+                if (window.Livewire?.navigate) window.Livewire.navigate(path);
+                else window.location.assign(next.href);
+            } catch (error) {
+                submitButtons.forEach((button) => { button.disabled = false; });
+                name.textContent = error.message || 'Checklist photo upload failed. Please try again.';
+            }
+        });
+        document.addEventListener('livewire:navigating', stopCamera, { once: true });
     }
     document.addEventListener('DOMContentLoaded', initChecklistCamera);
     document.addEventListener('livewire:navigated', initChecklistCamera);
-    document.addEventListener('livewire:navigating', function () {
-        if (stream) stream.getTracks().forEach(track => track.stop());
-        stream = null;
-    });
     initChecklistCamera();
 })();
 </script>

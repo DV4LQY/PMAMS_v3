@@ -606,12 +606,12 @@
                         @csrf
                         @method('DELETE')
                     </form>
-                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div class="mt-3 flex flex-wrap justify-center gap-2">
                         <button
                             id="device-take-photo-button"
                             type="button"
                             onclick="openDeviceCamera()"
-                            class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-800"
+                            class="inline-flex min-w-[8.75rem] items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-center text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-800"
                         >
                             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.5A2.5 2.5 0 0 1 5.5 6H7l1.2-1.8A2 2 0 0 1 9.9 3.3h4.2a2 2 0 0 1 1.7.9L17 6h1.5A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z" />
@@ -623,7 +623,7 @@
                             id="device-clear-photo-button"
                             type="button"
                             onclick="clearDevicePhoto()"
-                            class="{{ $device->photo_path ? 'inline-flex' : 'hidden' }} w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-800"
+                            class="{{ $device->photo_path ? 'inline-flex' : 'hidden' }} min-w-[8.75rem] items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-center text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-800"
                         >
                             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18" />

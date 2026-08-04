@@ -11,11 +11,11 @@
 
 @section('content')
 <div class="space-y-6" x-data="maintenanceCompletionModal()">
-    <div class="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-4 rounded-2xl sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">PM Plan</h1>
             <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-                The Super Admin publishes the original schedule. Assigned Admins and Unit Heads can view their targets, propose a temporary reschedule with a reason, and record completion details after all office equipment has been checked.
+                The Super Admin and Custodian publishes the approved schedule. Assigned Admins can view their targets, propose a temporary reschedule with a reason, and record completion details after all office equipment has been checked.
             </p>
         </div>
         <a href="{{ route('admin.reports.maintenanceSchedule', request()->query()) }}" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-700">
@@ -32,8 +32,8 @@
     @if(auth()->user()?->isSuperAdmin())
         <section class="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/20" x-data="maintenancePlanForm(@js($locations->map(fn ($location) => ['id' => $location->id, 'offices' => $location->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values()])->values()))">
             <div class="mb-4">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Publish original schedule</h2>
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Choose one location and optionally select several offices. Leaving offices unchecked creates one location-wide schedule.</p>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Publish approved schedule</h2>
+              
             </div>
 
             <form method="POST" action="{{ route('admin.maintenance-plan.store') }}" data-spa-form="true" class="grid gap-4 lg:grid-cols-2">
@@ -46,16 +46,17 @@
                             <option value="{{ $location->id }}">{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
                         @endforeach
                     </select>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one location and optionally select several offices. Leaving offices unchecked creates one location-wide schedule.</p>
                 </div>
                 <div>
                     @php($selectedAssignedUserIds = collect(old('assigned_user_ids', old('assigned_user_id') ? [old('assigned_user_id')] : []))->map(fn ($id) => (int) $id)->all())
-                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Unit Head <span class="font-normal text-gray-500">(select one or more)</span></label>
+                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin <span class="font-normal text-gray-500">(select one or more)</span></label>
                     <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                         @foreach($admins as $admin)
                             <option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $selectedAssignedUserIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>
                         @endforeach
                     </select>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (Windows) or Command (Mac) to select multiple users. Leave empty to make the schedule available to all Admins and Unit Heads.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (Windows) or Command (Mac) to select multiple users.</p>
                 </div>
                 <div class="lg:col-span-2">
                     <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-200">Offices <span class="font-normal text-gray-500">(optional)</span></label>
@@ -96,7 +97,7 @@
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Published schedules</h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Original dates remain unchanged. A temporary override is shown separately.</p>
+        
             </div>
             <form method="GET" class="flex flex-wrap items-center gap-2">
                 <select name="location_id" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
@@ -151,7 +152,7 @@
                             </th>
                         @endif
                         <th class="px-4 py-3">Office / Location</th>
-                        <th class="px-4 py-3">Original schedule</th>
+                        <th class="px-4 py-3">Approved schedule</th>
                         <th class="px-4 py-3 text-amber-700 dark:text-amber-300">Override schedule</th>
                         <th class="px-4 py-3">Actual maintenance</th>
                         <th class="px-4 py-3">Completion</th>
@@ -226,11 +227,11 @@
                                                     <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                 </div>
                                                 @php($scheduleAssignedIds = $schedule->assignedUsers->pluck('id')->merge([$schedule->assigned_user_id])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all())
-                                                <label class="block text-[11px] font-semibold text-gray-600 dark:text-gray-300">Assigned Admin / Unit Head</label>
+                                                <label class="block text-[11px] font-semibold text-gray-600 dark:text-gray-300">Assigned Admin</label>
                                                 <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                     @foreach($admins as $admin)<option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $scheduleAssignedIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>@endforeach
                                                 </select>
-                                                <p class="text-[11px] text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin and Unit Head.</p>
+                                                <p class="text-[11px] text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin.</p>
                                                 <input type="text" name="title" value="{{ $schedule->title }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                 <textarea name="notes" rows="2" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $schedule->notes }}</textarea>
                                                 <button class="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Save schedule</button>
@@ -251,7 +252,7 @@
                                             <button class="w-full rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700">Save override</button>
                                         </form>
                                         @if(auth()->user()?->isSuperAdmin() && $row['override_schedule'])
-                                            <form method="POST" action="{{ route('admin.maintenance-plan.override.reset', $schedule) }}" data-spa-form="true" class="border-t border-amber-200 p-3 dark:border-amber-900/60" onsubmit="return confirm('Remove this temporary override and restore the original published schedule?')">
+                                            <form method="POST" action="{{ route('admin.maintenance-plan.override.reset', $schedule) }}" data-spa-form="true" class="border-t border-amber-200 p-3 dark:border-amber-900/60" onsubmit="return confirm('Remove this temporary override and restore the approved published schedule?')">
                                                 @csrf
                                                 @method('DELETE')
                                                 <button type="submit" class="w-full rounded-lg bg-gray-700 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500">Reset / remove override</button>
@@ -274,10 +275,10 @@
         </div>
     </section>
 
-    <div class="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:flex-row sm:items-center sm:justify-between">
+    <div class="sm:flex-row sm:items-center sm:justify-between">
         <span class="text-gray-600 dark:text-gray-300">
             @if($schedules->total() > 0)
-                Showing {{ $schedules->firstItem() }}–{{ $schedules->lastItem() }} of {{ $schedules->total() }} published schedules
+              <!--  Showing {{ $schedules->firstItem() }}–{{ $schedules->lastItem() }} of {{ $schedules->total() }} published schedules --> 
             @else
                 No published schedules
             @endif

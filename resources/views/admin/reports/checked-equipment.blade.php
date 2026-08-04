@@ -61,6 +61,7 @@
     </div>
 
 
+    @if($loadReport)
     {{-- Summary --}}
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-1">
@@ -92,6 +93,7 @@
         @endforelse
 
     </div>
+    @endif
 
 
 
@@ -178,14 +180,26 @@
                 Generate
             </button>
 
+            <a
+                href="{{ route('admin.reports.checkedEquipment', ['load' => 1]) }}"
+                class="inline-flex items-center justify-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            >
+                Reset
+            </a>
+
 
         </form>
+
+        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            The report stays unloaded until a filter is applied or Reset is pressed.
+        </p>
 
     </div>
 
 
 
 
+    @if($loadReport)
     {{-- Records --}}
 
 
@@ -555,6 +569,13 @@
                     <button type="button" onclick="confirmCheckedEquipmentDeleteRemarks()" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Confirm deletion</button>
                 </div>
             </div>
+        </div>
+    @endif
+
+    @else
+        <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900/50">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Checked equipment report is ready</h2>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Apply a filter or press Reset to load checklist history.</p>
         </div>
     @endif
 

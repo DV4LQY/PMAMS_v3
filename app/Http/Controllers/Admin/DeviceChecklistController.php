@@ -390,9 +390,10 @@ class DeviceChecklistController extends Controller
             }
         }
 
+        $checklistPhoto = null;
         if ($request->hasFile('maintenance_photo')) {
             $photoPath = $request->file('maintenance_photo')->store('maintenance-photos', 'public');
-            DeviceMaintenancePhoto::create([
+            $checklistPhoto = DeviceMaintenancePhoto::create([
                 'device_id' => $device->id,
                 'maintenance_record_id' => $record->id,
                 'uploaded_by' => Auth::id(),
@@ -400,6 +401,18 @@ class DeviceChecklistController extends Controller
                 'captured_at' => Carbon::parse($dateChecked),
                 'caption' => 'Preventive maintenance checklist photo',
             ]);
+
+            ActivityLog::record(
+                'created',
+                'Added checklist maintenance photo to PM Gallery',
+                $device,
+                ActivityLog::makePayload([
+                    'photo_id' => $checklistPhoto->id,
+                    'maintenance_record_id' => $record->id,
+                    'maintenance_date' => $dateChecked,
+                    'gallery' => 'PM Gallery',
+                ])
+            );
         }
 
         $latestRecord = $device->maintenanceRecords()
@@ -490,9 +503,14 @@ class DeviceChecklistController extends Controller
 
         ActivityLog::record('updated', $activityDescription, $device);
 
+        $successMessage = 'Equipment has been marked as checked. Checklist saved.';
+        if ($checklistPhoto) {
+            $successMessage .= ' The maintenance photo was added to PM Gallery.';
+        }
+
         return redirect()
             ->route('admin.devices.show', $device)
-            ->with('success', 'Equipment has been marked as checked. Checklist saved.');
+            ->with('success', $successMessage);
     }
 
     public function generate(Request $request, Device $device)

@@ -111,7 +111,7 @@
             @if($office)
                 <a
                     href="{{ route('admin.staff.index', $office) }}"
-                    class="inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    class="staff-navigation-button inline-flex h-10 w-28 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold leading-5 text-gray-700 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 >
                     Back to Staff
                 </a>
@@ -119,7 +119,7 @@
 
             <a
                 href="{{ route('admin.devices.index') }}"
-                class="inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                class="staff-navigation-button inline-flex h-10 w-28 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold leading-5 text-white bg-blue-600 shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
                 Equipment
             </a>
@@ -353,7 +353,7 @@
                                     @if($device)
                                         <a
                                             href="{{ route('admin.devices.show', $device) }}"
-                                            class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
                                         >
                                             View
                                         </a>
@@ -364,7 +364,7 @@
 
                                         <button
                                             type="submit"
-                                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
                                             onclick="return confirm('Return this equipment from {{ $staffName }}?')"
                                         >
                                             Return
