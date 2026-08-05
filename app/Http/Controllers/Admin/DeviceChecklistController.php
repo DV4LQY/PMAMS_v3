@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Admin\PreventiveMaintenancePlanController;
 use App\Models\ActivityLog;
 use App\Models\Device;
-use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\SystemSetting;
 use App\Models\User;
@@ -99,7 +98,6 @@ class DeviceChecklistController extends Controller
             'software' => ['required', 'array'],
             'remarks' => ['nullable', 'string', 'max:1000'],
             'corrective_action' => ['nullable', 'string', 'max:1000'],
-            'maintenance_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'confirm_duplicate' => ['nullable', 'boolean'],
             'verification_reason' => ['nullable', 'string', 'max:1000'],
             'disposition' => ['nullable', 'array'],
@@ -390,31 +388,6 @@ class DeviceChecklistController extends Controller
             }
         }
 
-        $checklistPhoto = null;
-        if ($request->hasFile('maintenance_photo')) {
-            $photoPath = $request->file('maintenance_photo')->store('maintenance-photos', 'public');
-            $checklistPhoto = DeviceMaintenancePhoto::create([
-                'device_id' => $device->id,
-                'maintenance_record_id' => $record->id,
-                'uploaded_by' => Auth::id(),
-                'photo_path' => $photoPath,
-                'captured_at' => Carbon::parse($dateChecked),
-                'caption' => 'Preventive maintenance checklist photo',
-            ]);
-
-            ActivityLog::record(
-                'created',
-                'Added checklist maintenance photo to PM Gallery',
-                $device,
-                ActivityLog::makePayload([
-                    'photo_id' => $checklistPhoto->id,
-                    'maintenance_record_id' => $record->id,
-                    'maintenance_date' => $dateChecked,
-                    'gallery' => 'PM Gallery',
-                ])
-            );
-        }
-
         $latestRecord = $device->maintenanceRecords()
             ->orderByDesc('maintenance_date')
             ->orderByDesc('id')
@@ -504,13 +477,16 @@ class DeviceChecklistController extends Controller
         ActivityLog::record('updated', $activityDescription, $device);
 
         $successMessage = 'Equipment has been marked as checked. Checklist saved.';
-        if ($checklistPhoto) {
-            $successMessage .= ' The maintenance photo was added to PM Gallery.';
-        }
-
         return redirect()
             ->route('admin.devices.show', $device)
-            ->with('success', $successMessage);
+            // Keep the completion result separate from the normal flash
+            // notifications so the checklist can show an interactive modal
+            // after the redirect without duplicating a banner message.
+            ->with('checklist_result', [
+                'type' => 'success',
+                'title' => 'Checklist completed',
+                'message' => $successMessage,
+            ]);
     }
 
     public function generate(Request $request, Device $device)

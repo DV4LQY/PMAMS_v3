@@ -215,7 +215,7 @@
 
 
 
-        <div class="flex flex-col gap-3 border-b p-5 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between">
 
 
             <div>
@@ -232,7 +232,7 @@
 
 
 
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap items-center gap-2">
 <!-- Print PDF Buttons 
                 <a
                     href="{{ route('admin.reports.checkedEquipment.pdfFiltered', request()->query()) }}"
@@ -243,39 +243,60 @@
                     Print Filtered PDF
                 </a>-->
 
-
-                <label class="flex items-center gap-2 text-sm">
-
-                    <input
-                        type="checkbox"
-                        onchange="toggleCheckedEquipmentSelection(this)"
-                        class="checked-all">
-
-                    Select All
-
-                </label>
-
-
-
                 <button
-                    class="rounded-xl bg-blue-600 px-4 py-2 text-sm text-white">
-
+                    type="submit"
+                    class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                     Print Selected PDF
-
                 </button>
-
-                @if($canDeleteCheckedHistory)
-                    <button type="button"
-                            onclick="openCheckedEquipmentDeleteRemarks()"
-                            class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
-                        Delete Selected History
-                    </button>
-                @endif
-
 
             </div>
 
 
+        </div>
+
+        <div class="flex flex-col gap-3 border-b px-5 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-gray-700 dark:text-gray-200">
+                <label class="inline-flex items-center gap-2 font-medium">
+                    <input
+                        id="checked-equipment-select-page"
+                        type="checkbox"
+                        onchange="toggleCheckedEquipmentPage(this)"
+                        class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                        aria-label="Select all checked equipment records on this page">
+                    Select all on this page
+                </label>
+
+                @if($canBulkDeleteCheckedHistory)
+                    <label class="inline-flex items-center gap-2 font-medium">
+                        <input
+                            id="checked-equipment-select-all"
+                            type="checkbox"
+                            onchange="toggleCheckedEquipmentAll(this)"
+                            class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+                            aria-label="Select all checked equipment records matching the current filters">
+                        Select all matching current filters
+                    </label>
+                @endif
+            </div>
+
+            <div class="flex items-center gap-3">
+                <span id="checked-equipment-selection-count"
+                      data-checked-equipment-total="{{ $records->total() }}"
+                      class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ number_format($records->total()) }} matching
+                </span>
+
+                @if($canDeleteCheckedHistory)
+                    <button
+                        id="checked-equipment-delete-action"
+                        type="button"
+                        onclick="openCheckedEquipmentDeleteRemarks()"
+                        disabled
+                        class="group relative hidden shrink-0 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-red-500 dark:hover:bg-red-600">
+                        Delete Selected History
+                    </button>
+                @endif
+            </div>
         </div>
 
 
@@ -328,12 +349,6 @@
                             PDF
                         </th>
 
-                        @if($canDeleteCheckedHistory)
-                            <th class="px-4 py-3">
-                                Delete
-                            </th>
-                        @endif
-
                     </tr>
 
                 </thead>
@@ -377,7 +392,8 @@
                                 type="checkbox"
                                 name="record_ids[]"
                                 value="{{ $record->id }}"
-                                class="checked-equipment-checkbox">
+                                class="checked-equipment-checkbox"
+                                onchange="updateCheckedEquipmentSelection()">
 
                             @else
 
@@ -449,34 +465,24 @@
 
                         <td class="px-4 py-3 align-middle">
                             @if($device)
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <a href="{{ route('admin.reports.checkedEquipment.pdf',$record) }}"
-                                       data-no-spa="true"
-                                       target="_blank"
-                                       class="inline-flex items-center justify-center whitespace-nowrap rounded bg-gray-900 px-3 py-1.5 leading-5 text-white hover:bg-gray-700">
-                                        PDF
-                                    </a>
-                                    <a href="{{ route('admin.reports.checkedEquipment.preview', $record) }}"
-                                       class="inline-flex items-center justify-center whitespace-nowrap rounded bg-indigo-600 px-3 py-1.5 leading-5 text-white hover:bg-indigo-500">
-                                        Preview
-                                    </a>
+                                <div class="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                                    <x-action-icon
+                                        tag="a"
+                                        href="{{ route('admin.reports.checkedEquipment.pdf', $record) }}"
+                                        target="_blank"
+                                        data-no-spa="true"
+                                        icon="clipboard"
+                                        variant="slate"
+                                        label="Open PDF" />
+                                    <x-action-icon
+                                        tag="a"
+                                        href="{{ route('admin.reports.checkedEquipment.preview', $record) }}"
+                                        icon="eye"
+                                        variant="purple"
+                                        label="Preview checklist" />
                                 </div>
                             @endif
                         </td>
-
-                        @if($canDeleteCheckedHistory)
-                            <td class="px-4 py-3">
-                                @if($device)
-                                    <button type="button"
-                                            onclick="deleteCheckedEquipmentRecord({{ $record->id }})"
-                                            class="rounded bg-red-600 px-3 py-1 text-white hover:bg-red-700">
-                                        Delete
-                                    </button>
-                                @endif
-                            </td>
-                        @endif
-
-
 
                     </tr>
 
@@ -486,7 +492,7 @@
 
                     <tr>
 
-                        <td colspan="{{ $canDeleteCheckedHistory ? 10 : 9 }}"
+                        <td colspan="9"
                             class="px-5 py-10 text-center">
 
                             No records found.
@@ -523,7 +529,7 @@
         <form id="checked-equipment-delete-form"
               method="POST"
               action="{{ route('admin.reports.checkedEquipment.delete') }}"
-              class="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/20">
+              class="hidden">
             @csrf
             @method('DELETE')
             <input type="hidden" name="filter_checker_id" value="{{ $checkerId }}">
@@ -535,21 +541,6 @@
             <input type="hidden" name="select_all" id="checked-equipment-delete-all" value="0">
             <input type="hidden" name="remarks" id="checked-equipment-delete-remarks" value="">
             <div id="checked-equipment-delete-ids"></div>
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                    <h2 class="font-semibold text-red-900 dark:text-red-200">Delete checklist history</h2>
-                    <p class="mt-1 text-sm text-red-800/80 dark:text-red-200/80">Select individual rows above to move them to Checklist Cleanup.</p>
-                    @if($canBulkDeleteCheckedHistory)
-                        <label class="mt-3 inline-flex items-center gap-2 text-sm text-red-900 dark:text-red-200">
-                            <input id="checked-equipment-delete-all-toggle" type="checkbox" class="h-4 w-4">
-                            Select all checklist history matching these filters across every page
-                        </label>
-                    @endif
-                </div>
-                <div class="flex w-full flex-col gap-2 lg:w-auto lg:min-w-96">
-                    <button type="button" onclick="openCheckedEquipmentDeleteRemarks()" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Delete selected history</button>
-                </div>
-            </div>
         </form>
 
         <div id="checked-equipment-delete-remarks-modal" onclick="if (event.target === this) closeCheckedEquipmentDeleteRemarks()" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="checked-equipment-delete-remarks-title" aria-hidden="true">
@@ -591,10 +582,81 @@
 
 <script>
 
+function checkedEquipmentBoxes()
+{
+    return Array.from(document.querySelectorAll('.checked-equipment-checkbox'));
+}
+
+function updateCheckedEquipmentSelection()
+{
+    const boxes = checkedEquipmentBoxes();
+    const selected = boxes.filter((checkbox) => checkbox.checked);
+    const selectAll = document.getElementById('checked-equipment-delete-all');
+    let allMatching = selectAll?.value === '1';
+    const pageToggle = document.getElementById('checked-equipment-select-page');
+    const allToggle = document.getElementById('checked-equipment-select-all');
+    const deleteButton = document.getElementById('checked-equipment-delete-action');
+    const count = document.getElementById('checked-equipment-selection-count');
+
+    // Unchecking an individual row changes the selection back to explicit
+    // row IDs; never leave the cross-page delete flag enabled accidentally.
+    if (allMatching && selected.length < boxes.length) {
+        allMatching = false;
+        if (selectAll) selectAll.value = '0';
+    }
+
+    if (pageToggle) {
+        pageToggle.checked = boxes.length > 0 && selected.length === boxes.length;
+        pageToggle.indeterminate = selected.length > 0 && selected.length < boxes.length;
+    }
+
+    if (allToggle) {
+        allToggle.checked = allMatching;
+    }
+
+    if (deleteButton) {
+        const hasSelection = allMatching || selected.length > 0;
+        deleteButton.disabled = !hasSelection;
+        deleteButton.classList.toggle('hidden', !hasSelection);
+        deleteButton.classList.toggle('inline-flex', hasSelection);
+    }
+
+    if (count) {
+        const total = count.dataset.checkedEquipmentTotal || 'All';
+        count.textContent = allMatching
+            ? `${total} matching selected`
+            : (selected.length ? `${selected.length} selected` : `${total} matching`);
+    }
+}
+
+function toggleCheckedEquipmentPage(source)
+{
+    const selectAll = document.getElementById('checked-equipment-delete-all');
+    if (selectAll) selectAll.value = '0';
+
+    checkedEquipmentBoxes().forEach((checkbox) => {
+        checkbox.checked = source.checked;
+    });
+
+    updateCheckedEquipmentSelection();
+}
+
+function toggleCheckedEquipmentAll(source)
+{
+    const selectAll = document.getElementById('checked-equipment-delete-all');
+    if (selectAll) selectAll.value = source.checked ? '1' : '0';
+
+    checkedEquipmentBoxes().forEach((checkbox) => {
+        checkbox.checked = source.checked;
+    });
+
+    updateCheckedEquipmentSelection();
+}
+
 function toggleCheckedEquipmentSelection(source)
 {
-    document.querySelectorAll('.checked-equipment-checkbox')
-        .forEach(cb => cb.checked = source.checked);
+    // Keep compatibility with older cached SPA markup.
+    toggleCheckedEquipmentPage(source);
 }
 
 
@@ -627,12 +689,11 @@ function deleteCheckedEquipmentRecord(recordId)
 
 function openCheckedEquipmentDeleteRemarks(recordId = null)
 {
-    const deleteAll = document.getElementById('checked-equipment-delete-all-toggle')?.checked === true;
+    const deleteAll = document.getElementById('checked-equipment-delete-all')?.value === '1';
     const ids = document.getElementById('checked-equipment-delete-ids');
     ids.innerHTML = '';
 
     if (recordId !== null && recordId !== undefined) {
-        document.getElementById('checked-equipment-delete-all-toggle').checked = false;
         document.getElementById('checked-equipment-delete-all').value = '0';
         const input = document.createElement('input');
         input.type = 'hidden';
@@ -699,6 +760,8 @@ function confirmCheckedEquipmentDeleteRemarks()
     closeCheckedEquipmentDeleteRemarks();
     form.submit();
 }
+
+updateCheckedEquipmentSelection();
 
 </script>
 

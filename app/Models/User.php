@@ -107,7 +107,12 @@ class User extends Authenticatable
             self::ROLE_SUPER_ADMIN => ['menus' => $allMenus, 'actions' => $allActions],
             self::ROLE_ADMIN, self::ROLE_UNIT_HEAD => [
                 'menus' => array_values(array_diff($allMenus, ['database', 'maintenance_cleanup'])),
-                'actions' => $allActions,
+                'actions' => array_replace($allActions, [
+                    // Admins and Unit Heads may submit an override and record
+                    // completion. Publishing, changing, or deleting the
+                    // original PM Plan remains a Super Admin operation.
+                    'maintenance_plan' => ['edit'],
+                ]),
             ],
             self::ROLE_CUSTODIAN => [
                 'menus' => ['dashboard', 'equipment', 'locations', 'reports', 'issuance', 'maintenance_gallery', 'scanner', 'support'],
@@ -123,6 +128,58 @@ class User extends Authenticatable
             ],
             default => ['menus' => [], 'actions' => []],
         };
+    }
+
+    /**
+     * The role editor cannot grant access that a protected route will always
+     * reject. Keeping these limits beside the defaults makes the UI, saved
+     * role profile, sidebar, and middleware use the same authorization model.
+     */
+    public static function allowedPermissionsForRole(string $role): array
+    {
+        $allMenus = array_keys(self::PERMISSION_MENUS);
+        $allActions = array_fill_keys(array_keys(self::PERMISSION_RESOURCES), array_keys(self::PERMISSION_ACTIONS));
+
+        return match ($role) {
+            self::ROLE_SUPER_ADMIN => ['menus' => $allMenus, 'actions' => $allActions],
+            self::ROLE_ADMIN, self::ROLE_UNIT_HEAD => [
+                'menus' => array_values(array_diff($allMenus, ['database', 'maintenance_cleanup'])),
+                'actions' => array_replace($allActions, ['maintenance_plan' => ['edit']]),
+            ],
+            self::ROLE_CUSTODIAN => [
+                'menus' => ['dashboard', 'equipment', 'locations', 'reports', 'issuance', 'maintenance_gallery', 'scanner', 'support'],
+                'actions' => [
+                    'equipment' => ['add', 'edit'],
+                    'locations' => [],
+                    'offices' => [],
+                    'staff' => [],
+                    'issuance' => ['add', 'edit'],
+                    'maintenance_gallery' => ['add', 'edit'],
+                    'checklist' => ['edit'],
+                    'maintenance_plan' => [],
+                ],
+            ],
+            default => ['menus' => [], 'actions' => []],
+        };
+    }
+
+    public static function sanitizePermissionsForRole(string $role, array $permissions): array
+    {
+        $allowed = self::allowedPermissionsForRole($role);
+        $menus = array_values(array_intersect(
+            (array) ($permissions['menus'] ?? []),
+            (array) ($allowed['menus'] ?? [])
+        ));
+        $actions = [];
+
+        foreach (array_keys(self::PERMISSION_RESOURCES) as $resource) {
+            $actions[$resource] = array_values(array_intersect(
+                (array) data_get($permissions, "actions.{$resource}", []),
+                (array) data_get($allowed, "actions.{$resource}", [])
+            ));
+        }
+
+        return ['menus' => $menus, 'actions' => $actions];
     }
 
     public static function allRolePermissions(): array
@@ -157,7 +214,10 @@ class User extends Authenticatable
                 }
             }
 
-            $profiles[$role] = ['menus' => $menus, 'actions' => $actions];
+            $profiles[$role] = self::sanitizePermissionsForRole($role, [
+                'menus' => $menus,
+                'actions' => $actions,
+            ]);
         }
 
         return static::$rolePermissionsCache = $profiles;

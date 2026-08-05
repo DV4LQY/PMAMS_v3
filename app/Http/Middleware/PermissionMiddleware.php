@@ -66,9 +66,11 @@ class PermissionMiddleware
 
     private function action(string $route): ?string
     {
-        if (str_contains($route, 'destroy') || str_contains($route, 'delete') || str_contains($route, 'forceDelete')) return 'delete';
+        $route = strtolower($route);
+
+        if (str_contains($route, 'destroy') || str_contains($route, 'delete')) return 'delete';
         if (str_contains($route, 'store') || str_contains($route, 'create') || str_contains($route, 'import')) return 'add';
-        if (str_contains($route, 'update') || str_contains($route, 'edit') || str_contains($route, 'quickUpdate') || str_contains($route, 'markChecked') || str_contains($route, 'checklist') || str_contains($route, 'link') || str_contains($route, 'unlink') || str_contains($route, 'issue') || str_contains($route, 'reissue') || str_contains($route, 'photo') || str_contains($route, 'restore') || str_contains($route, 'override') || str_contains($route, 'complete')) return 'edit';
+        if (str_contains($route, 'update') || str_contains($route, 'edit') || str_contains($route, 'quickupdate') || str_contains($route, 'markchecked') || str_contains($route, 'checklist') || str_contains($route, 'link') || str_contains($route, 'unlink') || str_contains($route, 'issue') || str_contains($route, 'reissue') || str_contains($route, 'return') || str_contains($route, 'photo') || str_contains($route, 'restore') || str_contains($route, 'override') || str_contains($route, 'complete')) return 'edit';
 
         return null;
     }

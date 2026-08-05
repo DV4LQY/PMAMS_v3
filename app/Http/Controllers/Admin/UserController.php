@@ -45,7 +45,10 @@ class UserController extends Controller
 
         // Keep legacy accounts working when an older form is submitted.
         if (! $request->boolean('permissions_present')) {
-            return $fallback ?? User::permissionsForRole($role);
+            return User::sanitizePermissionsForRole(
+                $role,
+                $fallback ?? User::permissionsForRole($role)
+            );
         }
 
         $menuKeys = array_keys(User::PERMISSION_MENUS);
@@ -60,7 +63,10 @@ class UserController extends Controller
                 : [];
         }
 
-        return ['menus' => $menus, 'actions' => $actions];
+        return User::sanitizePermissionsForRole($role, [
+            'menus' => $menus,
+            'actions' => $actions,
+        ]);
     }
 
     /**
@@ -440,18 +446,9 @@ class UserController extends Controller
 
         $passwordChanged = !empty($data['password']);
 
-        $rolePermissions = $this->permissionsFromRequest(
-            $request,
-            $data['role'],
-            User::permissionsForRole($data['role'])
-        );
-        $this->saveRolePermissions(
-            $data['role'],
-            $rolePermissions,
-            $request->boolean('permissions_changed')
-                || $this->permissionsPayloadChanged($request, $data['role'], $rolePermissions)
-        );
-
+        // Capture the old shared role profile before saving the submitted
+        // profile. Otherwise the activity log records the new permissions on
+        // both sides and hides the actual role-permission change.
         $before = [
             'name' => $user->name,
             'email' => $user->email,
@@ -463,6 +460,18 @@ class UserController extends Controller
         if ($passwordChanged) {
             $before['password'] = null;
         }
+
+        $rolePermissions = $this->permissionsFromRequest(
+            $request,
+            $data['role'],
+            User::permissionsForRole($data['role'])
+        );
+        $this->saveRolePermissions(
+            $data['role'],
+            $rolePermissions,
+            $request->boolean('permissions_changed')
+                || $this->permissionsPayloadChanged($request, $data['role'], $rolePermissions)
+        );
 
         $user->name = $data['name'];
         $user->email = $data['email'];

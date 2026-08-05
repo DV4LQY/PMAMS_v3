@@ -224,6 +224,15 @@
 
         .device-col {
             width: 7.2%;
+            text-align: left !important;
+            padding-left: 4px !important;
+        }
+
+        /* Keep all equipment/category labels flush-left in the first column.
+         * This also covers blank/template rows rendered by the PDF engine. */
+        .main-table tbody td:first-child {
+            text-align: left !important;
+            padding-left: 4px !important;
         }
 
         .pair-ok {

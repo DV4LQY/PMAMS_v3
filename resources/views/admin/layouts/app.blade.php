@@ -1207,6 +1207,86 @@
                 </div>
             @endif
 
+            @php
+                $checklistResult = session('checklist_result');
+                $checklistErrorMessages = request()->routeIs('admin.devices.checklist.form')
+                    && ! session('duplicate_warning')
+                    ? $errors->all()
+                    : [];
+                $hasChecklistResult = is_array($checklistResult);
+                $hasChecklistErrors = count($checklistErrorMessages) > 0;
+            @endphp
+
+            @if ($hasChecklistResult || $hasChecklistErrors)
+                <div
+                    x-data="{
+                        open: true,
+                        type: @js($hasChecklistErrors ? 'error' : ($checklistResult['type'] ?? 'success')),
+                        title: @js($hasChecklistErrors ? 'Checklist could not be saved' : ($checklistResult['title'] ?? 'Checklist completed')),
+                        message: @js($hasChecklistErrors ? 'Please correct the highlighted items and try again.' : ($checklistResult['message'] ?? 'Checklist saved successfully.')),
+                        errors: @js($checklistErrorMessages),
+                    }"
+                    x-show="open"
+                    x-cloak
+                    x-on:keydown.escape.window="open = false"
+                    class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="checklist-result-title"
+                >
+                    <div
+                        x-on:click.outside="open = false"
+                        class="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+                    >
+                        <div class="flex items-start gap-3">
+                            <div
+                                class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+                                x-bind:class="type === 'error' ? 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300'"
+                                aria-hidden="true"
+                            >
+                                <svg x-show="type !== 'error'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <path d="m5 12 4 4L19 6" />
+                                </svg>
+                                <svg x-show="type === 'error'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <path d="M12 8v4m0 4h.01" />
+                                    <circle cx="12" cy="12" r="9" />
+                                </svg>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <h2 id="checklist-result-title" class="text-lg font-semibold text-gray-900 dark:text-white" x-text="title"></h2>
+                                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300" x-text="message"></p>
+                            </div>
+                            <button
+                                type="button"
+                                x-on:click="open = false"
+                                class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                                aria-label="Close message"
+                            >
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M6 6l12 12M18 6 6 18" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <ul x-show="errors.length" x-cloak class="mt-4 space-y-1 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
+                            <template x-for="error in errors" :key="error">
+                                <li class="list-inside list-disc" x-text="error"></li>
+                            </template>
+                        </ul>
+
+                        <div class="mt-6 flex justify-end">
+                            <button
+                                type="button"
+                                x-on:click="open = false"
+                                class="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-800"
+                            >
+                                Continue
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             @yield('content')
         </main>
 
@@ -1393,6 +1473,9 @@
         const defaultsByRole = config.rolePermissionDefaults && typeof config.rolePermissionDefaults === 'object'
             ? config.rolePermissionDefaults
             : {};
+        const limitsByRole = config.rolePermissionLimits && typeof config.rolePermissionLimits === 'object'
+            ? config.rolePermissionLimits
+            : {};
 
         return {
             addOpen: Boolean(config.addOpen),
@@ -1404,6 +1487,7 @@
             showEditConfirmPassword: false,
             hasUnitHead: Boolean(config.hasUnitHead),
             rolePermissionDefaults: defaultsByRole,
+            rolePermissionLimits: limitsByRole,
             allPermissionMenus: defaultMenus,
             defaultPermissionActions: defaultActions,
             addSingle: config.addSingle || {},
@@ -1434,29 +1518,46 @@
                 };
             },
 
+            allowedPermissions(role = 'custodian') {
+                return limitsByRole[role] || { menus: [], actions: {} };
+            },
+
+            isMenuAllowed(role, menu) {
+                return (this.allowedPermissions(role).menus || []).includes(menu);
+            },
+
+            isActionAllowed(role, resource, action) {
+                return (this.allowedPermissions(role).actions?.[resource] || []).includes(action);
+            },
+
             allMenusSelected(state) {
                 const selected = Array.isArray(state?.permissions?.menus) ? state.permissions.menus : [];
-                return defaultMenus.length > 0 && defaultMenus.every((menu) => selected.includes(menu));
+                const allowedMenus = this.allowedPermissions(state?.role).menus || [];
+                return allowedMenus.length > 0 && allowedMenus.every((menu) => selected.includes(menu));
             },
 
             toggleAllMenus(state, checked) {
-                state.permissions.menus = checked ? [...defaultMenus] : [];
+                const allowedMenus = this.allowedPermissions(state?.role).menus || [];
+                state.permissions.menus = checked ? [...allowedMenus] : [];
                 state.permissionsChanged = true;
             },
 
             allActionsSelected(state) {
                 const actions = state?.permissions?.actions || {};
-                return Object.entries(defaultActions).every(([resource, resourceActions]) => {
+                const allowedActions = this.allowedPermissions(state?.role).actions || {};
+                const selectable = Object.values(allowedActions).flat();
+                return selectable.length > 0 && Object.entries(allowedActions).every(([resource, resourceActions]) => {
                     const selected = Array.isArray(actions[resource]) ? actions[resource] : [];
                     return resourceActions.every((action) => selected.includes(action));
                 });
             },
 
             toggleAllActions(state, checked) {
+                const allowedActions = this.allowedPermissions(state?.role).actions || {};
                 state.permissions.actions = Object.fromEntries(
                     Object.entries(defaultActions).map(([resource, resourceActions]) => [
                         resource,
-                        checked ? [...resourceActions] : [],
+                        checked ? [...(allowedActions[resource] || [])] : [],
                     ])
                 );
                 state.permissionsChanged = true;

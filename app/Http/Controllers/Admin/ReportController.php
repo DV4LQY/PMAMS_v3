@@ -119,7 +119,9 @@ class ReportController extends Controller
             ? $this->checkedEquipmentQuery($request)
                 ->orderByDesc('maintenance_date')
                 ->orderByDesc('id')
-                ->paginate(25)
+                // Keep the checked-equipment table readable and expose
+                // pagination for normal report result sets.
+                ->paginate(10)
                 ->withQueryString()
             : $this->emptyReportPaginator($request);
 

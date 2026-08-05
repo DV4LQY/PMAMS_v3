@@ -262,8 +262,12 @@
         }
 
         .main-table .computer-peripheral {
-            text-align: center;
-            padding-left: 2px;
+            /* Equipment labels in this column should follow the report's
+             * left-aligned data convention (the table-wide rule defaults to
+             * centered cells). Keep a small inset so the text does not touch
+             * the border in the PDF renderer. */
+            text-align: left !important;
+            padding-left: 8px !important;
             font-size: 12px;
             line-height: 1.05;
         }

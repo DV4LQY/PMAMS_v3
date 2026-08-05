@@ -459,15 +459,17 @@
                 Export Excel Report
             </a>
 
-            <button
-                type="button"
-                data-open-add-equipment-modal
-                data-open-modal="add-equipment-modal"
-                class="inline-flex shrink-0 items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                x-on:click="openAddEquipment()"
-            >
-                + Add Equipment
-            </button>
+            @if(auth()->user()?->canAction('equipment', 'add'))
+                <button
+                    type="button"
+                    data-open-add-equipment-modal
+                    data-open-modal="add-equipment-modal"
+                    class="inline-flex shrink-0 items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                    x-on:click="openAddEquipment()"
+                >
+                    + Add Equipment
+                </button>
+            @endif
         </div>
     </div>
 
@@ -813,8 +815,10 @@
                     @if($isComputerDevice)
                         <x-action-icon tag="a" href="{{ route('admin.devices.history', $d) }}" icon="history" variant="purple" label="Equipment history" />
 
-                        <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
-                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin())
+                        @if(auth()->user()?->canAction('checklist', 'edit'))
+                            <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
+                        @endif
+                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin() && auth()->user()?->canAction('equipment', 'edit'))
                         <button
                             type="button"
                             title="Link this peripheral to a Desktop or Laptop"
@@ -828,6 +832,7 @@
                         </button>
                     @endif
 
+                    @if(auth()->user()?->canAction('equipment', 'edit'))
                     <button
                         type="button"
                         title="Edit equipment specs"
@@ -872,8 +877,9 @@
                         <span class="sr-only">Edit equipment specs</span>
                         <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit equipment specs</span>
                     </button>
+                    @endif
 
-                    @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+                    @if((auth()->user()->isAdmin() || auth()->user()->isUnitHead()) && auth()->user()->canAction('equipment', 'delete'))
                         <x-action-icon
                             type="button"
                             icon="trash"
@@ -976,8 +982,10 @@
                                     @if($isComputerDevice)
                                         <x-action-icon tag="a" href="{{ route('admin.devices.history', $d) }}" icon="history" variant="purple" label="Equipment history" />
 
-                                        <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
-                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin())
+                                        @if(auth()->user()?->canAction('checklist', 'edit'))
+                                            <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
+                                        @endif
+                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin() && auth()->user()?->canAction('equipment', 'edit'))
                                         <button
                                             type="button"
                                             title="Link this peripheral to a Desktop or Laptop"
@@ -991,6 +999,7 @@
                                         </button>
                                     @endif
 
+                                    @if(auth()->user()?->canAction('equipment', 'edit'))
                                     <button
                                         type="button"
                                         title="Edit equipment specs"
@@ -1034,8 +1043,9 @@
                                         <span class="sr-only">Edit equipment specs</span>
                                         <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit equipment specs</span>
                                     </button>
+                                    @endif
 
-                                    @if(auth()->user()->isAdmin() || auth()->user()->isUnitHead())
+                                    @if((auth()->user()->isAdmin() || auth()->user()->isUnitHead()) && auth()->user()->canAction('equipment', 'delete'))
                                         <x-action-icon
                                             type="button"
                                             icon="trash"
@@ -1085,6 +1095,7 @@
         @endforeach
     </datalist>
 
+    @if(auth()->user()?->canAction('equipment', 'add'))
     {{-- Add modal --}}
     <x-modal id="add-equipment-modal" show="addOpen" title="Add Equipment" max-width="max-w-4xl" x-on:pmams-modal-close.window="if ($event.detail.id === 'add-equipment-modal') closeAddEquipment()">
         <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
@@ -1109,7 +1120,9 @@
             </div>
         </form>
     </x-modal>
+    @endif
 
+    @if(auth()->user()?->canAction('equipment', 'edit'))
     {{-- Edit modal --}}
     <x-modal show="editOpen" title="Edit Equipment" max-width="max-w-4xl">
         <form
@@ -1549,7 +1562,9 @@
             </div>
         </form>
     </x-modal>
+    @endif
 
+    @if(auth()->user()?->canAction('equipment', 'edit'))
     {{-- Link peripheral modal --}}
     <x-modal show="linkOpen" title="Link Peripheral to System Unit">
         <form
@@ -1623,6 +1638,7 @@
             </div>
         </form>
     </x-modal>
+    @endif
 
     {{-- Import modal --}}
     @if(auth()->user()?->isSuperAdmin())
@@ -1714,6 +1730,7 @@
         </x-modal>
     @endif
 
+    @if(auth()->user()?->canAction('equipment', 'delete'))
     {{-- Delete modal --}}
     <x-modal show="deleteOpen" title="Delete Equipment">
         <div class="space-y-3">
@@ -1748,6 +1765,7 @@
             </form>
         </div>
     </x-modal>
+    @endif
 </div>
 <style>
     /* Keep every equipment action predictable on cards and desktop tables. */

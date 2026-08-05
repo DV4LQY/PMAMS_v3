@@ -133,7 +133,7 @@ document.addEventListener('livewire:navigated', () => {
             <h1 class="text-2xl font-semibold text-gray-900">Offices in {{ $location->name }}</h1>
         </div>
 
-        @if(auth()->user()->isAdmin())
+        @if(auth()->user()->isAdmin() && auth()->user()->canAction('offices', 'add'))
             <button
                 type="button"
                 class="shrink-0 inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
@@ -144,7 +144,7 @@ document.addEventListener('livewire:navigated', () => {
         @endif
     </div>
 
-    @if(auth()->user()->isAdmin() && $offices->count())
+    @if(auth()->user()->isAdmin() && auth()->user()->canAction('offices', 'delete') && $offices->count())
         <form
             method="POST"
             action="{{ route('admin.offices.bulkDestroy', $location) }}"
@@ -183,7 +183,7 @@ document.addEventListener('livewire:navigated', () => {
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div class="space-y-3">
                     <div>
-                        @if(auth()->user()->isAdmin())
+                        @if(auth()->user()->isAdmin() && auth()->user()->canAction('offices', 'delete'))
                             <label class="mb-2 inline-flex items-center gap-2 text-sm text-gray-600">
                                 <input
                                     type="checkbox"
@@ -203,7 +203,8 @@ document.addEventListener('livewire:navigated', () => {
                     </div>
 
                     <div class="flex flex-wrap gap-2 pt-1">
-                        @if(auth()->user()->isAdmin())
+                        @if(auth()->user()->isAdmin() && (auth()->user()->canAction('offices', 'edit') || auth()->user()->canAction('offices', 'delete')))
+                            @if(auth()->user()->canAction('offices', 'edit'))
                             <button
                                 type="button"
                                 class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
@@ -214,7 +215,9 @@ document.addEventListener('livewire:navigated', () => {
                             >
                                 Edit
                             </button>
+                            @endif
 
+                            @if(auth()->user()->canAction('offices', 'delete'))
                             <button
                                 type="button"
                                 class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
@@ -222,6 +225,7 @@ document.addEventListener('livewire:navigated', () => {
                             >
                                 Delete
                             </button>
+                            @endif
                         @endif
                     </div>
                 </div>
@@ -239,7 +243,7 @@ document.addEventListener('livewire:navigated', () => {
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 text-left">
                     <tr>
-                        @if(auth()->user()->isAdmin())
+                        @if(auth()->user()->isAdmin() && auth()->user()->canAction('offices', 'delete'))
                             <th class="w-12 px-4 py-3 font-semibold text-gray-700">
                                 <input
                                     type="checkbox"
@@ -257,7 +261,7 @@ document.addEventListener('livewire:navigated', () => {
                 <tbody class="divide-y divide-gray-200">
                     @forelse ($offices as $o)
                         <tr class="hover:bg-gray-50">
-                            @if(auth()->user()->isAdmin())
+                            @if(auth()->user()->isAdmin() && auth()->user()->canAction('offices', 'delete'))
                                 <td class="px-4 py-3">
                                     <input
                                         type="checkbox"
@@ -279,7 +283,8 @@ document.addEventListener('livewire:navigated', () => {
 
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex items-center gap-2">
-                                    @if(auth()->user()->isAdmin())
+                                    @if(auth()->user()->isAdmin() && (auth()->user()->canAction('offices', 'edit') || auth()->user()->canAction('offices', 'delete')))
+                                        @if(auth()->user()->canAction('offices', 'edit'))
                                         <button
                                             type="button"
                                             class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
@@ -290,7 +295,9 @@ document.addEventListener('livewire:navigated', () => {
                                         >
                                             Edit
                                         </button>
+                                        @endif
 
+                                        @if(auth()->user()->canAction('offices', 'delete'))
                                         <button
                                             type="button"
                                             class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
@@ -298,6 +305,7 @@ document.addEventListener('livewire:navigated', () => {
                                         >
                                             Delete
                                         </button>
+                                        @endif
                                     @else
                                         <span class="text-xs text-gray-400">View only</span>
                                     @endif
@@ -306,7 +314,7 @@ document.addEventListener('livewire:navigated', () => {
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ auth()->user()->isAdmin() ? 3 : 2 }}" class="px-6 py-8 text-center text-gray-500">
+                            <td colspan="{{ auth()->user()->isAdmin() && auth()->user()->canAction('offices', 'delete') ? 3 : 2 }}" class="px-6 py-8 text-center text-gray-500">
                                 No offices found.
                             </td>
                         </tr>
