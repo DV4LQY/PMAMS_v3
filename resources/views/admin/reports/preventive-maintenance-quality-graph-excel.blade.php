@@ -1,10 +1,10 @@
 <table>
-    <tr><td></td><td colspan="5">Republic of the Philippines</td></tr>
-    <tr><td></td><td colspan="5">CATANDUANES STATE UNIVERSITY</td></tr>
-    <tr><td></td><td colspan="5">Virac, Catanduanes</td></tr>
-    <tr><td colspan="6">INFORMATION and COMMUNICATIONS TECHNOLOGY UNIT</td></tr>
-    <tr><td colspan="6">Performance Monitoring</td></tr>
-    <tr><td colspan="6">For {{ $period['semester'] === 1 ? '1st' : '2nd' }} Semi-Annually, CY {{ $period['year'] }}</td></tr>
+    <tr><td colspan="6"></td></tr>
+    <tr><td colspan="6"></td></tr>
+    <tr><td colspan="6"></td></tr>
+    <tr><td colspan="6"></td></tr>
+    <tr><td colspan="6"></td></tr>
+    <tr><td colspan="6"></td></tr>
     <tr><td colspan="6"></td></tr>
     <tr><td colspan="6"></td></tr>
     <tr><td colspan="6">Quality Objective No. I: Ensure efficient maintenance of IT equipment and peripherals.</td></tr>

@@ -100,8 +100,11 @@ class PreventiveMaintenanceQualityController extends Controller
     {
         $filters = $this->validatedFilters($request);
         $period = $this->period((int) $filters['year'], (int) $filters['semester']);
-        $rows = $this->rows($request, $filters, $period);
-        $performanceGraph = $this->performanceGraphData($request, $filters, $period, $rows);
+        $currentRows = $this->rows($request, $filters, $period);
+        $previousPeriod = $this->previousPeriod($filters);
+        $previousRows = $this->rows($request, $filters, $previousPeriod);
+        $rows = $this->applyHistoricalQualityMetrics($currentRows, $previousRows);
+        $performanceGraph = $this->performanceGraphData($request, $filters, $period, $rows, $previousRows);
 
         return [
             'rows' => $rows,
@@ -178,6 +181,67 @@ class PreventiveMaintenanceQualityController extends Controller
                 ? '1st Semi-Annually (January-June)'
                 : '2nd Semi-Annually (July-December)',
         ];
+    }
+
+    private function previousPeriod(array $filters): array
+    {
+        $semester = (int) $filters['semester'];
+        $previousSemester = $semester === 1 ? 2 : 1;
+        $previousYear = $semester === 1
+            ? (int) $filters['year'] - 1
+            : (int) $filters['year'];
+
+        return $this->period($previousYear, $previousSemester);
+    }
+
+    /**
+     * Apply the historical target and current-period adjustment rules used by
+     * the Quality Objective report. The source rows remain untouched so PDF,
+     * Excel, and later historical queries can still use the original records.
+     */
+    private function applyHistoricalQualityMetrics(Collection $currentRows, Collection $previousRows): Collection
+    {
+        $previousTargets = $previousRows
+            ->groupBy(fn (array $row) => $this->qualityLocationKey($row))
+            ->map(fn (Collection $rows) => (int) $rows->sum('target'));
+
+        return $currentRows->map(function (array $row) use ($previousTargets): array {
+            $currentTarget = (int) ($row['target'] ?? 0);
+            $target = (int) ($previousTargets->get($this->qualityLocationKey($row), 0));
+
+            // A saved checklist is the current maintained count. Transfers
+            // adjust that count, while unserviceable equipment remains part of
+            // the maintained population. Condemned equipment is already
+            // excluded from the eligible/checklist collections in rows().
+            $actual = max(0,
+                (int) ($row['checked'] ?? 0)
+                - (int) ($row['transferred_out'] ?? 0)
+                + (int) ($row['transferred_in'] ?? 0)
+                + (int) ($row['unserviceable'] ?? 0)
+            );
+            $rate = $target > 0 ? $actual / $target : null;
+
+            $warnings = collect($row['warnings'] ?? []);
+            if ($target === 0 && $currentTarget > 0) {
+                $warnings->push('No previous PM Plan target was found for this location/office.');
+            }
+
+            return array_merge($row, [
+                'current_target' => $currentTarget,
+                'target' => $target,
+                'actual' => $actual,
+                'rate' => $rate,
+                'status' => $rate === null
+                    ? 'N/A'
+                    : ($rate >= self::QUALITY_TARGET_PERCENT / 100 ? 'Complied' : 'Not Complied'),
+                'warnings' => $warnings->unique()->values()->all(),
+            ]);
+        });
+    }
+
+    private function qualityLocationKey(array $row): string
+    {
+        return (string) ($row['location_id'] ?? '') . ':' . (string) ($row['office_id'] ?? '');
     }
 
     private function schedules(Request $request, array $filters, array $period): Collection
@@ -331,6 +395,10 @@ class PreventiveMaintenanceQualityController extends Controller
                 $condition = strtolower((string) $device->condition);
                 $status = strtolower((string) $device->status);
 
+                if ($condition === 'condemned') {
+                    return false;
+                }
+
                 return $condition === 'unserviceable' || in_array($status, ['repair', 'not_in_use'], true);
             })
             ->count();
@@ -379,6 +447,8 @@ class PreventiveMaintenanceQualityController extends Controller
         ])->filter()->values()->all();
 
         return [
+            'location_id' => (int) $schedule->location_id,
+            'office_id' => $schedule->office_id ? (int) $schedule->office_id : null,
             'office' => $this->officeLabel($schedule),
             'schedule' => $this->scheduleLabel($schedule),
             'target' => $target,
@@ -422,6 +492,11 @@ class PreventiveMaintenanceQualityController extends Controller
 
         foreach ($assignmentHistory as $history) {
             /** @var Collection<int, DeviceAssignment> $history */
+            $historyDevice = $history->first()?->device;
+            if (! $historyDevice || strtolower((string) $historyDevice->condition) === 'condemned') {
+                continue;
+            }
+
             $ordered = $history->sortBy([
                 ['issued_at', 'asc'],
                 ['id', 'asc'],
@@ -544,7 +619,7 @@ class PreventiveMaintenanceQualityController extends Controller
             $period = $this->period((int) $filters['year'], $semester);
             $rows = $semester === (int) $filters['semester']
                 ? $selectedRows
-                : $this->rows($request, $filters, $period);
+                : $this->qualityRowsForPeriod($request, $filters, $period);
             $target = (int) $rows->sum('target');
             $actual = (int) $rows->sum('actual');
             $rate = $target > 0 ? $actual / $target : null;
@@ -562,6 +637,20 @@ class PreventiveMaintenanceQualityController extends Controller
         return ['points' => $points, 'year' => (int) $filters['year']];
     }
 
+    private function qualityRowsForPeriod(Request $request, array $filters, array $period): Collection
+    {
+        $currentRows = $this->rows($request, $filters, $period);
+        $periodFilters = array_merge($filters, [
+            'year' => (int) $period['year'],
+            'semester' => (int) $period['semester'],
+        ]);
+
+        return $this->applyHistoricalQualityMetrics(
+            $currentRows,
+            $this->rows($request, $periodFilters, $this->previousPeriod($periodFilters))
+        );
+    }
+
     /**
      * Build the controlled-form performance graph values. The selected
      * semester's actual data is the number of equipment maintained in the
@@ -576,15 +665,10 @@ class PreventiveMaintenanceQualityController extends Controller
         Request $request,
         array $filters,
         array $period,
-        Collection $selectedRows
+        Collection $selectedRows,
+        Collection $previousRows
     ): array {
         $selectedSemester = (int) $filters['semester'];
-        $previousSemester = $selectedSemester === 1 ? 2 : 1;
-        $previousYear = $selectedSemester === 1
-            ? (int) $filters['year'] - 1
-            : (int) $filters['year'];
-        $previousPeriod = $this->period($previousYear, $previousSemester);
-        $previousRows = $this->rows($request, $filters, $previousPeriod);
 
         $actual = $selectedRows->isEmpty()
             ? null

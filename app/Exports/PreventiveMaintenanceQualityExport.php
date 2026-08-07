@@ -256,33 +256,9 @@ final class PreventiveMaintenanceQualityGraphSheet implements FromView, WithDraw
 
     public function drawings(): array
     {
-        $drawings = [];
-        $logo = public_path('images/catsu-logo.png');
-        $iso = public_path('images/iso-9001-2015.jpg');
-
-        if (is_file($logo)) {
-            $drawing = new Drawing();
-            $drawing->setName('Catanduanes State University');
-            $drawing->setPath($logo);
-            $drawing->setHeight(58);
-            $drawing->setCoordinates('A1');
-            $drawing->setOffsetX(4);
-            $drawing->setOffsetY(3);
-            $drawings[] = $drawing;
-        }
-
-        if (is_file($iso)) {
-            $drawing = new Drawing();
-            $drawing->setName('ISO 9001:2015');
-            $drawing->setPath($iso);
-            $drawing->setHeight(48);
-            $drawing->setCoordinates('F1');
-            $drawing->setOffsetX(-42);
-            $drawing->setOffsetY(5);
-            $drawings[] = $drawing;
-        }
-
-        return $drawings;
+        // The graph sheet is intentionally unbranded; the complete letterhead
+        // is already present on the Quality Objective sheet.
+        return [];
     }
 
     public function charts(): array

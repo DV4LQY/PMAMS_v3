@@ -201,7 +201,7 @@
         <a href="{{ route('admin.devices.index', ['condition' => 'condemned']) }}" class="rounded-2xl border-l-4 border-gray-500 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
             <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">Condemned</p>
             <div class="mt-2 text-4xl font-bold text-gray-900">{{ number_format($condemnedDevices ?? 0) }}</div>
-            <p class="mt-1 text-sm text-gray-400">For disposal</p>
+            <p class="mt-1 text-sm text-gray-400">All ICT equipment for disposal</p>
         </a>
     </div>
 

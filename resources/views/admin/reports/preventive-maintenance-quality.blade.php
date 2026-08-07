@@ -22,7 +22,7 @@
         </div>
         <div class="flex flex-wrap gap-2">
             <a href="{{ route('admin.reports.maintenanceQuality.export', request()->query()) }}" data-no-spa="true" download class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400">
-                Export formatted Excel
+                Export Excel
             </a>
             <a href="{{ route('admin.reports.maintenanceQuality.pdf', request()->query()) }}" data-no-spa="true" class="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
                 Open PDF
@@ -77,7 +77,7 @@
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         @foreach([
             ['label' => 'Target', 'value' => $summary['target'], 'class' => 'text-blue-600 dark:text-blue-400'],
-            ['label' => 'Condemned', 'value' => $summary['condemned'], 'class' => 'text-rose-600 dark:text-rose-400'],
+            ['label' => 'Condemned (Computer Set only)', 'value' => $summary['condemned'], 'class' => 'text-rose-600 dark:text-rose-400'],
             ['label' => 'Unserviceable', 'value' => $summary['unserviceable'], 'class' => 'text-orange-600 dark:text-orange-400'],
             ['label' => 'Additional', 'value' => $summary['additional'], 'class' => 'text-cyan-600 dark:text-cyan-400'],
             ['label' => 'Actual maintained', 'value' => $summary['actual'], 'class' => 'text-emerald-600 dark:text-emerald-400'],
@@ -145,6 +145,7 @@
         <div class="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
             <h2 class="font-semibold text-gray-900 dark:text-white">{{ $period['label'] }} — QO worksheet</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">The yellow instruction row in the reference workbook is intentionally not displayed or exported.</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Target uses the previous PM Plan cycle. Actual maintained uses the current cycle, adjusted for transfers in/out and unserviceable equipment; condemned equipment is excluded.</p>
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-[1760px] w-full border-collapse text-sm">
