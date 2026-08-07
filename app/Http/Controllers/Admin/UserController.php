@@ -113,6 +113,7 @@ class UserController extends Controller
     {
         return [
             'name' => $user->name,
+            'position' => $user->position,
             'email' => $user->email,
             'role' => $user->roleLabel(),
             'permission_menus' => User::permissionsForRole((string) $user->role)['menus'] ?? [],
@@ -352,6 +353,7 @@ class UserController extends Controller
     {
         $data = $request->validateWithBag('add', array_merge([
             'name' => ['required', 'string', 'max:100'],
+            'position' => ['nullable', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'role' => ['required', Rule::in(array_keys(User::ROLES))],
             'password' => [
@@ -383,6 +385,7 @@ class UserController extends Controller
 
         $newUser = User::create([
             'name' => $data['name'],
+            'position' => filled($data['position'] ?? null) ? trim($data['position']) : null,
             'email' => $data['email'],
             'role' => $data['role'],
             'password' => Hash::make($data['password']),
@@ -406,6 +409,7 @@ class UserController extends Controller
     {
         $rules = array_merge([
             'name' => ['required', 'string', 'max:100'],
+            'position' => ['nullable', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'role' => ['required', Rule::in(array_keys(User::ROLES))],
             'password' => [
@@ -451,6 +455,7 @@ class UserController extends Controller
         // both sides and hides the actual role-permission change.
         $before = [
             'name' => $user->name,
+            'position' => $user->position,
             'email' => $user->email,
             'role' => $user->roleLabel(),
             'permission_menus' => User::permissionsForRole((string) $user->role)['menus'] ?? [],
@@ -474,6 +479,7 @@ class UserController extends Controller
         );
 
         $user->name = $data['name'];
+        $user->position = filled($data['position'] ?? null) ? trim($data['position']) : null;
         $user->email = $data['email'];
         $user->role = $data['role'];
         // Role profiles are shared by every account with this role.
@@ -496,6 +502,7 @@ class UserController extends Controller
                     array_merge(
                         [
                             'name' => $user->name,
+                            'position' => $user->position,
                             'email' => $user->email,
                             'role' => $user->roleLabel(),
             'permission_menus' => User::permissionsForRole((string) $user->role)['menus'] ?? [],

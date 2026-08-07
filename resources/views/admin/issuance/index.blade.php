@@ -26,13 +26,18 @@
         width: 100%;
     }
 
+    .issuance-filter-form > div {
+        min-width: 0;
+    }
+
     .issuance-filter-reset {
         width: 100%;
     }
 
     @media (min-width: 1280px) {
         .issuance-filter-form {
-            grid-template-columns: minmax(18rem, 1.35fr) minmax(13rem, 1fr) minmax(13rem, 1fr) minmax(13rem, 1fr) auto;
+            /* Keep every control, including Reset, inside the card at desktop widths. */
+            grid-template-columns: minmax(14rem, 1.35fr) repeat(3, minmax(10rem, 1fr)) minmax(7rem, .6fr) minmax(12rem, 1fr) auto;
         }
 
         .issuance-filter-reset {
@@ -61,9 +66,14 @@
     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">Issuance</h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                End users with currently issued equipment.
-            </p>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    End users with currently issued equipment.
+                </p>
+                @if($selectedSemester)
+                    <p class="mt-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                        Window: {{ $selectedSemester === 1 ? '1st Semi-Annually (January-June)' : '2nd Semi-Annually (July-December)' }} {{ $selectedYear }}
+                    </p>
+                @endif
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -140,6 +150,28 @@
                 @endforeach
             </select>
 
+            <input
+                type="number"
+                name="year"
+                min="2000"
+                max="2100"
+                value="{{ $selectedYear }}"
+                placeholder="Year"
+                x-on:input="submitFilters()"
+                x-on:keydown.enter.prevent="$refs.filterForm.requestSubmit()"
+                class="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
+            >
+
+            <select
+                name="semester"
+                x-on:change="$refs.filterForm.requestSubmit()"
+                class="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/40"
+            >
+                <option value="">All semiannual windows</option>
+                <option value="1" @selected($selectedSemester === 1)>1st Semi-Annually (Jan-Jun)</option>
+                <option value="2" @selected($selectedSemester === 2)>2nd Semi-Annually (Jul-Dec)</option>
+            </select>
+
              <div class="flex">
            <!--    <button
                     type="submit"
@@ -177,9 +209,10 @@
             <table class="min-w-full text-left text-sm">
                 <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/60 dark:text-gray-400">
                     <tr>
-                        <th class="px-4 py-3">End User</th>
-                        <th class="px-4 py-3">Office</th>
-                        <th class="px-4 py-3">Location</th>
+                        <th class="px-4 py-3">Origin User</th>
+                        <th class="px-4 py-3">Origin Office / Location</th>
+                        <th class="px-4 py-3">Transferred To</th>
+                        <th class="px-4 py-3">Destination Office / Location</th>
                         <th class="px-4 py-3">Equipment</th>
                         <th class="px-4 py-3">Property #</th>
                         <th class="px-4 py-3">Serial #</th>
@@ -194,19 +227,36 @@
                         @php
                             $staff = $assignment->staff;
                             $device = $assignment->device;
+                            $origin = $assignment->previousAssignment();
+                            $originStaff = $origin?->staff;
+                            $originOffice = $origin?->office ?: $originStaff?->office;
+                            $originLocation = $origin?->location ?: $originOffice?->location;
                             $office = $assignment->office ?: $staff?->office;
                             $location = $assignment->location ?: $office?->location;
-                            $staffName = $staff ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? '')) : 'Shared / Location assignment';
+                            $originName = $origin
+                                ? ($originStaff ? trim(($originStaff->last_name ?? '') . ', ' . ($originStaff->first_name ?? '')) : 'Shared / Location assignment')
+                                : 'Initial issue / inventory';
+                            $destinationName = $staff ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? '')) : 'Shared / Location assignment';
                             $equipmentName = trim(($device?->brand ?? '') . ' ' . ($device?->model ?? '')) ?: ($device?->type?->name ?? 'Equipment');
                         @endphp
 
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                             <td class="px-4 py-3">
-                                <div class="font-medium text-gray-900 dark:text-white">{{ $staffName }}</div>
+                                <div class="font-medium text-gray-900 dark:text-white">{{ $originName }}</div>
+                                @if($originStaff)<div class="text-xs text-gray-500 dark:text-gray-400">{{ $originStaff->position ?: $originStaff->email }}</div>@endif
+                            </td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $origin ? ($originOffice?->name ?? '-') : 'Inventory' }}
+                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ $origin ? ($originLocation?->code ?: ($originLocation?->name ?? '-')) : '-' }}</div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="font-medium text-gray-900 dark:text-white">{{ $destinationName }}</div>
                                 <div class="text-xs text-gray-500 dark:text-gray-400">{{ $staff?->position ?: $staff?->email }}</div>
                             </td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office?->name ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $location?->code ?: ($location?->name ?? '-') }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $office?->name ?? '-' }}
+                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ $location?->code ?: ($location?->name ?? '-') }}</div>
+                            </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 <div>{{ $device?->type?->name ?? '-' }}</div>
                                 <div class="text-xs text-gray-500 dark:text-gray-400">{{ $equipmentName }}</div>
@@ -229,7 +279,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="10" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                 No issued equipment found.
                             </td>
                         </tr>

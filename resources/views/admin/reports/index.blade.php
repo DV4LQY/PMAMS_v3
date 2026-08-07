@@ -113,6 +113,22 @@
                 Review and generate reports for preventive maintenance schedules, re-scheduled dates, actual checklist dates, person in-charge, signature, and remarks by office.
             </p>
         </a>
+
+        <a href="{{ route('admin.reports.maintenanceQuality') }}"
+           class="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:hover:border-emerald-500">
+
+            <div class="text-sm font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                Quality Objective
+            </div>
+
+            <h2 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">
+                PM Quality Monitoring
+            </h2>
+
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Compare target, checked, maintained, compliance, and exceptions by office for each semiannual period.
+            </p>
+        </a>
         @endif
 
         {{-- Checklist --}}

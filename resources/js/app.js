@@ -941,6 +941,21 @@ import './bootstrap';
                 scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
             });
 
+            create('transferChart', 'bar', {
+                labels: data.transfers?.labels || [],
+                datasets: [{
+                    label: 'Equipment Transfers',
+                    data: data.transfers?.values || [],
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }],
+            }, {
+                ...common,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            });
+
             create('maintenancePlanStatusChart', 'bar', {
                 labels: data.maintenance_plan_status?.labels || [],
                 datasets: [{

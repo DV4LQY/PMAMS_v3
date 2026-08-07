@@ -979,16 +979,10 @@
                                 {{ auth()->user()->name ?? 'User' }}
                             </div>
 
-                            <div class="text-xs text-gray-500 truncate dark:text-gray-400">
-                                {{ auth()->user()->email ?? '' }}
+                            <div class="text-xs text-gray-500 truncate dark:text-gray-400" title="{{ auth()->user()->position ?: 'Position / Designation not set' }}">
+                                {{ auth()->user()->position ?: 'Position / Designation not set' }}
                             </div>
                         </div>
-
-                        @if(auth()->user())
-                            <span class="shrink-0 inline-flex rounded-full {{ (auth()->user()->isAdmin() || auth()->user()->isUnitHead()) ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' }} px-2 py-0.5 text-[11px] font-medium">
-                                {{ auth()->user()->roleLabel() }}
-                            </span>
-                        @endif
                     </div>
                 </div>
             </div>
@@ -1567,6 +1561,7 @@
                 this.addOpen = true;
                 this.addSingle = {
                     name: '',
+                    position: '',
                     email: '',
                     role: 'custodian',
                     password: '',
@@ -1574,6 +1569,7 @@
                     permissions: this.defaultPermissions('custodian'),
                     permissionsChanged: false,
                     nameError: '',
+                    positionError: '',
                     emailError: '',
                     roleError: '',
                     passwordError: '',
@@ -1586,6 +1582,7 @@
                 this.editUser = {
                     id: user.id,
                     name: user.name,
+                    position: user.position || '',
                     email: user.email,
                     role: user.role,
                     password: '',
@@ -1593,6 +1590,7 @@
                     permissions: this.normalizePermissions(user.permissions, user.role),
                     permissionsChanged: false,
                     nameError: '',
+                    positionError: '',
                     emailError: '',
                     roleError: '',
                     passwordError: '',

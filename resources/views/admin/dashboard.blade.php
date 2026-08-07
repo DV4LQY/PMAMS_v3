@@ -274,6 +274,7 @@
             'office' => ['labels' => ($devicesByOffice ?? collect())->keys()->values()->all(), 'values' => ($devicesByOffice ?? collect())->values()->all()],
             'end_users' => ['labels' => ($endUsersByLocation ?? collect())->keys()->values()->all(), 'values' => ($endUsersByLocation ?? collect())->values()->all()],
             'maintenance' => ['labels' => ($maintenanceSemiannually ?? collect())->keys()->values()->all(), 'values' => ($maintenanceSemiannually ?? collect())->values()->all()],
+            'transfers' => ['labels' => ($transferSemiannually ?? collect())->keys()->values()->all(), 'values' => ($transferSemiannually ?? collect())->values()->all()],
             'maintenance_plan_status' => ['labels' => ($maintenancePlanStatuses ?? collect())->keys()->values()->all(), 'values' => ($maintenancePlanStatuses ?? collect())->values()->all()]
         ]) }}"
     >
@@ -334,6 +335,12 @@
             <h2 class="text-base font-semibold text-gray-900">Equipment Maintained</h2>
             <p class="mt-1 mb-4 text-sm text-gray-500">Number of completed maintenance checklists per six-month period.</p>
             <div style="position:relative; height:250px;"><canvas id="maintenanceChart"></canvas></div>
+        </div>
+
+        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 class="text-base font-semibold text-gray-900">Equipment Transfers</h2>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Reissued equipment transfers by semiannual period.</p>
+            <div style="position:relative; height:250px;"><canvas id="transferChart"></canvas></div>
         </div>
 
     </div>

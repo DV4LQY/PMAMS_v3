@@ -34,6 +34,7 @@
         'defaultPermissionActions' => $defaultPermissionActions,
         'addSingle' => [
             'name' => old('name', ''),
+            'position' => old('position', ''),
             'email' => old('email', ''),
             'role' => $initialAddRole,
             'password' => '',
@@ -44,6 +45,7 @@
             ],
             'permissionsChanged' => (bool) old('permissions_changed', false),
             'nameError' => $addBag->first('name'),
+            'positionError' => $addBag->first('position'),
             'emailError' => $addBag->first('email'),
             'roleError' => $addBag->first('role'),
             'passwordError' => $addBag->first('password'),
@@ -51,6 +53,7 @@
         'editUser' => [
             'id' => old('editing_id') !== null ? (int) old('editing_id') : null,
             'name' => old('name', ''),
+            'position' => old('position', ''),
             'email' => old('email', ''),
             'role' => $initialEditRole,
             'password' => '',
@@ -61,6 +64,7 @@
             ],
             'permissionsChanged' => (bool) old('permissions_changed', false),
             'nameError' => $editBag->first('name'),
+            'positionError' => $editBag->first('position'),
             'emailError' => $editBag->first('email'),
             'roleError' => $editBag->first('role'),
             'passwordError' => $editBag->first('password'),
@@ -108,6 +112,9 @@
                     <div>
                         <div class="font-semibold text-gray-900 dark:text-white">{{ $u->name }}</div>
                         <div class="mt-1 text-sm text-gray-500 break-all dark:text-gray-400">{{ $u->email }}</div>
+                        @if($u->position)
+                            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ $u->position }}</div>
+                        @endif
                     </div>
 
                     <span class="inline-flex shrink-0 rounded-full {{ $u->isAdmin() ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' }} px-2.5 py-1 text-xs font-medium">
@@ -118,25 +125,35 @@
                 <div class="mt-4 flex flex-wrap gap-2">
                     <button
                         type="button"
-                        class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gray-900 text-white shadow-sm transition hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:bg-gray-700 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-800"
+                        title="Edit user"
+                        aria-label="Edit {{ $u->name }}"
                         @click="openEdit({
                             id: {{ $u->id }},
                             name: @js($u->name),
+                            position: @js($u->position),
                             email: @js($u->email),
                             role: @js($u->role),
                             permissions: @js($rolePermissions[$u->role] ?? null)
                         })"
                     >
-                        Edit
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 3.487a2.25 2.25 0 013.182 3.182L7.5 19.213 3 20.5l1.287-4.5L16.862 3.487z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 5l4 4"/>
+                        </svg>
                     </button>
 
                     @if($u->id !== auth()->id())
                         <button
                             type="button"
-                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                            class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-800"
+                            title="Delete user"
+                            aria-label="Delete {{ $u->name }}"
                             @click="openDelete({{ $u->id }})"
                         >
-                            Delete
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5.5A1.5 1.5 0 0110.5 4h3A1.5 1.5 0 0115 5.5V7m-7 0 .75 12.25A1.75 1.75 0 0010.5 21h3a1.75 1.75 0 001.75-1.75L16 7M10 11v6m4-6v6"/>
+                            </svg>
                         </button>
                     @endif
                 </div>
@@ -155,6 +172,7 @@
                 <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
                     <tr>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Name</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Position / Designation</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Email</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Role</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
@@ -164,6 +182,7 @@
                     @forelse($users as $u)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $u->name }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $u->position ?: '—' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $u->email }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex rounded-full {{ $u->isAdmin() ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' }} px-2.5 py-1 text-xs font-medium">
@@ -174,25 +193,35 @@
                                 <div class="flex items-center gap-2">
                                     <button
                                         type="button"
-                                        class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600"
+                                        class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gray-900 text-white shadow-sm transition hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:bg-gray-700 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-800"
+                                        title="Edit user"
+                                        aria-label="Edit {{ $u->name }}"
                                         @click="openEdit({
                                             id: {{ $u->id }},
                                             name: @js($u->name),
+                                            position: @js($u->position),
                                             email: @js($u->email),
                                             role: @js($u->role),
                                             permissions: @js($rolePermissions[$u->role] ?? null)
                                         })"
                                     >
-                                        Edit
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 3.487a2.25 2.25 0 013.182 3.182L7.5 19.213 3 20.5l1.287-4.5L16.862 3.487z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 5l4 4"/>
+                                        </svg>
                                     </button>
 
                                     @if($u->id !== auth()->id())
                                         <button
                                             type="button"
-                                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                            class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-800"
+                                            title="Delete user"
+                                            aria-label="Delete {{ $u->name }}"
                                             @click="openDelete({{ $u->id }})"
                                         >
-                                            Delete
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5.5A1.5 1.5 0 0110.5 4h3A1.5 1.5 0 0115 5.5V7m-7 0 .75 12.25A1.75 1.75 0 0010.5 21h3a1.75 1.75 0 001.75-1.75L16 7M10 11v6m4-6v6"/>
+                                            </svg>
                                         </button>
                                     @else
                                         <span class="text-xs text-gray-400 dark:text-gray-500">(you)</span>
@@ -202,7 +231,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="5" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                 No users found.
                             </td>
                         </tr>
@@ -233,6 +262,19 @@
                     placeholder="e.g. Juan Dela Cruz"
                 >
                 <div class="mt-1 text-sm text-red-600 dark:text-red-400" x-show="addSingle.nameError" x-text="addSingle.nameError"></div>
+            </div>
+
+            <div>
+                <label class="text-sm font-medium">Position / Designation</label>
+                <input
+                    type="text"
+                    name="position"
+                    x-model="addSingle.position"
+                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    maxlength="150"
+                    placeholder="e.g. Administrative Aide VI"
+                >
+                <div class="mt-1 text-sm text-red-600 dark:text-red-400" x-show="addSingle.positionError" x-text="addSingle.positionError"></div>
             </div>
 
             <div>
@@ -465,6 +507,19 @@
                     maxlength="100"
                 >
                 <div class="mt-1 text-sm text-red-600 dark:text-red-400" x-show="editUser.nameError" x-text="editUser.nameError"></div>
+            </div>
+
+            <div>
+                <label class="text-sm font-medium">Position / Designation</label>
+                <input
+                    type="text"
+                    name="position"
+                    x-model="editUser.position"
+                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    maxlength="150"
+                    placeholder="e.g. Administrative Aide VI"
+                >
+                <div class="mt-1 text-sm text-red-600 dark:text-red-400" x-show="editUser.positionError" x-text="editUser.positionError"></div>
             </div>
 
             <div>

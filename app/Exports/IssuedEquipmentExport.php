@@ -43,17 +43,17 @@ class IssuedEquipmentExport implements FromView, ShouldAutoSize, WithEvents
 
                 $sheet->freezePane('A4');
 
-                $sheet->getStyle("A1:K{$highestRow}")
+                $sheet->getStyle("A1:L{$highestRow}")
                     ->getAlignment()
                     ->setVertical(Alignment::VERTICAL_CENTER)
                     ->setWrapText(true);
 
-                $sheet->getStyle("A3:K{$highestRow}")
+                $sheet->getStyle("A3:L{$highestRow}")
                     ->getBorders()
                     ->getAllBorders()
                     ->setBorderStyle(Border::BORDER_THIN);
 
-                $sheet->getStyle('A1:K3')->getFont()->setBold(true);
+                $sheet->getStyle('A1:L3')->getFont()->setBold(true);
             },
         ];
     }

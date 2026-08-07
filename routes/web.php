@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\MaintenancePhotoController;
 use App\Http\Controllers\Admin\MaintenanceCleanupController;
 use App\Http\Controllers\Admin\DatabaseBackupController;
 use App\Http\Controllers\Admin\PreventiveMaintenancePlanController;
+use App\Http\Controllers\Admin\PreventiveMaintenanceQualityController;
 
 
 /*
@@ -187,6 +188,12 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
                 ->name('maintenanceSchedule');
             Route::get('/maintenance-schedule/pdf', [PreventiveMaintenancePlanController::class, 'reportPdf'])
                 ->name('maintenanceSchedule.pdf');
+            Route::get('/maintenance-quality', [PreventiveMaintenanceQualityController::class, 'index'])
+                ->name('maintenanceQuality');
+            Route::get('/maintenance-quality/pdf', [PreventiveMaintenanceQualityController::class, 'pdf'])
+                ->name('maintenanceQuality.pdf');
+            Route::get('/maintenance-quality/export', [PreventiveMaintenanceQualityController::class, 'export'])
+                ->name('maintenanceQuality.export');
         });
 
         /*

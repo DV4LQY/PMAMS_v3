@@ -566,23 +566,35 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function report(Request $request)
     {
-        $rows = $this->reportRows($request);
+        $filters = $this->reportFilters($request);
+        $rows = $this->reportRows($request, $filters);
+        // The office list is loaded separately and scoped to the selected
+        // location, matching Equipment's dependent filter behavior.
+        $locations = Location::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $offices = $filters['location_id']
+            ? Office::where('location_id', $filters['location_id'])
+                ->orderBy('name')
+                ->orderBy('id')
+                ->get()
+            : collect();
 
         return view('admin.reports.preventive-maintenance-schedule', [
             'rows' => $rows,
             'monthFrom' => $request->query('month_from'),
             'monthTo' => $request->query('month_to'),
-            'locationId' => $request->integer('location_id') ?: null,
-            'officeId' => $request->integer('office_id') ?: null,
-            'locations' => Location::with('offices')->orderBy('name')->get(),
+            'locationId' => $filters['location_id'],
+            'officeId' => $filters['office_id'],
+            'locations' => $locations,
+            'offices' => $offices,
             'unitHead' => User::where('role', User::ROLE_UNIT_HEAD)->first(),
         ]);
     }
 
     public function reportPdf(Request $request)
     {
+        $filters = $this->reportFilters($request);
         $pdf = Pdf::loadView('admin.reports.preventive-maintenance-schedule-pdf', [
-            'rows' => $this->reportRows($request),
+            'rows' => $this->reportRows($request, $filters),
             'generatedAt' => now(),
             'unitHead' => User::where('role', User::ROLE_UNIT_HEAD)->first(),
         // 8.5 x 13 inch long-bond paper in landscape orientation.
@@ -662,14 +674,46 @@ class PreventiveMaintenancePlanController extends Controller
         abort_unless($assignedUserIds === [] || in_array((int) $user->id, $assignedUserIds, true), 403);
     }
 
-    private function reportRows(Request $request)
+    /**
+     * Normalize report location/office filters in the same way as Equipment.
+     * An office belongs to one location, so an office-only URL infers its
+     * parent location and a stale/cross-location office selection is ignored.
+     * This keeps both the report rows and the dependent dropdown consistent.
+     *
+     * @return array{location_id:?int, office_id:?int}
+     */
+    private function reportFilters(Request $request): array
     {
+        $locationId = $request->integer('location_id') ?: null;
+        $officeId = $request->integer('office_id') ?: null;
+
+        if ($officeId) {
+            $office = Office::query()->select(['id', 'location_id'])->find($officeId);
+
+            if (! $office) {
+                $officeId = null;
+            } elseif (! $locationId) {
+                $locationId = (int) $office->location_id;
+            } elseif ((int) $office->location_id !== (int) $locationId) {
+                $officeId = null;
+            }
+        }
+
+        return [
+            'location_id' => $locationId,
+            'office_id' => $officeId,
+        ];
+    }
+
+    private function reportRows(Request $request, ?array $filters = null)
+    {
+        $filters ??= $this->reportFilters($request);
         $monthFrom = $this->monthStartOrNull($request->query('month_from'));
         $monthTo = $this->monthStartOrNull($request->query('month_to'));
 
         return $this->visibleSchedules($request)
-            ->when($request->integer('location_id'), fn ($query, $id) => $query->where('location_id', $id))
-            ->when($request->integer('office_id'), fn ($query, $id) => $query->where('office_id', $id))
+            ->when($filters['location_id'], fn ($query, $id) => $query->where('location_id', $id))
+            ->when($filters['office_id'], fn ($query, $id) => $query->where('office_id', $id))
             ->when($monthFrom, fn ($query) => $query->whereDate('schedule_month_to', '>=', $monthFrom))
             ->when($monthTo, fn ($query) => $query->whereDate('schedule_month_from', '<=', $monthTo))
             ->with(['location', 'office', 'latestOverride', 'completion', 'assignedUser', 'assignedUsers'])
@@ -771,6 +815,11 @@ class PreventiveMaintenancePlanController extends Controller
     {
         return Device::query()
             ->whereHas('type', fn ($query) => $query->whereIn('name', ['Desktop', 'Laptop']))
+            // Condemned equipment is retained for inventory/history, but is no
+            // longer part of the active PM target or completion denominator.
+            ->where(function ($query) {
+                $query->whereNull('condition')->orWhere('condition', '<>', 'condemned');
+            })
             ->whereHas('currentAssignment', function ($query) use ($schedule) {
                 if ($schedule->office_id) {
                     $query->where(function ($assignment) use ($schedule) {

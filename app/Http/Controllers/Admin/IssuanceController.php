@@ -11,6 +11,7 @@ use App\Models\Office;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
 
 class IssuanceController extends Controller
@@ -18,7 +19,7 @@ class IssuanceController extends Controller
     public function index(Request $request)
     {
         $loadReport = $request->boolean('load')
-            || collect(['q', 'type_id', 'location_id', 'college_id', 'office_id'])
+            || collect(['q', 'type_id', 'location_id', 'college_id', 'office_id', 'year', 'semester'])
                 ->contains(fn (string $key) => $request->query->has($key));
 
         $assignments = $loadReport
@@ -52,6 +53,8 @@ class IssuanceController extends Controller
             'selectedTypeId' => $request->integer('type_id') ?: null,
             'selectedLocationId' => $locationId,
             'selectedOfficeId' => $request->integer('office_id') ?: null,
+            'selectedYear' => max(2000, min(2100, $request->integer('year') ?: (int) now()->format('Y'))),
+            'selectedSemester' => in_array($request->integer('semester'), [1, 2], true) ? $request->integer('semester') : null,
         ]);
     }
 
@@ -72,6 +75,8 @@ class IssuanceController extends Controller
         $typeId = (int) ($input['type_id'] ?? 0) ?: null;
         $locationId = (int) (($input['location_id'] ?? null) ?: ($input['college_id'] ?? null)) ?: null;
         $officeId = (int) ($input['office_id'] ?? 0) ?: null;
+        $year = (int) ($input['year'] ?? 0);
+        $semester = (int) ($input['semester'] ?? 0);
 
         return DeviceAssignment::query()
             ->with([
@@ -80,6 +85,11 @@ class IssuanceController extends Controller
                 'office.location',
                 'location',
                 'issuer',
+                // The assignment history is used to show the immediate
+                // origin holder/location beside the current destination.
+                'device.assignments.staff.office.location',
+                'device.assignments.office.location',
+                'device.assignments.location',
             ])
             ->whereNull('returned_at')
             ->whereHas('device')
@@ -105,6 +115,17 @@ class IssuanceController extends Controller
                     $officeQuery->where('office_id', $officeId)
                         ->orWhereHas('staff', fn ($staff) => $staff->where('office_id', $officeId));
                 });
+            })
+            ->when($year >= 2000 && $year <= 2100, function ($query) use ($year, $semester) {
+                if (in_array($semester, [1, 2], true)) {
+                    $start = Carbon::create($year, $semester === 1 ? 1 : 7, 1)->startOfDay();
+                    $end = $start->copy()->addMonths(5)->endOfMonth()->endOfDay();
+                } else {
+                    $start = Carbon::create($year, 1, 1)->startOfDay();
+                    $end = $start->copy()->endOfYear()->endOfDay();
+                }
+
+                $query->whereBetween('issued_at', [$start, $end]);
             })
             ->when($tokens !== [], function ($query) use ($tokens) {
                 foreach ($tokens as $token) {

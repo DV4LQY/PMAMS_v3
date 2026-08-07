@@ -96,7 +96,7 @@
     </tr></table>
 </div>
 <div class="page-footer">
-    <div class="document-footer"><span>CatSU-F-ICTU-07</span><span>Rev: 0</span><span>Effectivity Date: June 05, 2025</span></div>
+    <div class="document-footer"><span>CatSU-F-ICTU-07</span><span>Rev: 1</span><span>Effectivity Date: August 05, 2026</span></div>
 </div>
 </body>
 </html>

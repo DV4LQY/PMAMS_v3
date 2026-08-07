@@ -24,26 +24,31 @@
     </div>
 
     <form method="GET" class="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 print:hidden md:grid-cols-4">
-        <select name="location_id" class="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+        <select name="location_id" class="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                onchange="const officeField = this.form.querySelector('[name=office_id]'); if (officeField) officeField.value = ''; this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
             <option value="">All locations</option>
             @foreach($locations as $location)
                 <option value="{{ $location->id }}" @selected($locationId === $location->id)>{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
             @endforeach
         </select>
-        <select name="office_id" class="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-            <option value="">All offices</option>
-            @foreach($locations as $location)
-                <optgroup label="{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}">
-                    @foreach($location->offices as $office)
-                        <option value="{{ $office->id }}" @selected($officeId === $office->id)>{{ $office->name }}</option>
-                    @endforeach
-                </optgroup>
-            @endforeach
-        </select>
+        @if($locationId)
+            <select name="office_id" class="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                <option value="">All offices in selected location</option>
+                @foreach($offices as $office)
+                    <option value="{{ $office->id }}" @selected($officeId === $office->id)>{{ $office->name }}</option>
+                @endforeach
+            </select>
+        @else
+            <div class="rounded-xl border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                Select a location to filter by office
+            </div>
+        @endif
         <input type="month" name="month_from" value="{{ $monthFrom }}" class="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month from">
         <div class="flex gap-2">
             <input type="month" name="month_to" value="{{ $monthTo }}" class="min-w-0 flex-1 rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month to">
-            <button class="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700">Filter</button>
+            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700">Filter</button>
+            <a href="{{ route('admin.reports.maintenanceSchedule') }}" class="rounded-xl bg-gray-200 px-4 py-3 text-center text-sm font-semibold text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-100 dark:hover:bg-gray-500">Reset</a>
         </div>
     </form>
 
@@ -134,7 +139,7 @@
             </div>
         </div>
         <div class="document-footer mt-auto flex items-center justify-between border-t-2 border-blue-300 pt-1 text-[11px] italic text-black">
-            <span>CatSU-F-ICTU-07</span><span>Rev: 0</span><span>Effectivity Date: June 05, 2025</span>
+            <span>CatSU-F-ICTU-07</span><span>Rev: 1</span><span>Effectivity Date: August 05, 2026</span>
         </div>
     </section>
 </div>

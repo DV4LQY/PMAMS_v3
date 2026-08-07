@@ -127,6 +127,35 @@ class DashboardController extends Controller
             ->sortKeys()
             ->map->count();
 
+        // Count actual equipment transfers/reissues by the same semiannual
+        // windows used by maintenance reporting. The first assignment is an
+        // initial issuance; subsequent assignments for the same device are
+        // transfers and are counted once per transfer event.
+        $transferSemiannually = collect();
+        $transferAssignments = DeviceAssignment::query()
+            ->whereNotNull('issued_at')
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('device_assignments as previous_assignment')
+                    ->whereColumn('previous_assignment.device_id', 'device_assignments.device_id')
+                    ->where(function ($previous) {
+                        $previous->whereColumn('previous_assignment.issued_at', '<', 'device_assignments.issued_at')
+                            ->orWhere(function ($sameTime) {
+                                $sameTime->whereColumn('previous_assignment.issued_at', '=', 'device_assignments.issued_at')
+                                    ->whereColumn('previous_assignment.id', '<', 'device_assignments.id');
+                            });
+                    });
+            })
+            ->get(['id', 'device_id', 'issued_at']);
+        foreach ($transferAssignments as $assignment) {
+            $date = $assignment->issued_at instanceof Carbon
+                ? $assignment->issued_at
+                : Carbon::parse($assignment->issued_at);
+            $period = $date->format('Y') . ' ' . ($date->month <= 6 ? 'Jan-Jun' : 'Jul-Dec');
+            $transferSemiannually->put($period, $transferSemiannually->get($period, 0) + 1);
+        }
+        $transferSemiannually = $transferSemiannually->sortKeys();
+
         // Preventive-maintenance status is calculated from the published PM
         // plans and their current checklist cycle, not from equipment status.
         // This keeps the dashboard aligned with the PM Plan page for the
@@ -145,6 +174,11 @@ class DashboardController extends Controller
         foreach ($maintenancePlans as $plan) {
             $targetDevices = Device::query()
                 ->whereHas('type', fn ($query) => $query->whereIn('name', ['Desktop', 'Laptop']))
+                // Match PM Plan progress: condemned devices remain visible in
+                // inventory but are excluded from active maintenance targets.
+                ->where(function ($query) {
+                    $query->whereNull('condition')->orWhere('condition', '<>', 'condemned');
+                })
                 ->whereHas('currentAssignment', function ($query) use ($plan) {
                     if ($plan->office_id) {
                         $query->where(function ($assignment) use ($plan) {
@@ -199,6 +233,7 @@ class DashboardController extends Controller
             'devicesByOffice',
             'endUsersByLocation',
             'maintenanceSemiannually',
+            'transferSemiannually',
             'maintenancePlanStatuses',
         ));
     }
