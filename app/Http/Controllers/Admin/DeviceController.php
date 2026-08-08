@@ -711,7 +711,15 @@ class DeviceController extends Controller
             return redirect()->to($returnTo)->with('success', $successMessage);
         }
 
-        return redirect()->back()->with('success', $successMessage);
+        // The equipment index is intentionally filter-first.  Redirecting to
+        // `/admin/devices` without a query would therefore leave the table
+        // empty after a successful add until the user pressed Reset.  Load the
+        // inventory immediately so the newly-created record is visible in the
+        // table (while still honoring an explicit return_to destination used
+        // by checklist and detail workflows).
+        return redirect()
+            ->route('admin.devices.index', ['load' => 1])
+            ->with('success', $successMessage);
     }
 
     public function show(Device $device)

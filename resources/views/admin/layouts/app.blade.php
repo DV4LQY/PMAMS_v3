@@ -999,7 +999,7 @@
 
     <div class="lg:ml-64 min-h-screen print:ml-0">
         <header class="admin-header sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200 dark:bg-gray-800/90 dark:border-gray-700 print:hidden">
-            <div class="h-16 px-3 sm:px-6 flex items-center justify-between">
+            <div class="min-h-16 px-3 py-2 sm:px-6 flex items-center justify-between">
                 <div class="flex items-center gap-3 min-w-0">
                     <button
                         type="button"
@@ -1015,14 +1015,16 @@
                         </svg>
                     </button>
 
-                    <h1 class="truncate text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-                        @yield('page_title', 'Admin')
+                    <div class="min-w-0 flex flex-col justify-center leading-tight">
+                        <h1 class="truncate text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
+                            @yield('page_title', 'Admin')
+                        </h1>
                         @if(trim($__env->yieldContent('breadcrumbs')))
-                            <nav class="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                              @yield('breadcrumbs')
+                            <nav class="mt-1 flex flex-wrap items-center gap-2 text-sm leading-5 text-gray-500 dark:text-gray-400">
+                                @yield('breadcrumbs')
                             </nav>
-                    @endif
-                    </h1>
+                        @endif
+                    </div>
                 </div>
 
                 <div class="flex items-center gap-3 shrink-0">
@@ -1143,7 +1145,7 @@
                                     Reports
                                 </a>
                                 <a href="{{ route('admin.reports.checklist') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
-                                    Checklist
+                                    Checklist Summary
                                 </a>
                                 @endif
                                 @if(auth()->user()?->canMenu('maintenance_gallery'))

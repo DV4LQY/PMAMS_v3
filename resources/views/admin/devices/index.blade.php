@@ -1090,7 +1090,19 @@
         <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             <input type="hidden" name="form_context" value="add_equipment">
-            @if(request()->filled('return_to'))<input type="hidden" name="return_to" value="{{ request('return_to') }}">@endif
+            @php
+                // Return to the same filtered inventory view after saving. The
+                // index is filter-first, so include load=1 in the destination
+                // to ensure the table is populated immediately.
+                $equipmentReturnTo = request()->input('return_to');
+                if (! is_string($equipmentReturnTo) || trim($equipmentReturnTo) === '') {
+                    $equipmentQuery = request()->except(['open_add', 'return_to']);
+                    $equipmentQuery['load'] = 1;
+                    $equipmentReturnTo = request()->getPathInfo()
+                        . ($equipmentQuery !== [] ? '?' . http_build_query($equipmentQuery) : '');
+                }
+            @endphp
+            <input type="hidden" name="return_to" value="{{ $equipmentReturnTo }}">
 
             @include('admin.devices._add-equipment-fields')
 

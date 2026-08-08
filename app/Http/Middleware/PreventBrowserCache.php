@@ -16,10 +16,13 @@ class PreventBrowserCache
     {
         $response = $next($request);
 
-        return $response->withHeaders([
-            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
-            'Pragma' => 'no-cache',
-            'Expires' => '0',
-        ]);
+        // StreamedResponse (used by database downloads) does not expose
+        // Laravel's withHeaders() helper. Use the Symfony header bag so this
+        // middleware works for both regular and streamed responses.
+        $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $response->headers->set('Pragma', 'no-cache');
+        $response->headers->set('Expires', '0');
+
+        return $response;
     }
 }
