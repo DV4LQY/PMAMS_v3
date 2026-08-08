@@ -147,7 +147,7 @@ class DeviceController extends Controller
         }
 
         $unlinkedPeripheralDevices = collect();
-        if ($loadEquipment && auth()->user()?->isAdmin()) {
+        if ($loadEquipment && auth()->user()?->canAction('equipment', 'edit')) {
             $unlinkedPeripheralDevices = Device::query()
                 ->with('type:id,name')
                 ->whereNull('part_of_property_number')
@@ -440,7 +440,7 @@ class DeviceController extends Controller
      */
     public function linkPeripheral(Request $request, Device $device)
     {
-        abort_unless(Auth::user()?->isAdmin(), 403);
+        abort_unless(Auth::user()?->isSuperAdmin() || Auth::user()?->canAction('equipment', 'edit'), 403);
 
         $device->load('type');
 
@@ -577,7 +577,7 @@ class DeviceController extends Controller
      */
     public function unlinkPeripheral(Request $request, Device $device)
     {
-        abort_unless(Auth::user()?->isAdmin(), 403);
+        abort_unless(Auth::user()?->isSuperAdmin() || Auth::user()?->canAction('equipment', 'edit'), 403);
 
         $device->load('type');
         abort_unless($this->isPeripheralDevice($device->type?->name), 404);
@@ -734,11 +734,10 @@ class DeviceController extends Controller
     {
         $data = $request->validate([
             'staff_id' => ['required', 'exists:staff,id'],
-            'remarks' => ['required', 'string', 'max:1000'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ], [
             'staff_id.required' => 'Please select a registered end user.',
             'staff_id.exists' => 'The selected end user could not be found.',
-            'remarks.required' => 'Please enter reissue remarks.',
         ]);
 
         $staff = Staff::query()
@@ -761,7 +760,7 @@ class DeviceController extends Controller
             return back()->withErrors(['staff_id' => 'This equipment is already assigned to the selected end user.'])->withInput();
         }
 
-        $reissueRemarks = trim($data['remarks']);
+        $reissueRemarks = trim((string) ($data['remarks'] ?? ''));
 
         if ($assignment) {
             $assignment->update([
@@ -910,6 +909,13 @@ class DeviceController extends Controller
     {
         $data = $request->validated();
         unset($data['equipment_photo']);
+
+        // Edit forms intentionally leave Maintenance Remarks blank. An empty
+        // edit must not replace the latest checklist remark retained for
+        // history; only text explicitly entered by the user updates it.
+        if (blank($data['maintenance_remarks'] ?? null)) {
+            unset($data['maintenance_remarks']);
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -1219,9 +1225,7 @@ class DeviceController extends Controller
      */
     public function bulkDestroy(Request $request)
     {
-        // Bulk deletion is intentionally more destructive than the single
-        // record action and is restricted to Super Admin accounts.
-        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        abort_unless(Auth::user()?->isSuperAdmin() || Auth::user()?->canAction('equipment', 'delete'), 403);
 
         $selectAll = $request->boolean('select_all');
 
@@ -1365,7 +1369,7 @@ class DeviceController extends Controller
      */
     public function import(Request $request)
     {
-        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        abort_unless(Auth::user()?->isSuperAdmin() || Auth::user()?->canAction('equipment', 'add'), 403);
 
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:10240'],
@@ -2048,7 +2052,7 @@ class DeviceController extends Controller
 
     public function importTemplate()
     {
-        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        abort_unless(Auth::user()?->isSuperAdmin() || Auth::user()?->canAction('equipment', 'add'), 403);
 
         return Excel::download(
             new EquipmentImportTemplateExport,
@@ -3275,6 +3279,12 @@ class DeviceController extends Controller
             'ms_office_version.in' => 'Invalid MS Office version selected.',
             'ms_office_license.in' => 'MS Office license must be either Cracked or OEM Licensed.',
         ]);
+
+        // An edit with a blank remarks field should not erase the latest
+        // checklist remark.  Save remarks only when the editor enters text.
+        if (blank($data['maintenance_remarks'] ?? null)) {
+            unset($data['maintenance_remarks']);
+        }
 
         /*
         |--------------------------------------------------------------------------

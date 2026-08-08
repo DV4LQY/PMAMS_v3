@@ -182,14 +182,22 @@
         }
 
         .card-logo {
-            width: 64px;
-            height: 64px;
+            width: 96px;
+            height: 96px;
             background: #f0f4ff;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 24px;
+        }
+
+        /* Keep the larger ICTU logo centered without shrinking it beside the fallback icon. */
+        .card-logo img {
+            width: 96px !important;
+            height: 96px !important;
+            max-width: none;
+            flex: 0 0 auto;
         }
 
         .card-logo svg { color: #2563eb; }

@@ -10,7 +10,12 @@
     $roles = \App\Models\User::ROLES;
     $hasUnitHead = \App\Models\User::where('role', 'unit_head')->exists();
     $permissionMenus = \App\Models\User::PERMISSION_MENUS;
-    $permissionResources = \App\Models\User::PERMISSION_RESOURCES;
+    // Maintenance Checklist remains an internal permission used by the
+    // checklist workflow. Its separate editor row is intentionally hidden;
+    // checklist-report deletion is controlled by Checked Equipment Report.
+    $permissionResources = collect(\App\Models\User::PERMISSION_RESOURCES)
+        ->except('checklist')
+        ->all();
     $permissionActions = \App\Models\User::PERMISSION_ACTIONS;
     $defaultPermissionMenus = array_keys($permissionMenus);
     $defaultPermissionActions = collect(array_keys($permissionResources))
@@ -18,7 +23,18 @@
         ->all();
     $rolePermissionDefaults = \App\Models\User::allRolePermissions();
     $rolePermissionLimits = collect(array_keys($roles))
-        ->mapWithKeys(fn ($role) => [$role => \App\Models\User::allowedPermissionsForRole($role)])
+        ->mapWithKeys(function ($role) use ($permissionResources) {
+            $allowed = \App\Models\User::allowedPermissionsForRole($role);
+            return [$role => [
+                'menus' => $allowed['menus'] ?? [],
+                // Keep the hidden checklist workflow permission out of the
+                // editor's select-all state while preserving it server-side.
+                'actions' => array_intersect_key(
+                    $allowed['actions'] ?? [],
+                    array_fill_keys(array_keys($permissionResources), true)
+                ),
+            ]];
+        })
         ->all();
     $initialAddRole = old('role', 'custodian');
     $initialAddPermissions = old('permissions', $rolePermissionDefaults[$initialAddRole] ?? $rolePermissionDefaults['custodian']);
@@ -80,7 +96,6 @@
 >
     <div class="flex items-start justify-between gap-3">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">User Accounts</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Manage sign-in roles and shared permissions. Changes to a role's checkboxes apply to every account with that role.
             </p>
@@ -324,7 +339,7 @@
             <div x-show="addSingle.role !== 'super_admin'" x-cloak class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
                 <div class="mb-3">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline menu permissions. Saving checkbox changes updates every account with this role.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline permissions. Super Admin can enable or disable any menu and Add / Edit / Delete action; saving applies the profile to every account with that role.</p>
                 </div>
                 <div class="mb-3 flex flex-wrap gap-4 text-xs text-gray-700 dark:text-gray-300">
                     <label class="inline-flex items-center gap-2">
@@ -339,7 +354,7 @@
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     @foreach($permissionMenus as $key => $label)
                         <label class="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                            <input type="checkbox" name="permissions[menus][]" value="{{ $key }}" x-model="addSingle.permissions.menus" x-on:change="addSingle.permissionsChanged = true" :disabled="!isMenuAllowed(addSingle.role, '{{ $key }}')" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:bg-gray-700">
+                            <input type="checkbox" name="permissions[menus][]" value="{{ $key }}" x-model="addSingle.permissions.menus" x-on:change="addSingle.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
                             <span>{{ $label }}</span>
                         </label>
                     @endforeach
@@ -347,14 +362,14 @@
 
                 <div class="mt-4 border-t border-gray-200 pt-3 dark:border-gray-700">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Add / Edit / Delete access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Disabled actions are reserved for a more privileged role.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Every Add, Edit, and Delete checkbox is configurable by Super Admin.</p>
                     <div class="mt-2 space-y-2">
                         @foreach($permissionResources as $resource => $label)
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                                 <span class="w-40 font-medium text-gray-700 dark:text-gray-300">{{ $label }}</span>
                                 @foreach($permissionActions as $action => $actionLabel)
                                     <label class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="addSingle.permissions.actions.{{ $resource }}" x-on:change="addSingle.permissionsChanged = true" :disabled="!isActionAllowed(addSingle.role, '{{ $resource }}', '{{ $action }}')" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:bg-gray-700">
+                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="addSingle.permissions.actions.{{ $resource }}" x-on:change="addSingle.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
                                         {{ $actionLabel }}
                                     </label>
                                 @endforeach
@@ -569,7 +584,7 @@
             <div x-show="editUser.role !== 'super_admin'" x-cloak class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
                 <div class="mb-3">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline menu permissions. Saving checkbox changes updates every account with this role.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline permissions. Super Admin can enable or disable any menu and Add / Edit / Delete action; saving applies the profile to every account with that role.</p>
                 </div>
                 <div class="mb-3 flex flex-wrap gap-4 text-xs text-gray-700 dark:text-gray-300">
                     <label class="inline-flex items-center gap-2">
@@ -584,7 +599,7 @@
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     @foreach($permissionMenus as $key => $label)
                         <label class="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                            <input type="checkbox" name="permissions[menus][]" value="{{ $key }}" x-model="editUser.permissions.menus" x-on:change="editUser.permissionsChanged = true" :disabled="!isMenuAllowed(editUser.role, '{{ $key }}')" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:bg-gray-700">
+                            <input type="checkbox" name="permissions[menus][]" value="{{ $key }}" x-model="editUser.permissions.menus" x-on:change="editUser.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
                             <span>{{ $label }}</span>
                         </label>
                     @endforeach
@@ -592,14 +607,14 @@
 
                 <div class="mt-4 border-t border-gray-200 pt-3 dark:border-gray-700">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Add / Edit / Delete access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Disabled actions are reserved for a more privileged role.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Every Add, Edit, and Delete checkbox is configurable by Super Admin.</p>
                     <div class="mt-2 space-y-2">
                         @foreach($permissionResources as $resource => $label)
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                                 <span class="w-40 font-medium text-gray-700 dark:text-gray-300">{{ $label }}</span>
                                 @foreach($permissionActions as $action => $actionLabel)
                                     <label class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="editUser.permissions.actions.{{ $resource }}" x-on:change="editUser.permissionsChanged = true" :disabled="!isActionAllowed(editUser.role, '{{ $resource }}', '{{ $action }}')" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:bg-gray-700">
+                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="editUser.permissions.actions.{{ $resource }}" x-on:change="editUser.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
                                         {{ $actionLabel }}
                                     </label>
                                 @endforeach

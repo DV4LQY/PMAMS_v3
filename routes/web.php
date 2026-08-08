@@ -110,25 +110,20 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
         Route::get('/maintenance-plan', [PreventiveMaintenancePlanController::class, 'index'])
             ->name('admin.maintenance-plan.index');
         Route::post('/maintenance-plan', [PreventiveMaintenancePlanController::class, 'store'])
-            ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.store');
         Route::post('/maintenance-plan/bulk-delete', [PreventiveMaintenancePlanController::class, 'bulkDestroy'])
-            ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.bulkDestroy');
         Route::put('/maintenance-plan/{schedule}', [PreventiveMaintenancePlanController::class, 'update'])
-            ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.update');
         Route::delete('/maintenance-plan/{schedule}', [PreventiveMaintenancePlanController::class, 'destroy'])
-            ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.destroy');
         Route::post('/maintenance-plan/{schedule}/override', [PreventiveMaintenancePlanController::class, 'override'])
             ->name('admin.maintenance-plan.override');
         Route::delete('/maintenance-plan/{schedule}/override', [PreventiveMaintenancePlanController::class, 'resetOverride'])
-            ->middleware('role:super_admin')
             ->name('admin.maintenance-plan.override.reset');
         Route::post('/maintenance-plan/{schedule}/complete', [PreventiveMaintenancePlanController::class, 'complete'])
             ->name('admin.maintenance-plan.complete');
-        Route::middleware('role:super_admin')->group(function () {
+        Route::middleware([])->group(function () {
             Route::get('/maintenance-cleanup', [MaintenanceCleanupController::class, 'index'])
                 ->name('admin.maintenance-cleanup.index');
             Route::post('/maintenance-cleanup/window', [MaintenanceCleanupController::class, 'updateWindow'])
@@ -256,11 +251,9 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
             ->name('admin.devices.photo.destroy');
 
         Route::post('/devices/import', [DeviceController::class, 'import'])
-            ->middleware('role:super_admin')
             ->name('admin.devices.import');
 
         Route::get('/devices/import-template', [DeviceController::class, 'importTemplate'])
-            ->middleware('role:super_admin')
             ->name('admin.devices.importTemplate');
 
         Route::resource('/devices', DeviceController::class)
@@ -342,7 +335,7 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
     | the university's organizational structure, which is an admin decision.
     | Custodians can browse this directory (routes above) but not modify it.
     */
-    Route::middleware('role:admin')->group(function () {
+    Route::middleware('role:admin,custodian')->group(function () {
 
         // Locations — write actions
         Route::post('admin/locations', [LocationController::class, 'store'])->name('admin.locations.store');
@@ -387,7 +380,6 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
 
         // Device deletion — deleting records is admin-only system-wide
         Route::delete('admin/devices/bulk-delete', [DeviceController::class, 'bulkDestroy'])
-            ->middleware('role:super_admin')
             ->name('admin.devices.bulkDestroy');
 
         Route::delete('admin/devices/{device}', [DeviceController::class, 'destroy'])
@@ -395,7 +387,8 @@ Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(functio
 
         // User accounts & role management
         // Activity logs — admin-only audit trail
-        Route::get('admin/logs', [ActivityLogController::class, 'index'])->name('admin.logs.index');
+        Route::get('admin/logs', [ActivityLogController::class, 'index'])
+            ->name('admin.logs.index');
     });
 
     // User accounts and role management are restricted to Super Admin.

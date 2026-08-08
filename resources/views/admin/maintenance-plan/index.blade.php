@@ -10,12 +10,17 @@
 @endsection
 
 @section('content')
+@php
+    $pmPlanUser = auth()->user();
+    $canAddPmPlan = $pmPlanUser?->canAction('maintenance_plan', 'add') ?? false;
+    $canEditPmPlan = $pmPlanUser?->canAction('maintenance_plan', 'edit') ?? false;
+    $canDeletePmPlan = $pmPlanUser?->canAction('maintenance_plan', 'delete') ?? false;
+@endphp
 <div class="space-y-6" x-data="maintenanceCompletionModal()">
     <div class="flex flex-col gap-4 rounded-2xl sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">PM Plan</h1>
             <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-                The Super Admin and Custodian publishes the approved schedule. Assigned Admins can view their targets, propose a temporary reschedule with a reason, and record completion details after all office equipment has been checked.
+                The Super Admin and Custodian publishes the approved schedule. Assigned Admins and Super Admins can view their targets, propose a temporary reschedule with a reason, and record completion details after all office equipment has been checked.
             </p>
         </div>
         <a href="{{ route('admin.reports.maintenanceSchedule', request()->query()) }}" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-700">
@@ -29,7 +34,7 @@
         </div>
     @endif
 
-    @if(auth()->user()?->isSuperAdmin())
+    @if($canAddPmPlan)
         <section class="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/20" x-data="maintenancePlanForm(@js($locations->map(fn ($location) => ['id' => $location->id, 'offices' => $location->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values()])->values()))">
             <div class="mb-4">
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Publish approved schedule</h2>
@@ -50,13 +55,13 @@
                 </div>
                 <div>
                     @php($selectedAssignedUserIds = collect(old('assigned_user_ids', old('assigned_user_id') ? [old('assigned_user_id')] : []))->map(fn ($id) => (int) $id)->all())
-                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin <span class="font-normal text-gray-500">(select one or more)</span></label>
+                    <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin <span class="font-normal text-gray-500">(select one or more)</span></label>
                     <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                         @foreach($admins as $admin)
                             <option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $selectedAssignedUserIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>
                         @endforeach
                     </select>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (Windows) or Command (Mac) to select multiple users.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Admin and Super Admin accounts are assignable. Hold Ctrl (Windows) or Command (Mac) to select multiple users.</p>
                 </div>
                 <div class="lg:col-span-2">
                     <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-200">Offices <span class="font-normal text-gray-500">(optional)</span></label>
@@ -123,8 +128,8 @@
             </form>
         </div>
 
-        @if(auth()->user()?->isSuperAdmin() && $schedules->total() > 0)
-            <div class="mb-4 flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        @if($canDeletePmPlan && $schedules->total() > 0)
+            <div class="mb-4 flex items-center justify-between rounded-xl bg-transparent px-5 py-3 shadow-none">
                 <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                     <input id="pm-plan-select-all-matching" type="checkbox" onchange="togglePmPlanAllMatching(this.checked)" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" aria-label="Select all PM Plans matching the current filters">
                     Select all PM Plans matching the current filters
@@ -153,9 +158,8 @@
             <table class="min-w-[1180px] w-full text-left text-sm">
                 <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
                     <tr>
-                        @if(auth()->user()?->isSuperAdmin())
+                        @if($canDeletePmPlan)
                             <th class="w-12 px-4 py-3 text-center">
-                                <input type="checkbox" aria-label="Select all PM Plans on this page" data-pm-plan-page-master onchange="togglePmPlanPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
                             </th>
                         @endif
                         <th class="px-4 py-3">Office / Location</th>
@@ -170,7 +174,7 @@
                     @forelse($schedules as $row)
                         @php($schedule = $row['schedule'])
                         <tr class="align-top hover:bg-gray-50 dark:hover:bg-gray-900/30">
-                            @if(auth()->user()?->isSuperAdmin())
+                            @if($canDeletePmPlan)
                                 <td class="px-4 py-4 text-center">
                                     <input type="checkbox" value="{{ $schedule->id }}" data-pm-plan-checkbox onchange="syncPmPlanSelection()" aria-label="Select PM Plan {{ $row['office'] }}" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
                                 </td>
@@ -224,18 +228,23 @@
                             </td>
                             <td class="px-4 py-4">
                                 <div class="flex min-w-[220px] flex-wrap items-center gap-2">
-                                    @if(auth()->user()?->isSuperAdmin())
+                                    @if($canEditPmPlan || $canDeletePmPlan)
+                                        @if($canEditPmPlan)
                                         <button type="button" data-open-modal="pm-plan-edit-{{ $schedule->id }}" title="Edit published schedule" aria-label="Edit published schedule" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-blue-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-900">
-                                            <x-action-icon-symbol icon="edit" />
-                                            <span class="sr-only">Edit published schedule</span>
-                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit published schedule</span>
-                                        </button>
+                                             <x-action-icon-symbol icon="edit" />
+                                             <span class="sr-only">Edit published schedule</span>
+                                             <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit published schedule</span>
+                                         </button>
+                                        @endif
+                                        @if($canDeletePmPlan)
                                         <form method="POST" action="{{ route('admin.maintenance-plan.destroy', $schedule) }}" data-spa-form="true" class="inline-flex border-0 bg-transparent p-0" onsubmit="return confirm('Move this published PM schedule to the recycle bin? Its schedule, assignments, override, and completion details can be restored later.')">
                                             @csrf
                                             @method('DELETE')
                                             <x-action-icon type="submit" icon="recycle" variant="red" label="Move PM plan to recycle bin" />
                                         </form>
+                                        @endif
                                     @endif
+                                    @if($canEditPmPlan)
                                     <button type="button" data-open-modal="pm-plan-override-{{ $schedule->id }}" title="Override schedule" aria-label="Override schedule" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:focus:ring-offset-gray-900">
                                             <x-action-icon-symbol icon="calendar" />
                                             <span class="sr-only">Override schedule</span>
@@ -248,8 +257,9 @@
                                             <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">{{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}</span>
                                         </button>
                                     @endif
+                                    @endif
                                 </div>
-                                @if(auth()->user()?->isSuperAdmin())
+                                 @if($canEditPmPlan)
                                     @php($scheduleAssignedIds = $schedule->assignedUsers->pluck('id')->merge([$schedule->assigned_user_id])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all())
                                     <div id="pm-plan-edit-{{ $schedule->id }}" role="dialog" aria-modal="true" style="display:none" class="fixed inset-0 z-[80] overflow-y-auto bg-gray-950/70 p-4">
                                         <div class="flex min-h-full items-center justify-center">
@@ -264,11 +274,11 @@
                                                         <input type="month" name="schedule_month_from" value="{{ optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                         <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                     </div>
-                                                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin</label>
+                                                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin</label>
                                                     <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                         @foreach($admins as $admin)<option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $scheduleAssignedIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>@endforeach
                                                     </select>
-                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin.</p>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin or Super Admin.</p>
                                                     <input type="text" name="title" value="{{ $schedule->title }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" placeholder="Schedule title">
                                                     <textarea name="notes" rows="3" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $schedule->notes }}</textarea>
                                                     <div class="flex justify-end gap-2 pt-2">
@@ -309,7 +319,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="{{ auth()->user()?->isSuperAdmin() ? 7 : 6 }}" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">No preventive maintenance schedules match the selected filters.</td></tr>
+                        <tr><td colspan="{{ $canDeletePmPlan ? 7 : 6 }}" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">No preventive maintenance schedules match the selected filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -345,7 +355,7 @@
                 <input type="hidden" name="privacy_consent" :value="consentGiven ? '1' : '0'">
                 <div x-show="!consentGiven" x-cloak class="space-y-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
                     <h3 class="font-semibold">Data Privacy consent</h3>
-                    <p>Under the Data Privacy Act of 2012 (Republic Act No. 10173), I consent to the collection and processing of my name and signature for preventive-maintenance monitoring, reporting, and records management.</p>
+                    <p>Under the Data Privacy Act of 2012 (Republic Act No. 10173), I consent to the collection and processing of my name and signature for preventive-maintenance monitoring, reporting, and records management. My information shall be handled securely and used only for authorized purposes.</p>
                     <label class="flex items-start gap-2">
                         <input type="checkbox" x-model="consentChecked" class="mt-0.5 h-4 w-4 rounded border-blue-400 text-blue-600 focus:ring-blue-500">
                         <span>I have read and consent to proceed.</span>

@@ -152,7 +152,6 @@
         {{-- Header --}}
         <div>
 
-            <h1 class="text-2xl font-semibold">Activity Logs</h1>
             <p class="text-sm text-gray-500">
                 Audit trail of system actions.
             </p>

@@ -32,9 +32,9 @@
         .complied { color: #087f23; }
         .not-complied { color: #b00020; }
         .warning { margin-top: 2px; color: #7c2d12; font-size: 8px; }
-        .summary { width: 20%; margin-top: 7px; border-collapse: collapse; }
+        .summary { width: 30%; margin-top: 7px; border-collapse: collapse; }
         .summary td { border: 0.7px solid #000; padding: 4px; font-size: 10px; }
-        .summary td:first-child { width: 80%; font-weight: bold; }
+        .summary td:first-child { width: 85%; font-weight: bold; }
         .summary td:last-child { text-align: center; font-weight: bold; }
         .signoff { width: 100%; margin-top: 22px; border-collapse: collapse; }
         .signoff td { width: 33.33%; border: 0; padding: 0 28px; vertical-align: top; font-family: Arial, sans-serif; font-size: 10px; }
@@ -92,7 +92,7 @@ $isoPath = public_path('images/iso-9001-2015.jpg');
 <div class="unit">Information and Communications Technology (ICT) Unit</div>
 <div class="title">QUALITY OBJECTIVE MONITORING SUPPORTING SCHEDULE</div>
 <div class="subtitle">For {{ $period['label'] }}, CY {{ $period['year'] }}</div>
-<div class="objective">Quality Objective No. I: Ensure efficient maintenance of IT equipment and peripherals</div>
+<div class="objective">Quality Objective No. I: Ensure efficient maintenance of computers and peripherals</div>
 <div class="target">Target: {{ $summary['target_percent'] }}%</div>
 
 <table class="report" style="width:100% !important; table-layout:fixed !important">
@@ -104,12 +104,12 @@ $isoPath = public_path('images/iso-9001-2015.jpg');
     <thead><tr>
         <th style="width:20% !important; min-width:22% !important; max-width:22% !important">Office / Unit</th>
         <th style="width:7% !important; min-width:7% !important; max-width:7% !important">Target no. of computers / peripherals for check-up / maintenance</th>
-        <th style="width:7% !important; min-width:6% !important; max-width:6% !important">Condemned ICT equipment returned to Supply</th>
-        <th style="width:7% !important; min-width:7% !important; max-width:7% !important">Unserviceable equipment (Not in Use / Repair)</th>
+        <th style="width:7% !important; min-width:6% !important; max-width:6% !important">Condemned computers / peripherals returned to Supply Office</th>
+        <th style="width:7% !important; min-width:7% !important; max-width:7% !important">Unserviceable computers / peripherals (Not in Use / Repair)</th>
         <th style="width:7% !important; min-width:7% !important; max-width:7% !important">Additional computers / peripherals (New)</th>
         <th style="width:7% !important; min-width:8% !important; max-width:8% !important">Actual no. of computers / peripherals maintained</th>
-        <th style="width:7% !important; min-width:6% !important; max-width:6% !important">Transferred computers IN</th>
-        <th style="width:7% !important; min-width:6% !important; max-width:6% !important">Transferred computers OUT</th>
+        <th style="width:7% !important; min-width:6% !important; max-width:6% !important">Transferred computers / peripherals (IN)</th>
+        <th style="width:7% !important; min-width:6% !important; max-width:6% !important">Transferred computers / peripherals (OUT)</th>
         <th style="width:10% !important; min-width:10% !important; max-width:10% !important">Date maintenance conducted</th>
         <th style="width:15% !important; min-width:17% !important; max-width:17% !important">Remarks</th>
         <th style="width:4% !important; min-width:2% !important; max-width:2% !important">Complied</th>
@@ -138,8 +138,8 @@ $isoPath = public_path('images/iso-9001-2015.jpg');
 </table>
 
 <table class="summary">
-    <tr><td>No. of IT equipment / peripherals checked</td><td>{{ $summary['actual'] }}</td></tr>
-    <tr><td>Total IT equipment / peripherals to be checked / maintained</td><td>{{ $summary['target'] }}</td></tr>
+    <tr><td>No. of Computers / peripherals checked</td><td>{{ $summary['actual'] }}</td></tr>
+    <tr><td>Total Computers / peripherals to be checked / maintained</td><td>{{ $summary['target'] }}</td></tr>
     <tr><td>Percentage of Accomplishment</td><td>{{ $summary['rate'] !== null && $summary['rate'] >= ($summary['target_percent'] / 100) ? '100%' : '' }}</td></tr>
 </table>
 
@@ -247,7 +247,7 @@ $isoPath = public_path('images/iso-9001-2015.jpg');
     <div class="performance-heading">INFORMATION and COMMUNICATIONS TECHNOLOGY UNIT</div>
     <div class="performance-heading">Performance Monitoring</div>
     <div class="performance-subheading">For {{ $period['label'] }}, CY {{ $period['year'] }}</div>
-    <div class="performance-objective">Quality Objective No. I: Ensure efficient maintenance of IT equipments and peripherals.</div>
+    <div class="performance-objective">Quality Objective No. I: Ensure efficient maintenance of computers and peripherals.</div>
     <div class="performance-target">Target: {{ $summary['target_percent'] }}%</div>
 
     <div class="performance-chart" role="img" aria-label="Actual versus target performance graph">

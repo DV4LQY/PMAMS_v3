@@ -25,7 +25,6 @@
         <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-7">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                    <h1 class="text-xl font-bold text-gray-900 dark:text-white">Database Backup &amp; Restore</h1>
                     <p class="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-300">
                         Super Admin tools for exporting a portable MySQL/MariaDB SQL backup and restoring it on this PMAMS installation or an XAMPP MariaDB database. Recycle-bin rows for Locations and PM Plans, including their related records, are included in the dump.
                     </p>

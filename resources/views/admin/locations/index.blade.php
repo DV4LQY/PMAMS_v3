@@ -245,11 +245,7 @@ document.addEventListener('livewire:navigated', () => {
 
     {{-- Top section --}}
     <div class="flex items-start justify-between gap-3">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Locations</h1>
-        </div>
-
-        @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'add'))
+        @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'add'))
             <button
                 type="button"
                 class="shrink-0 inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -260,7 +256,7 @@ document.addEventListener('livewire:navigated', () => {
         @endif
     </div>
 
-    @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'delete'))
+    @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete'))
         <form id="location-bulk-delete-form"
               method="POST"
               action="{{ route('admin.locations.bulkDestroy') }}"
@@ -270,12 +266,12 @@ document.addEventListener('livewire:navigated', () => {
             @csrf
             <input type="hidden" name="select_all" id="location-delete-select-all" value="0">
 
-            <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div class="flex items-center justify-between rounded-xl bg-transparent px-4 py-3 text-sm shadow-none">
                 <label class="inline-flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
                     <input type="checkbox"
                            data-location-all-master
                            onchange="toggleAllMatchingLocations(this)"
-                           class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700">
+                           class="h-5 w-5  border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700">
                     Select all locations matching the current filters
                 </label>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ number_format($locations->total()) }} matching</span>
@@ -302,7 +298,7 @@ document.addEventListener('livewire:navigated', () => {
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <div class="space-y-3">
                     <div class="flex items-start justify-between gap-3">
-                        @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'delete'))
+                        @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete'))
                             <label class="inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                                 <input type="checkbox" value="{{ $c->id }}" data-location-checkbox onchange="syncLocationSelection()" aria-label="Select location {{ $c->name }}" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
                                 Select
@@ -346,7 +342,6 @@ document.addEventListener('livewire:navigated', () => {
                         @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('issuance', 'add'))
                             <button
                                 type="button"
-                                title="Issue equipment"
                                 aria-label="Issue equipment"
                                 class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-green-500 dark:hover:bg-green-600 dark:focus:ring-offset-gray-900"
                                 @click="openIssue({
@@ -361,11 +356,10 @@ document.addEventListener('livewire:navigated', () => {
                             </button>
                         @endif
 
-                        @if(auth()->user()->isAdmin() && (auth()->user()->canAction('locations', 'edit') || auth()->user()->canAction('locations', 'delete')))
+                        @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && (auth()->user()->canAction('locations', 'edit') || auth()->user()->canAction('locations', 'delete')))
                             @if(auth()->user()->canAction('locations', 'edit'))
                             <button
                                 type="button"
-                                title="Edit location"
                                 aria-label="Edit location"
                                 class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-700 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-900"
                                 @click="openEdit({
@@ -382,7 +376,6 @@ document.addEventListener('livewire:navigated', () => {
                             @if(auth()->user()->canAction('locations', 'delete'))
                             <button
                                 type="button"
-                                title="Delete location"
                                 aria-label="Delete location"
                                 class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-900"
                                 @click="openDelete({{ $c->id }})"
@@ -409,9 +402,8 @@ document.addEventListener('livewire:navigated', () => {
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
                     <tr>
-                        @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'delete'))
+                        @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete'))
                             <th class="w-12 px-4 py-3 text-center">
-                                <input type="checkbox" aria-label="Select all locations on this page" data-location-page-master onchange="toggleLocationPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
                             </th>
                         @endif
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Name</th>
@@ -426,7 +418,7 @@ document.addEventListener('livewire:navigated', () => {
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse ($locations as $c)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'delete'))
+                        @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete'))
                                 <td class="px-4 py-3 text-center">
                                     <input type="checkbox" value="{{ $c->id }}" data-location-checkbox onchange="syncLocationSelection()" aria-label="Select location {{ $c->name }}" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
                                 </td>
@@ -457,7 +449,6 @@ document.addEventListener('livewire:navigated', () => {
                                     @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('issuance', 'add'))
                                         <button
                                             type="button"
-                                            title="Issue equipment"
                                             aria-label="Issue equipment"
                                             class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-green-500 dark:hover:bg-green-600 dark:focus:ring-offset-gray-900"
                                             @click="openIssue({
@@ -472,11 +463,10 @@ document.addEventListener('livewire:navigated', () => {
                                         </button>
                                     @endif
 
-                                    @if(auth()->user()->isAdmin() && (auth()->user()->canAction('locations', 'edit') || auth()->user()->canAction('locations', 'delete')))
+                                    @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && (auth()->user()->canAction('locations', 'edit') || auth()->user()->canAction('locations', 'delete')))
                                         @if(auth()->user()->canAction('locations', 'edit'))
                                         <button
                                             type="button"
-                                            title="Edit location"
                                             aria-label="Edit location"
                                             class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-700 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-900"
                                             @click="openEdit({
@@ -493,7 +483,6 @@ document.addEventListener('livewire:navigated', () => {
                                         @if(auth()->user()->canAction('locations', 'delete'))
                                         <button
                                             type="button"
-                                            title="Delete location"
                                             aria-label="Delete location"
                                             class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-900"
                                             @click="openDelete({{ $c->id }})"
@@ -511,7 +500,7 @@ document.addEventListener('livewire:navigated', () => {
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'delete') ? 8 : 7 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="{{ (auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete') ? 8 : 7 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                 No locations found.
                             </td>
                         </tr>
@@ -644,7 +633,7 @@ document.addEventListener('livewire:navigated', () => {
         </form>
     </x-modal>
 
-    @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'add'))
+    @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'add'))
     {{-- Add modal --}}
     <x-modal show="addOpen" title="Add Location">
         <form method="POST" action="{{ route('admin.locations.store') }}" class="space-y-3">
@@ -777,7 +766,7 @@ document.addEventListener('livewire:navigated', () => {
     @endif
 
 
-    @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'edit'))
+    @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'edit'))
     {{-- Edit modal --}}
     <x-modal show="editOpen" title="Edit Location" >
         <form
@@ -830,7 +819,7 @@ document.addEventListener('livewire:navigated', () => {
     </x-modal>
     @endif
 
-    @if(auth()->user()->isAdmin() && auth()->user()->canAction('locations', 'delete'))
+    @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete'))
     {{-- Delete modal --}}
     <x-modal show="deleteOpen" title="Delete Location">
         <div class="space-y-3">

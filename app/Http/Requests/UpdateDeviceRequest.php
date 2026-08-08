@@ -16,6 +16,9 @@ class UpdateDeviceRequest extends FormRequest
 
     public function rules(): array
     {
+        $routeDevice = $this->route('device');
+        $deviceId = $routeDevice instanceof Device ? $routeDevice->getKey() : $routeDevice;
+
         return [
             'device_type_id' => ['required', 'exists:device_types,id'],
 
@@ -24,7 +27,7 @@ class UpdateDeviceRequest extends FormRequest
                 'string',
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
-                'unique:devices,property_number,' . $this->route('device')->id,
+                Rule::unique('devices', 'property_number')->ignore($deviceId),
             ],
 
             'part_of_property_number' => [
@@ -34,7 +37,7 @@ class UpdateDeviceRequest extends FormRequest
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
                 Rule::exists('devices', 'property_number')->where(function ($query) {
                     $query
-                        ->where('id', '!=', $this->route('device')->id)
+                        ->where('id', '!=', $deviceId)
                         ->whereNull('part_of_property_number');
                 }),
             ],

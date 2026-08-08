@@ -16,6 +16,7 @@
     $isComputerType = in_array($deviceTypeName, ['desktop', 'laptop']);
     $isDesktopType = $deviceTypeName === 'desktop';
     $deviceUrl = route('admin.devices.show', $device);
+    $editReturnPath = parse_url($deviceUrl, PHP_URL_PATH);
     $editComputerName = old('computer_name', $device->computer_name ?? data_get($device->specs, 'computer_name', ''));
     $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
     $editLastMaintenanceDate = old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '');
@@ -40,7 +41,7 @@
         editDevice: {
             id: @json($device->id),
             device_type_id: @json(old('device_type_id', $device->device_type_id)),
-            property_number: @json(old('property_number', $device->property_number)),
+            property_number: @json($device->property_number),
             part_of_property_number: @json(old('part_of_property_number', $device->part_of_property_number)),
             serial_number: @json(old('serial_number', $device->serial_number)),
             computer_name: @json($editComputerName),
@@ -54,7 +55,8 @@
             unit_price: @json(old('unit_price', $device->unit_price)),
             date_acquired: @json($editDateAcquired),
             last_maintenance_date: @json($editLastMaintenanceDate),
-            maintenance_remarks: @json(old('maintenance_remarks', $device->maintenance_remarks)),
+            // Do not preload checklist-generated remarks into the edit form.
+            maintenance_remarks: @json(old('maintenance_remarks', '')),
             status: @json($device->status ?? 'available'),
             condition: @json($editCondition),
             os_version: @json(old('os_version', $device->os_version)),
@@ -192,7 +194,9 @@
                 setValue('condition', device.condition ?? 'serviceable');
                 setValue('status', this.addStatus);
                 setValue('last_maintenance_date', device.last_maintenance_date);
-                setValue('maintenance_remarks', device.maintenance_remarks);
+                // Keep edit remarks blank; existing checklist data remains in
+                // the equipment history and is not overwritten by an empty edit.
+                setValue('maintenance_remarks', '');
             },
 
             openEdit() {
@@ -482,10 +486,9 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
-                    @if($isComputerType)
+                    @if($isComputerType && auth()->user()?->canMenu('equipment'))
                         <a
                             href="{{ route('admin.devices.history', $device) }}"
-                            title="View equipment history"
                             aria-label="View equipment history"
                             class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-purple-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900"
                         >
@@ -498,7 +501,6 @@
                     <a
                         href="{{ route('admin.scanner', ['start' => 1]) }}"
                         aria-label="Scan QR code"
-                        title="Open QR scanner"
                         class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-violet-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-violet-500 dark:hover:bg-violet-600 dark:focus:ring-offset-gray-900"
                     >
                         <x-action-icon-symbol icon="qr" />
@@ -506,16 +508,17 @@
                         <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Scan QR code</span>
                     </a>
 
-                    <button type="button" x-on:click="openReissue()" title="Reissue equipment" aria-label="Reissue equipment" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-cyan-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900">
+                    @if(auth()->user()?->canAction('equipment', 'edit'))
+                    <button type="button" x-on:click="openReissue()" aria-label="Reissue equipment" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-cyan-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900">
                         <x-action-icon-symbol icon="issue" />
                         <span class="sr-only">Reissue equipment</span>
                         <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Reissue equipment</span>
                     </button>
+                    @endif
 
-                    @if($isComputerType)
+                    @if($isComputerType && auth()->user()?->canAction('checklist', 'edit'))
                         <a
                             href="{{ route('admin.devices.checklist.form', $device) }}"
-                            title="Mark equipment as checked"
                             aria-label="Mark equipment as checked"
                             class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-green-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-green-500 dark:hover:bg-green-600 dark:focus:ring-offset-gray-900"
                         >
@@ -525,12 +528,12 @@
                         </a>
                     @endif
 
+                    @if(auth()->user()?->canAction('equipment', 'edit'))
                     <button
                         id="open-edit-device-modal"
                         type="button"
                         data-open-modal="edit-device-modal"
                         x-on:click="openEdit()"
-                        title="Edit equipment specifications"
                         aria-label="Edit equipment specifications"
                         class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-gray-700 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-gray-600 dark:hover:bg-gray-500 dark:focus:ring-offset-gray-900"
                     >
@@ -540,8 +543,9 @@
                         <span class="sr-only">Edit equipment specifications</span>
                         <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Edit equipment specifications</span>
                     </button>
+                    @endif
 
-                    @if(auth()->user()->isAdmin() && $device->part_of_property_number)
+                    @if(auth()->user()?->canAction('equipment', 'edit') && $device->part_of_property_number)
                         <form
                             method="POST"
                             action="{{ route('admin.devices.unlinkParent', $device) }}"
@@ -551,7 +555,6 @@
                             @method('PATCH')
                             <button
                                 type="submit"
-                                title="Unlink peripheral"
                                 aria-label="Unlink peripheral"
                                 class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900"
                             >
@@ -562,7 +565,7 @@
                         </form>
                     @endif
 
-                    @if(auth()->user()->isAdmin())
+                    @if(auth()->user()?->canAction('equipment', 'delete'))
                         <form
                             method="POST"
                             action="{{ route('admin.devices.destroy', $device) }}"
@@ -573,7 +576,6 @@
 
                             <button
                                 type="submit"
-                                title="Delete equipment"
                                 aria-label="Delete equipment"
                                 class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-900"
                             >
@@ -897,7 +899,7 @@
                 <div>
                     <div class="flex items-center justify-between gap-3">
                         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search registered end user</label>
-                        @if(auth()->user()?->isAdmin())
+                        @if(auth()->user()?->canAction('issuance', 'add'))
                             <a
                                 href="{{ $reissueAddStaffUrl }}"
                                 data-no-spa="true"
@@ -929,12 +931,12 @@
                     <div x-show="reissueStaffId" class="mt-2 rounded-lg bg-cyan-50 px-3 py-2 text-sm text-cyan-900 dark:bg-cyan-900/20 dark:text-cyan-100">Selected: <span class="font-medium" x-text="reissueStaffQuery"></span></div>
                 </div>
                 <div>
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Reissue remarks</label>
-                    <textarea name="remarks" x-model="reissueRemarks" rows="3" maxlength="1000" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or activity log remarks"></textarea>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Reissue remarks <span class="font-normal text-gray-500">(optional)</span></label>
+                    <textarea name="remarks" x-model="reissueRemarks" rows="3" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or activity log remarks (optional)"></textarea>
                 </div>
                 <div class="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
                     <button type="button" x-on:click="reissueOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
-                    <button type="submit" :disabled="!reissueStaffId || !reissueRemarks.trim()" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">Save Reissue</button>
+                    <button type="submit" :disabled="!reissueStaffId" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">Save Reissue</button>
                 </div>
             </form>
         </div>
@@ -978,6 +980,7 @@
                 @method('PUT')
 
                 <input type="hidden" name="device_id" x-model="editDevice.id">
+                <input type="hidden" name="return_to" value="{{ $editReturnPath }}">
 
                 <div class="max-h-[75vh] overflow-y-auto px-6 py-5">
                     @include('admin.devices._add-equipment-fields', [

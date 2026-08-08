@@ -79,7 +79,11 @@ class MaintenancePlanSchedule extends Model
 
     public function scopeVisibleTo(Builder $query, ?User $user): Builder
     {
-        if (! $user || $user->isSuperAdmin()) {
+        // Custodians manage the published PM Plan records, so they must be
+        // able to see every schedule they may add, edit, or delete. Admin and
+        // Unit Head accounts continue to see only unassigned or assigned
+        // schedules.
+        if (! $user || $user->isSuperAdmin() || $user->isCustodian()) {
             return $query;
         }
 

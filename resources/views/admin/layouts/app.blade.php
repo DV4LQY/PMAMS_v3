@@ -870,9 +870,8 @@
 
 
 
-                @if(auth()->user() && (auth()->user()->isAdmin() || auth()->user()->isUnitHead()))
+                @if(auth()->user())
                     @if(auth()->user()?->isSuperAdmin())
-                    @if(auth()->user()?->canMenu('maintenance_cleanup'))
                     <a
                         href="{{ route('admin.users.index') }}"
                         data-nav-group="users"
@@ -898,6 +897,8 @@
                         </svg>
                         <span>Recycle Bin</span>
                     </a>
+                    @endif
+                    @if(auth()->user()?->canMenu('maintenance_cleanup'))
                     <a
                         href="{{ route('admin.maintenance-cleanup.index') }}"
                         data-nav-group="maintenance-cleanup"
@@ -941,7 +942,6 @@
                     </a>
                     @endif
                     
-                @endif
                 @if(auth()->user() && auth()->user()->canMenu('support'))
                     <a
                     href="{{ route('admin.contributors') }}"
@@ -1124,6 +1124,11 @@
                                 @if(auth()->user()?->canMenu('equipment'))
                                 <a href="{{ route('admin.devices.index') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
                                     Equipment
+                                </a>
+                                @endif
+                                @if(auth()->user()?->canMenu('maintenance_plan'))
+                                <a href="{{ route('admin.maintenance-plan.index') }}" @click="profileOpen = false" class="block min-h-11 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
+                                    PM Plan
                                 </a>
                                 @endif
                                 @if(auth()->user()?->canMenu('reports'))
@@ -1513,7 +1518,17 @@
             },
 
             allowedPermissions(role = 'custodian') {
-                return limitsByRole[role] || { menus: [], actions: {} };
+                const configured = limitsByRole[role];
+                if (configured && typeof configured === 'object') {
+                    return configured;
+                }
+
+                // Keep every menu and CRUD checkbox usable even if an older
+                // cached page did not include the limits payload.
+                return {
+                    menus: [...defaultMenus],
+                    actions: clone(defaultActions),
+                };
             },
 
             isMenuAllowed(role, menu) {

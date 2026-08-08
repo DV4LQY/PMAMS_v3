@@ -17,7 +17,7 @@ class MaintenanceCleanupController extends Controller
 
     public function index(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('maintenance_cleanup'), 403);
 
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
@@ -43,7 +43,7 @@ class MaintenanceCleanupController extends Controller
 
     public function updateWindow(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('maintenance_cleanup'), 403);
 
         $data = $request->validate([
             'window_months' => ['required', 'integer', 'min:1', 'max:36'],
@@ -56,9 +56,14 @@ class MaintenanceCleanupController extends Controller
 
     public function destroy(Request $request)
     {
+        $canDeleteCheckedReport = $request->routeIs('admin.reports.checkedEquipment.delete')
+            && $request->user()?->canAction('checked_equipment_report', 'delete');
+
         abort_unless(
             $request->user()?->isSuperAdmin()
-                || $request->user()?->canAction('checklist', 'delete'),
+                || $canDeleteCheckedReport
+                || (! $request->routeIs('admin.reports.checkedEquipment.delete')
+                    && $request->user()?->canAction('checklist', 'delete')),
             403
         );
 
@@ -160,7 +165,7 @@ class MaintenanceCleanupController extends Controller
 
     public function restore(int $record)
     {
-        abort_unless(request()->user()?->isSuperAdmin(), 403);
+        abort_unless(request()->user()?->isSuperAdmin() || request()->user()?->canAction('checklist', 'edit'), 403);
 
         $deletedRecord = DeviceMaintenanceRecord::onlyTrashed()
             ->with([
@@ -188,7 +193,7 @@ class MaintenanceCleanupController extends Controller
 
     public function restoreBulk(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canAction('checklist', 'edit'), 403);
 
         $data = $request->validate([
             'record_ids' => ['nullable', 'array'],
@@ -236,7 +241,7 @@ class MaintenanceCleanupController extends Controller
 
     public function forceDestroy(int $record)
     {
-        abort_unless(request()->user()?->isSuperAdmin(), 403);
+        abort_unless(request()->user()?->isSuperAdmin() || request()->user()?->canAction('checklist', 'delete'), 403);
 
         $data = request()->validate([
             'remarks' => ['nullable', 'string', 'max:1000'],
@@ -269,7 +274,7 @@ class MaintenanceCleanupController extends Controller
 
     public function forceDestroyBulk(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canAction('checklist', 'delete'), 403);
 
         $data = $request->validate([
             'record_ids' => ['nullable', 'array'],

@@ -261,7 +261,7 @@
                     Export Excel Report
                 </a>
 
-                @if(auth()->user()->isAdmin())
+                @if(auth()->user()?->canAction('staff', 'add'))
                     <button type="button"
                         class="shrink-0 inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
                         @click="openAdd()">
@@ -318,8 +318,9 @@
                             Equipment
                         </a>
 
-                        @if(auth()->user()->isAdmin())
-                            <button type="button"
+                        @if(auth()->user()?->canAction('staff', 'edit') || auth()->user()?->canAction('staff', 'delete'))
+                             @if(auth()->user()?->canAction('staff', 'edit'))
+                             <button type="button"
                                 class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-gray-900 hover:bg-black" @click="openEdit({
                                             id: {{ $s->id }},
                                             first_name: @js($s->first_name),
@@ -330,13 +331,16 @@
                                             is_active: {{ $s->is_active ? 'true' : 'false' }}
                                         })">
                                 Edit
-                            </button>
+                             </button>
+                             @endif
 
-                            <button type="button"
+                             @if(auth()->user()?->canAction('staff', 'delete'))
+                             <button type="button"
                                 class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700"
                                 @click="openDelete({{ $s->id }})">
                                 Delete
-                            </button>
+                             </button>
+                             @endif
                         @endif
                     </div>
                 </div>
@@ -397,7 +401,8 @@
                                             Equipment
                                         </a>
 
-                                        @if(auth()->user()->isAdmin())
+                                        @if(auth()->user()?->canAction('staff', 'edit') || auth()->user()?->canAction('staff', 'delete'))
+                                            @if(auth()->user()?->canAction('staff', 'edit'))
                                             <button type="button"
                                                 class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-gray-900 hover:bg-black"
                                                 @click="openEdit({
@@ -411,12 +416,15 @@
                                                         })">
                                                 Edit
                                             </button>
+                                            @endif
 
+                                            @if(auth()->user()?->canAction('staff', 'delete'))
                                             <button type="button"
                                                 class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700"
                                                 @click="openDelete({{ $s->id }})">
                                                 Delete
                                             </button>
+                                            @endif
                                         @endif
                                     </div>
                                 </td>

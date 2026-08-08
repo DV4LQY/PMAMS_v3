@@ -105,10 +105,6 @@ document.addEventListener('livewire:navigated', registerCollegeManager);
 
     {{-- Top section --}}
     <div class="flex items-start justify-between gap-3">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Colleges</h1>
-        </div>
-
         @if(auth()->user()->isAdmin())
             <button
                 type="button"

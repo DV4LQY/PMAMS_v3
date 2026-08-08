@@ -1082,13 +1082,31 @@ import './bootstrap';
         const stopBtn = document.getElementById('stop-scanner');
         const statusEl = document.getElementById('scan-status');
         const resultEl = document.getElementById('scan-result');
+        const modal = document.getElementById('qr-scanner-modal');
+        const closeBtn = document.getElementById('close-scanner');
+        const modalStatusEl = document.getElementById('scanner-modal-status');
 
-        if (!reader || !startBtn || !stopBtn || startBtn.dataset.scannerReady === 'true') return;
+        if (!reader || !startBtn || !stopBtn || !modal || startBtn.dataset.scannerReady === 'true') return;
 
         startBtn.dataset.scannerReady = 'true';
 
-        const setStatus = (text) => setText(statusEl, text);
+        const setStatus = (text) => {
+            setText(statusEl, text);
+            setText(modalStatusEl, text);
+        };
         const setResult = (text) => setText(resultEl, text || '-');
+
+        const openModal = () => {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.classList.add('overflow-hidden');
+        };
+
+        const closeModal = () => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.classList.remove('overflow-hidden');
+        };
 
         const updateButtons = (isRunning) => {
             startBtn.disabled = isRunning;
@@ -1131,6 +1149,7 @@ import './bootstrap';
 
             stopScanner().finally(() => {
                 updateButtons(false);
+                closeModal();
                 redirectFromQr(decodedText);
             });
         };
@@ -1176,23 +1195,60 @@ import './bootstrap';
             });
         };
 
-        startBtn.addEventListener('click', startScanner);
+        startBtn.addEventListener('click', () => {
+            openModal();
+            startScanner();
+        });
 
         stopBtn.addEventListener('click', () => {
             stopScanner().then(() => {
                 setStatus('Scanner stopped');
                 updateButtons(false);
+                closeModal();
+            });
+        });
+
+        closeBtn.addEventListener('click', () => {
+            stopScanner().then(() => {
+                updateButtons(false);
+                setStatus('Scanner closed');
+                closeModal();
+            });
+        });
+
+        modal.addEventListener('click', (event) => {
+            if (event.target !== modal) return;
+            stopScanner().then(() => {
+                updateButtons(false);
+                setStatus('Scanner closed');
+                closeModal();
+            });
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || modal.classList.contains('hidden')) return;
+            stopScanner().then(() => {
+                updateButtons(false);
+                setStatus('Scanner closed');
+                closeModal();
             });
         });
 
         const shouldAutoStart = new URLSearchParams(window.location.search).get('start') === '1';
         if (shouldAutoStart) {
-            setTimeout(startScanner, 250);
+            setTimeout(() => {
+                openModal();
+                startScanner();
+            }, 250);
         }
     };
 
     document.addEventListener('livewire:navigating', () => {
         stopScanner();
+        const modal = document.getElementById('qr-scanner-modal');
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        document.body.classList.remove('overflow-hidden');
     });
     document.addEventListener('livewire:navigated', initQrScanner);
 

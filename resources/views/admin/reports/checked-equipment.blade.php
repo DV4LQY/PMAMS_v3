@@ -25,10 +25,11 @@
 @section('content')
 
 @php
-    // Checklist history deletion follows the Maintenance Checklist role
-    // permission. Super Admins remain unrestricted.
+    // Checklist history deletion in this report follows the dedicated
+    // Checked Equipment Report permission is controlled by Super Admin role
+    // settings. Super Admins remain unrestricted.
     $canDeleteCheckedHistory = auth()->user()?->isSuperAdmin()
-        || auth()->user()?->canAction('checklist', 'delete');
+        || auth()->user()?->canAction('checked_equipment_report', 'delete');
     $canBulkDeleteCheckedHistory = auth()->user()?->isSuperAdmin();
 @endphp
 
@@ -43,10 +44,6 @@
     <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                Checked Equipment Report
-            </h1>
-
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Equipment marked checked through the maintenance checklist.
             </p>

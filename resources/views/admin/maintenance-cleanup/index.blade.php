@@ -87,8 +87,8 @@
                             <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ $record->checkedBy?->name ?? '-' }}</td>
                             <td class="px-3 py-2">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <button type="button" onclick="restoreCleanupRecords([{{ $record->id }}])" class="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Restore</button>
-                                    <button type="button" onclick="openCleanupDeleteRemarks({{ $record->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">Delete permanently</button>
+                                    <x-action-icon type="button" icon="restore" variant="green" label="Restore checklist" onclick="restoreCleanupRecords([{{ $record->id }}])" />
+                                    <x-action-icon type="button" icon="trash" variant="red" label="Permanently delete checklist" onclick="openCleanupDeleteRemarks({{ $record->id }})" />
                                 </div>
                             </td>
                         </tr>

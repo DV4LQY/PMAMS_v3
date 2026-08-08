@@ -344,7 +344,9 @@
             setValue('condition', device.condition ?? 'serviceable');
             setValue('status', this.addStatus);
             setValue('last_maintenance_date', device.last_maintenance_date);
-            setValue('maintenance_remarks', device.maintenance_remarks);
+            // Keep edit remarks blank; checklist remarks remain visible in
+            // history and are preserved unless the user enters new text.
+            setValue('maintenance_remarks', '');
         },
 
         openEdit(device) {
@@ -427,10 +429,6 @@
     class="space-y-5"
 >
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Equipment</h1>
-        </div>
-
         <div class="flex flex-wrap gap-2">
             @if(auth()->user()?->isSuperAdmin())
                 <button
@@ -663,7 +661,7 @@
 
     @if($loadEquipment)
     @if(auth()->user()->isSuperAdmin())
-        <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div class="flex items-center justify-between rounded-xl bg-transparent px-4 py-3 text-sm shadow-none">
             <label class="inline-flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
                 <input
                     type="checkbox"
@@ -818,7 +816,7 @@
                         @if(auth()->user()?->canAction('checklist', 'edit'))
                             <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
                         @endif
-                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin() && auth()->user()?->canAction('equipment', 'edit'))
+                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->canAction('equipment', 'edit'))
                         <button
                             type="button"
                             title="Link this peripheral to a Desktop or Laptop"
@@ -855,7 +853,7 @@
                             unit_price: @js($d->unit_price ?? ''),
                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
                             last_maintenance_date: @js($d->last_maintenance_date ? $d->last_maintenance_date->format('Y-m-d') : ''),
-                            maintenance_remarks: @js($d->maintenance_remarks ?? ''),
+                            maintenance_remarks: @js(''),
                             status: @js($d->status ?? 'available'),
                             condition: @js($d->condition ?? 'serviceable'),
                             os_version: @js($d->os_version ?? ''),
@@ -879,7 +877,7 @@
                     </button>
                     @endif
 
-                    @if((auth()->user()->isAdmin() || auth()->user()->isUnitHead()) && auth()->user()->canAction('equipment', 'delete'))
+                    @if(auth()->user()?->canAction('equipment', 'delete'))
                         <x-action-icon
                             type="button"
                             icon="trash"
@@ -905,15 +903,6 @@
                     <tr>
                         @if(auth()->user()->isSuperAdmin())
                             <th class="w-12 px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">
-                                <input
-                                    type="checkbox"
-                                    class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
-                                    x-bind:disabled="pageDeviceIds.length === 0"
-                                    x-bind:checked="allPageDevicesSelected()"
-                                    x-bind:indeterminate="selectedDeviceIds.length > 0 && !allPageDevicesSelected()"
-                                    x-on:change="toggleAllDevices($event.target.checked)"
-                                    aria-label="Select all equipment matching the current filters for deletion"
-                                >
                             </th>
                         @endif
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Type</th>
@@ -985,7 +974,7 @@
                                         @if(auth()->user()?->canAction('checklist', 'edit'))
                                             <x-action-icon tag="a" href="{{ route('admin.devices.checklist.form', $d) }}" icon="check" variant="blue" label="Mark equipment checked" />
                                         @endif
-                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->isAdmin() && auth()->user()?->canAction('equipment', 'edit'))
+                                    @elseif($isPeripheralDevice && ! $d->part_of_property_number && auth()->user()?->canAction('equipment', 'edit'))
                                         <button
                                             type="button"
                                             title="Link this peripheral to a Desktop or Laptop"
@@ -1021,7 +1010,7 @@
                                             unit_price: @js($d->unit_price ?? ''),
                                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
                                             last_maintenance_date: @js($d->last_maintenance_date ? $d->last_maintenance_date->format('Y-m-d') : ''),
-                                            maintenance_remarks: @js($d->maintenance_remarks ?? ''),
+                                            maintenance_remarks: @js(''),
                                             status: @js($d->status ?? 'available'),
                                             condition: @js($d->condition ?? 'serviceable'),
                                             os_version: @js($d->os_version ?? ''),
@@ -1045,7 +1034,7 @@
                                     </button>
                                     @endif
 
-                                    @if((auth()->user()->isAdmin() || auth()->user()->isUnitHead()) && auth()->user()->canAction('equipment', 'delete'))
+                                    @if(auth()->user()?->canAction('equipment', 'delete'))
                                         <x-action-icon
                                             type="button"
                                             icon="trash"
@@ -1447,7 +1436,7 @@
                     rows="3"
                     maxlength="1000"
                     class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    x-model="editDevice.maintenance_remarks"
+                   // x-model="editDevice.maintenance_remarks"
                     placeholder="Example: Initial check, cleaned, inspected"
                 ></textarea>
             </div>

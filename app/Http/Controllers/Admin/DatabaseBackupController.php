@@ -26,7 +26,7 @@ class DatabaseBackupController extends Controller
 
     public function index(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('database'), 403);
 
         return view('admin.database.index', [
             'driver' => DB::connection()->getDriverName(),
@@ -46,7 +46,7 @@ class DatabaseBackupController extends Controller
 
     public function updateSchedule(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('database'), 403);
 
         $data = $request->validate([
             // Days 1–28 exist in every month, so the backup is never skipped.
@@ -66,7 +66,7 @@ class DatabaseBackupController extends Controller
 
     public function download(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('database'), 403);
         $this->ensureSupportedDriver();
 
         $filename = 'pmams-backup-' . now()->format('Ymd-His') . '.sql';
@@ -94,7 +94,7 @@ class DatabaseBackupController extends Controller
 
     public function restore(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('database'), 403);
         $this->ensureSupportedDriver();
 
         $request->validate([

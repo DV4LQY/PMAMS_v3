@@ -14,7 +14,6 @@
     @endphp
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Recycle Bin</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Restore deleted users, equipment, locations, and PM Plans. Checklist history is managed in Checklist Cleanup. Permanent deletion is available only to Super Admins.
             </p>
@@ -85,9 +84,9 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.users.restore', $user->id) }}">
                                         @csrf @method('PATCH')
-                                        <button type="submit" class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Restore</button>
+                                        <x-action-icon type="submit" icon="restore" variant="green" label="Restore user" />
                                     </form>
-                                    <button type="button" onclick="permanentDeleteSingle('users', {{ $user->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Delete Permanently</button>
+                                    <x-action-icon type="button" icon="trash" variant="red" label="Permanently delete user" onclick="permanentDeleteSingle('users', {{ $user->id }})" />
                                 </div>
                             </td>
                         </tr>
@@ -143,9 +142,9 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.devices.restore', $device->id) }}">
                                         @csrf @method('PATCH')
-                                        <button type="submit" class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Restore</button>
+                                        <x-action-icon type="submit" icon="restore" variant="green" label="Restore equipment" />
                                     </form>
-                                    <button type="button" onclick="permanentDeleteSingle('devices', {{ $device->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Delete Permanently</button>
+                                    <x-action-icon type="button" icon="trash" variant="red" label="Permanently delete equipment" onclick="permanentDeleteSingle('devices', {{ $device->id }})" />
                                 </div>
                             </td>
                         </tr>
@@ -212,9 +211,9 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.maintenance-plan.restore', $plan->id) }}">
                                         @csrf @method('PATCH')
-                                        <button type="submit" class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Restore</button>
+                                        <x-action-icon type="submit" icon="restore" variant="green" label="Restore PM plan" />
                                     </form>
-                                    <button type="button" onclick="permanentDeleteSingle('maintenance_plans', {{ $plan->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Delete Permanently</button>
+                                    <x-action-icon type="button" icon="trash" variant="red" label="Permanently delete PM plan" onclick="permanentDeleteSingle('maintenance_plans', {{ $plan->id }})" />
                                 </div>
                             </td>
                         </tr>
@@ -268,9 +267,9 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.locations.restore', $location->id) }}">
                                         @csrf @method('PATCH')
-                                        <button type="submit" class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Restore</button>
+                                        <x-action-icon type="submit" icon="restore" variant="green" label="Restore location" />
                                     </form>
-                                    <button type="button" onclick="permanentDeleteSingle('locations', {{ $location->id }})" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Delete Permanently</button>
+                                    <x-action-icon type="button" icon="trash" variant="red" label="Permanently delete location" onclick="permanentDeleteSingle('locations', {{ $location->id }})" />
                                 </div>
                             </td>
                         </tr>

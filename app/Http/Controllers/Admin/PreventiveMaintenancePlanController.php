@@ -56,7 +56,7 @@ class PreventiveMaintenancePlanController extends Controller
             'schedules' => $schedules,
             'locations' => Location::with(['offices:id,location_id,name'])->orderBy('name')->get(),
             'admins' => User::query()
-                ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
                 ->orderBy('name')
                 ->get(['id', 'name', 'email', 'role']),
             'selectedLocationId' => $locationId,
@@ -68,7 +68,7 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function store(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'add'), 403);
 
         $data = $request->validate([
             'location_id' => ['required', 'integer', 'exists:locations,id'],
@@ -78,7 +78,7 @@ class PreventiveMaintenancePlanController extends Controller
                 'nullable',
                 'integer',
                 Rule::exists('users', 'id')->where(fn ($query) => $query
-                    ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                    ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
                     ->whereNull('deleted_at')),
             ],
             'assigned_user_ids' => ['nullable', 'array'],
@@ -86,7 +86,7 @@ class PreventiveMaintenancePlanController extends Controller
                 'integer',
                 'distinct',
                 Rule::exists('users', 'id')->where(fn ($query) => $query
-                    ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                    ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
                     ->whereNull('deleted_at')),
             ],
             'schedule_month_from' => ['required', 'date_format:Y-m'],
@@ -201,7 +201,7 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function update(Request $request, MaintenancePlanSchedule $schedule)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
 
         $data = $request->validate([
             'schedule_month_from' => ['required', 'date_format:Y-m'],
@@ -209,7 +209,7 @@ class PreventiveMaintenancePlanController extends Controller
             'assigned_user_id' => [
                 'nullable', 'integer',
                 Rule::exists('users', 'id')->where(fn ($query) => $query
-                    ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                    ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
                     ->whereNull('deleted_at')),
             ],
             'assigned_user_ids' => ['nullable', 'array'],
@@ -217,7 +217,7 @@ class PreventiveMaintenancePlanController extends Controller
                 'integer',
                 'distinct',
                 Rule::exists('users', 'id')->where(fn ($query) => $query
-                    ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_UNIT_HEAD])
+                    ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
                     ->whereNull('deleted_at')),
             ],
             'title' => ['required', 'string', 'max:150'],
@@ -251,14 +251,14 @@ class PreventiveMaintenancePlanController extends Controller
     }
 
     /**
-     * Move a published PM schedule to the recycle bin. This is intentionally
-     * restricted to Super Admin. Soft deletion keeps its temporary overrides,
+     * Move a published PM schedule to the recycle bin. The shared role
+     * profile controls this action. Soft deletion keeps its temporary overrides,
      * office-completion sign-off, and assigned-admin pivot rows available for
      * an exact restore; equipment checklist history is stored separately.
      */
     public function destroy(Request $request, MaintenancePlanSchedule $schedule)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'delete'), 403);
 
         $schedule->load(['location', 'office', 'latestOverride', 'completion']);
         $targetLabel = $this->scheduleTargetLabel($schedule);
@@ -304,7 +304,7 @@ class PreventiveMaintenancePlanController extends Controller
     /** Move selected or filtered PM Plans to the recycle bin. */
     public function bulkDestroy(Request $request): \Illuminate\Http\RedirectResponse
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'delete'), 403);
 
         $data = $request->validate([
             'schedule_ids' => ['nullable', 'array'],
@@ -451,6 +451,7 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function override(Request $request, MaintenancePlanSchedule $schedule)
     {
+        abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
         $this->authorizeSchedule($schedule, $request->user());
 
         $data = $request->validate([
@@ -484,7 +485,8 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function resetOverride(Request $request, MaintenancePlanSchedule $schedule)
     {
-        abort_unless($request->user()?->isSuperAdmin(), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
+        $this->authorizeSchedule($schedule, $request->user());
 
         $overrides = $schedule->overrides()->orderByDesc('id')->get();
         if ($overrides->isEmpty()) {
@@ -511,6 +513,7 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function complete(Request $request, MaintenancePlanSchedule $schedule)
     {
+        abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
         $this->authorizeSchedule($schedule, $request->user());
 
         $schedule->load(['latestOverride', 'completion', 'location', 'office']);
@@ -666,12 +669,24 @@ class PreventiveMaintenancePlanController extends Controller
 
     private function authorizeSchedule(MaintenancePlanSchedule $schedule, ?User $user): void
     {
-        if (! $user || $user->isSuperAdmin()) {
+        // Custodians manage PM Plan records across locations, including the
+        // existing override/completion controls shown on the plan page.
+        if (! $user || $user->isSuperAdmin() || $user->isCustodian()) {
             return;
         }
 
         $assignedUserIds = $this->assignedUserIdsForSchedule($schedule);
         abort_unless($assignedUserIds === [] || in_array((int) $user->id, $assignedUserIds, true), 403);
+    }
+
+    /**
+     * Publishing and maintaining PM Plans follows the shared role profile.
+     * Super Admin is always unrestricted; assigned Admin/Unit Head accounts
+     * still pass the schedule-assignment check for operational actions.
+     */
+    private function canManagePublishedPlan(?User $user, string $action = 'edit'): bool
+    {
+        return $user && ($user->isSuperAdmin() || $user->canAction('maintenance_plan', $action));
     }
 
     /**

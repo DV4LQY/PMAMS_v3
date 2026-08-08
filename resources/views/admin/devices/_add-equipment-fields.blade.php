@@ -1,5 +1,6 @@
 @php
     $lockEquipmentType = $lockEquipmentType ?? false;
+    $blankMaintenanceRemarks = $blankMaintenanceRemarks ?? false;
     // The same partial is used by create/add modals and the standalone edit
     // page. When an edit model is supplied, seed every field from the saved
     // record so generated and linked property numbers are visible immediately.
@@ -536,7 +537,7 @@
         rows="3"
         maxlength="1000"
         class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-        placeholder="Example: Initial check, cleaned, inspected"
-    >{{ old('maintenance_remarks', $formDevice?->maintenance_remarks) }}</textarea>
+        placeholder="Optional maintenance remarks (leave blank to keep existing remarks)"
+    >{{ old('maintenance_remarks', $blankMaintenanceRemarks ? null : $formDevice?->maintenance_remarks) }}</textarea>
     @error('maintenance_remarks')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 </div>

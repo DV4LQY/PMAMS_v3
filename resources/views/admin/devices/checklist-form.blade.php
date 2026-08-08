@@ -456,7 +456,7 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 <div>{{ $sectionName }}</div>
                                 @if($sectionProperties)
-                                    @if(auth()->user()?->isAdmin() && in_array($sectionKey, ['monitor', 'avr/ups', 'printer'], true))
+                                    @if(auth()->user()?->canAction('equipment', 'edit') && in_array($sectionKey, ['monitor', 'avr/ups', 'printer'], true))
                                         <button
                                             type="button"
                                             title="Change linked equipment"
@@ -501,7 +501,7 @@
                                         </div>
                                     @endif
                                 @elseif(in_array($sectionKey, ['monitor', 'avr/ups', 'printer'], true))
-                                    @if(auth()->user()?->isAdmin())
+                                    @if(auth()->user()?->canAction('equipment', 'edit'))
                                         <button
                                             type="button"
                                             title="Link equipment"
@@ -815,7 +815,7 @@
         @endif
     </form>
 
-    @if(auth()->user()?->isAdmin())
+    @if(auth()->user()?->canAction('equipment', 'edit'))
         <div
             x-data="{
                 linkOpen: @json($openLink),

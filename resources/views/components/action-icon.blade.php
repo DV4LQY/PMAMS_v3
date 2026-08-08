@@ -24,6 +24,7 @@
         'eye' => 'M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7s-8.268-2.943-9.542-7Z M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z',
         'history' => 'M12 8v4l3 2M3.05 11a9 9 0 1 1 .5 4M3 4v5h5',
         'check' => 'm5 12 4 4L19 6',
+        'restore' => 'M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5',
         'edit' => 'M16.862 3.487 20.513 7.138M4 20h4l11.5-11.5a2.121 2.121 0 0 0-3-3L5 17v3Z',
         'trash' => 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
         'monitor' => 'M3 5h18v12H3zM8 21h8M12 17v4',
@@ -39,7 +40,6 @@
 <span class="group relative inline-flex">
     <{{ $tag }}
         @if($tag === 'a') href="{{ $href }}" @elseif($tag === 'button') type="{{ $type }}" @endif
-        title="{{ $label }}"
         aria-label="{{ $label }}"
         {{ $attributes->merge(['class' => 'action-icon-button inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg p-0 shadow-sm transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900 ' . $variantClasses . ($tag === 'summary' ? ' list-none [&::-webkit-details-marker]:hidden' : '')]) }}
     >

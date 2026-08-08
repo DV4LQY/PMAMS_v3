@@ -43,12 +43,20 @@ class PermissionMiddleware
         if (str_starts_with($route, 'admin.maintenance-plan.')) return ['maintenance_plan', 'maintenance_plan', $this->action($route)];
         if ($route === 'admin.maintenance-gallery.photo') return ['maintenance_gallery', null, null];
         if (str_starts_with($route, 'admin.maintenance-gallery.')) return ['maintenance_gallery', 'maintenance_gallery', $this->action($route)];
-        if ($route === 'admin.reports.checkedEquipment.delete') return ['reports', 'checklist', 'delete'];
+        if ($route === 'admin.reports.checkedEquipment.delete') return ['reports', 'checked_equipment_report', 'delete'];
         if (str_starts_with($route, 'admin.reports.')) {
             $issuance = str_contains($route, '.issuance');
             return [$issuance ? 'issuance' : 'reports', $issuance ? 'issuance' : null, null];
         }
         if (str_starts_with($route, 'admin.issuance.')) return ['issuance', 'issuance', null];
+        // Device issue/reissue endpoints are assignment operations. Keep
+        // them tied to the Issuance action check (the UI uses this same
+        // resource), rather than letting the broader devices rule below
+        // incorrectly require Equipment Edit access.
+        if ($route === 'admin.devices.issue') return ['issuance', 'issuance', 'add'];
+        if ($route === 'admin.devices.reissue') return ['issuance', 'issuance', 'edit'];
+        // The legacy quick Mark Checked endpoint is still a checklist action.
+        if ($route === 'admin.devices.markchecked') return ['equipment', 'checklist', 'edit'];
         if (str_contains($route, 'devices.checklist.')) return ['equipment', 'checklist', $this->action($route)];
         if (str_starts_with($route, 'admin.devices.')) return ['equipment', 'equipment', $this->action($route)];
         if (str_starts_with($route, 'admin.locations.') || str_starts_with($route, 'admin.colleges.')) {

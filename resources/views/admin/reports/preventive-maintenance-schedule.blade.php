@@ -15,7 +15,6 @@
 <div class="space-y-6">
     <div class="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 print:hidden sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Preventive Maintenance Schedule Monitoring</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">The Office column uses registered locations and offices. Actual dates are calculated from saved equipment checklists.</p>
         </div>
         <div class="flex flex-wrap gap-2">

@@ -23,10 +23,10 @@ class User extends Authenticatable
     |   - admin: full access — manages colleges/offices/staff structure,
     |     devices, reports, and can view the activity log. User-account
     |     management is reserved for the Super Admin.
-    |   - custodian: a restricted "basic user" account. Can manage devices
-    |     and issue/return them to staff, and browse the college/office/staff
-    |     directory (read-only). Cannot: create user accounts, delete any
-    |     record, use the bulk-add ("auto-form") feature, or view activity
+    |   - custodian: a restricted "basic user" account. Can manage devices,
+    |     issue/return them to staff, and manage the location/office/staff
+    |     directory. PM Plan publishing/editing/deletion follows the shared
+    |     Role-based menu access profile. Cannot create user accounts or view
     |     logs — per the client's specified restrictions.
     |   - unit_head: a single designated signatory. Only one account may
     |     hold this role at a time (enforced in UserController). Their name
@@ -78,6 +78,7 @@ class User extends Authenticatable
         'issuance' => 'Issuance',
         'maintenance_gallery' => 'PM Gallery',
         'checklist' => 'Maintenance Checklist',
+        'checked_equipment_report' => 'Checked Equipment Report',
         'maintenance_plan' => 'PM Plan',
     ];
 
@@ -115,15 +116,19 @@ class User extends Authenticatable
                 ]),
             ],
             self::ROLE_CUSTODIAN => [
-                'menus' => ['dashboard', 'equipment', 'locations', 'reports', 'issuance', 'maintenance_gallery', 'scanner', 'support'],
+                'menus' => ['dashboard', 'equipment', 'locations', 'reports', 'issuance', 'maintenance_gallery', 'scanner', 'support', 'maintenance_plan'],
                 'actions' => [
                     'equipment' => ['add', 'edit'],
-                    'locations' => [],
-                    'offices' => [],
-                    'staff' => [],
+                    'locations' => ['add', 'edit', 'delete'],
+                    'offices' => ['add', 'edit', 'delete'],
+                    'staff' => ['add', 'edit', 'delete'],
                     'issuance' => ['add', 'edit'],
                     'maintenance_gallery' => ['add', 'edit'],
-                    'checklist' => ['edit'],
+                    // Checklist marking is reserved for Admin, Unit Head, and
+                    // Super Admin. Custodians may manage PM Plans but cannot
+                    // mark equipment as checked.
+                    'checklist' => [],
+                    'maintenance_plan' => ['add', 'edit', 'delete'],
                 ],
             ],
             default => ['menus' => [], 'actions' => []],
@@ -131,36 +136,20 @@ class User extends Authenticatable
     }
 
     /**
-     * The role editor cannot grant access that a protected route will always
-     * reject. Keeping these limits beside the defaults makes the UI, saved
-     * role profile, sidebar, and middleware use the same authorization model.
+     * Every menu and CRUD action is intentionally assignable by Super Admin.
+     *
+     * The role defaults above remain the safe starting point for new/legacy
+     * roles, while this method describes what the role editor may persist.
+     * Keeping this separate from the defaults means a Super Admin can grant
+     * or remove any menu/action and the PermissionMiddleware can enforce that
+     * choice consistently for every account with the role.
      */
     public static function allowedPermissionsForRole(string $role): array
     {
         $allMenus = array_keys(self::PERMISSION_MENUS);
         $allActions = array_fill_keys(array_keys(self::PERMISSION_RESOURCES), array_keys(self::PERMISSION_ACTIONS));
 
-        return match ($role) {
-            self::ROLE_SUPER_ADMIN => ['menus' => $allMenus, 'actions' => $allActions],
-            self::ROLE_ADMIN, self::ROLE_UNIT_HEAD => [
-                'menus' => array_values(array_diff($allMenus, ['database', 'maintenance_cleanup'])),
-                'actions' => array_replace($allActions, ['maintenance_plan' => ['edit']]),
-            ],
-            self::ROLE_CUSTODIAN => [
-                'menus' => ['dashboard', 'equipment', 'locations', 'reports', 'issuance', 'maintenance_gallery', 'scanner', 'support'],
-                'actions' => [
-                    'equipment' => ['add', 'edit'],
-                    'locations' => [],
-                    'offices' => [],
-                    'staff' => [],
-                    'issuance' => ['add', 'edit'],
-                    'maintenance_gallery' => ['add', 'edit'],
-                    'checklist' => ['edit'],
-                    'maintenance_plan' => [],
-                ],
-            ],
-            default => ['menus' => [], 'actions' => []],
-        };
+        return ['menus' => $allMenus, 'actions' => $allActions];
     }
 
     public static function sanitizePermissionsForRole(string $role, array $permissions): array

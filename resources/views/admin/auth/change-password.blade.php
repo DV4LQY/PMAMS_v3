@@ -6,9 +6,6 @@
 @section('content')
 <div class="mx-auto max-w-2xl space-y-6">
     <div>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
-            Change Password
-        </h1>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Update your account password. Use at least 8 characters with uppercase, lowercase, and one special character such as #, @, $, or !.
         </p>

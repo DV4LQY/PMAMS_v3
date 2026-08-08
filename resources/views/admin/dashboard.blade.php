@@ -131,12 +131,6 @@
     x-init="$nextTick(() => { $el.querySelectorAll('.unit-price-input').forEach((input) => input.value = $data.formatUnitPriceValue(input.value)); $data.syncAddEquipmentType(); })"
     class="space-y-6"
 >
-    {{-- Page Header --}}
-    <div class="flex flex-col gap-1">
-        <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <p class="text-sm text-gray-500">Overview of equipment inventory, issuing activity, and recent maintenance records.</p>
-    </div>
-
     {{-- Alerts --}}
     @if(session('success'))
         <div class="notification rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">

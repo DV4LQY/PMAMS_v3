@@ -14,7 +14,6 @@
 <div class="space-y-5">
     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between no-print">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Registered Accounts Report</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">List all registered accounts and access levels.</p>
         </div>
         <a href="{{ route('admin.reports.index') }}" class="inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Back to Reports</a>

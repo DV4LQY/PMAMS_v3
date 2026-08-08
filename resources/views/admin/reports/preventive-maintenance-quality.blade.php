@@ -12,10 +12,20 @@
 @endsection
 
 @section('content')
+<style>
+    /* Keep the report's range summary on the left while retaining the
+       numbered pagination controls on the right. */
+    .quality-pagination nav > div:nth-child(2) > div:first-child {
+        display: none !important;
+    }
+
+    .quality-pagination nav > div:nth-child(2) {
+        justify-content: flex-end !important;
+    }
+</style>
 <div class="space-y-6">
     <section class="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Quality Objective Monitoring</h1>
             <p class="mt-1 max-w-4xl text-sm text-gray-500 dark:text-gray-400">
                 QO worksheet values are linked to published PM Plans and saved checklist progress. Transfer counts are shown separately and do not change the actual maintained count.
             </p>
@@ -204,7 +214,9 @@
                 @endif
             </span>
             @if($rows->hasPages())
-                {{ $rows->onEachSide(1)->links() }}
+                <div class="quality-pagination">
+                    {{ $rows->onEachSide(1)->links() }}
+                </div>
             @else
                 <span class="text-gray-500 dark:text-gray-400">Page 1 of 1</span>
             @endif

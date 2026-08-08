@@ -58,6 +58,20 @@ class UserController extends Controller
 
         foreach (array_keys(User::PERMISSION_RESOURCES) as $resource) {
             $selected = $request->input("permissions.actions.{$resource}");
+
+            // The Maintenance Checklist action is an internal workflow
+            // permission and is no longer exposed as a role-editor row. Keep
+            // its existing role profile when older/newer forms are saved so
+            // hiding the row cannot silently revoke checklist access.
+            if ($resource === 'checklist' && ! is_array($selected)) {
+                $current = $fallback ?? User::permissionsForRole($role);
+                $actions[$resource] = array_values(array_intersect(
+                    (array) data_get($current, 'actions.checklist', []),
+                    $actionKeys
+                ));
+                continue;
+            }
+
             $actions[$resource] = is_array($selected)
                 ? array_values(array_intersect($selected, $actionKeys))
                 : [];
