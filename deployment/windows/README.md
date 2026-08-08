@@ -43,5 +43,19 @@ Run PowerShell as Administrator:
 .\deployment\windows\uninstall-scheduler-task.ps1
 ```
 
+## Clear caches safely on Windows
+
+If `php artisan optimize:clear` reports an access-denied error for a file in
+`bootstrap/cache`, stop only the PMAMS scheduler while clearing the individual
+caches and rebuilding them:
+
+```powershell
+.\deployment\windows\clear-laravel-cache.ps1 -PhpPath C:\xampp\php\php.exe
+```
+
+The script retries each operation and restarts the scheduler if it was running.
+If a cache file is still locked, stop the XAMPP/Apache PHP worker (and any
+other PHP process serving PMAMS), run the script again, then start the worker.
+
 Do not register both the startup runner and the Scheduled Task on the same
 server; use one scheduler process to avoid duplicate backup attempts.

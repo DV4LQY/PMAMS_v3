@@ -39,11 +39,15 @@ Route::get('/', function () {
 |--------------------------------------------------------------------------
 */
 
-Route::get('/login', [LoginController::class, 'show'])->name('login');
+Route::get('/login', [LoginController::class, 'show'])
+    ->middleware('no.cache')
+    ->name('login');
 Route::post('/login', [LoginController::class, 'login'])
-    ->middleware('throttle:10,1')
+    ->middleware(['no.cache', 'throttle:10,1'])
     ->name('login.submit');
-Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
+Route::post('/logout', [LoginController::class, 'logout'])
+    ->middleware('no.cache')
+    ->name('logout');
 
 /*
 |--------------------------------------------------------------------------
@@ -80,7 +84,7 @@ Route::post('/reset-password', [ResetPasswordController::class, 'reset'])
 | 'role:admin' group further below.
 */
 
-Route::middleware(['auth', 'role:admin,custodian', 'permission'])->group(function () {
+Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------

@@ -13,6 +13,172 @@
 @endsection
 
 @section('content')
+<style>
+    /* Mobile checklist cards: keep the desktop table intact, but remove the
+       980px horizontal scroll requirement on small screens. */
+    @media (max-width: 767px) {
+        .checklist-progress {
+            position: sticky;
+            top: 4rem;
+            z-index: 20;
+            margin-top: 1rem;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, .12);
+            backdrop-filter: blur(10px);
+        }
+
+        .dark .checklist-progress {
+            box-shadow: 0 8px 20px rgba(2, 6, 23, .34);
+        }
+
+        .checklist-items-table {
+            width: 100% !important;
+            min-width: 0 !important;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .checklist-items-table thead {
+            display: none;
+        }
+
+        .checklist-items-table tbody {
+            display: grid;
+            gap: .75rem;
+            padding: .75rem;
+        }
+
+        .checklist-items-table tbody.divide-y > :not([hidden]) ~ :not([hidden]) {
+            border-top-width: 0;
+        }
+
+        .checklist-items-table tbody tr {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: .5rem;
+            padding: .75rem;
+            border: 1px solid #d1d5db;
+            border-radius: .875rem;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+        }
+
+        .dark .checklist-items-table tbody tr {
+            border-color: #374151;
+            background: rgba(31, 41, 55, .78);
+            box-shadow: none;
+        }
+
+        .checklist-items-table tbody td {
+            display: block !important;
+            min-width: 0;
+            padding: .5rem !important;
+            border: 0 !important;
+        }
+
+        .checklist-items-table tbody td:nth-child(1),
+        .checklist-items-table tbody td:nth-child(2),
+        .checklist-items-table tbody td:nth-child(6),
+        .checklist-items-table tbody td:nth-child(7) {
+            grid-column: 1 / -1;
+        }
+
+        .checklist-items-table tbody td:nth-child(1) {
+            padding-bottom: 0 !important;
+            font-size: .7rem;
+            font-weight: 700;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        .dark .checklist-items-table tbody td:nth-child(1) {
+            color: #94a3b8;
+        }
+
+        .checklist-items-table tbody td:nth-child(2) {
+            padding-top: .125rem !important;
+            font-size: .9rem;
+            font-weight: 600;
+        }
+
+        .checklist-items-table tbody td:nth-child(3),
+        .checklist-items-table tbody td:nth-child(4),
+        .checklist-items-table tbody td:nth-child(5) {
+            display: flex !important;
+            min-height: 4.25rem;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: .35rem;
+            border: 1px solid #e5e7eb !important;
+            border-radius: .75rem;
+            background: #f8fafc;
+            text-align: center;
+        }
+
+        .dark .checklist-items-table tbody td:nth-child(3),
+        .dark .checklist-items-table tbody td:nth-child(4),
+        .dark .checklist-items-table tbody td:nth-child(5) {
+            border-color: #475569 !important;
+            background: rgba(15, 23, 42, .35);
+        }
+
+        .checklist-items-table tbody td:nth-child(3)::before,
+        .checklist-items-table tbody td:nth-child(4)::before,
+        .checklist-items-table tbody td:nth-child(5)::before,
+        .checklist-items-table tbody td:nth-child(6)::before,
+        .checklist-items-table tbody td:nth-child(7)::before {
+            display: block;
+            font-size: .7rem;
+            font-weight: 700;
+            letter-spacing: .03em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        .dark .checklist-items-table tbody td:nth-child(3)::before,
+        .dark .checklist-items-table tbody td:nth-child(4)::before,
+        .dark .checklist-items-table tbody td:nth-child(5)::before,
+        .dark .checklist-items-table tbody td:nth-child(6)::before,
+        .dark .checklist-items-table tbody td:nth-child(7)::before {
+            color: #94a3b8;
+        }
+
+        .checklist-items-table tbody td:nth-child(3)::before { content: 'OK'; }
+        .checklist-items-table tbody td:nth-child(4)::before { content: 'Not OK'; }
+        .checklist-items-table tbody td:nth-child(5)::before { content: 'Not Available'; }
+        .checklist-items-table tbody td:nth-child(6)::before { content: 'Condition'; }
+        .checklist-items-table tbody td:nth-child(7)::before { content: 'Status'; }
+
+        .checklist-items-table tbody td:nth-child(3) span.h-8.w-8,
+        .checklist-items-table tbody td:nth-child(4) span.h-8.w-8,
+        .checklist-items-table tbody td:nth-child(5) span.h-8.w-8 {
+            width: 2.75rem !important;
+            height: 2.75rem !important;
+        }
+
+        .checklist-items-table tbody td:nth-child(6),
+        .checklist-items-table tbody td:nth-child(7) {
+            border: 1px solid #e5e7eb !important;
+            border-radius: .75rem;
+            text-align: left !important;
+        }
+
+        .dark .checklist-items-table tbody td:nth-child(6),
+        .dark .checklist-items-table tbody td:nth-child(7) {
+            border-color: #475569 !important;
+        }
+
+        .checklist-items-table tbody td:nth-child(6) > div,
+        .checklist-items-table tbody td:nth-child(7) > div {
+            align-items: flex-start;
+        }
+
+        .checklist-action-bar {
+            padding-bottom: calc(.75rem + env(safe-area-inset-bottom));
+        }
+    }
+</style>
 @php
     $assignment = $device->currentAssignment;
     $staff = $assignment?->staff;
@@ -388,7 +554,7 @@
 
         </div>
 
-        <div class="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/20" aria-live="polite">
+        <div class="checklist-progress mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/20" aria-live="polite">
             <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <div>
                     <span class="font-semibold text-blue-900 dark:text-blue-100">Checklist progress</span>
@@ -419,7 +585,7 @@
                 </div>
             </div>
             <div class="overflow-x-auto">
-            <table class="min-w-[980px] w-full text-sm">
+            <table class="checklist-items-table min-w-[980px] w-full text-sm">
                 <thead class="sticky top-0 z-10 bg-gray-50 text-left dark:bg-gray-900/95">
                     <tr>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Section</th>
@@ -609,7 +775,10 @@
                                 @endif
                             </td>
 
-                            <td class="px-3 py-3 text-center">
+                            <td
+                                class="px-3 py-3 text-center"
+                                x-show="isUnserviceableSelected('{{ $key }}')"
+                            >
                                 @if(!in_array($item['group'] ?? '', ['Keyboard', 'Mouse'], true))
                                     <div
                                         x-show="isUnserviceableSelected('{{ $key }}')"
@@ -721,7 +890,7 @@
             </div>
         </div>
 
-        <div class="sticky bottom-3 z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3  dark:border-gray-700 dark:bg-gray-800/95 sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
+        <div class="checklist-action-bar sticky bottom-3 z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3  dark:border-gray-700 dark:bg-gray-800/95 sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
             <span class="text-xs text-gray-500 dark:text-gray-400" x-show="!checklistReady" x-cloak>Complete every row to enable saving.</span>
             <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300" x-show="checklistReady" x-cloak>Ready to save</span>
             <div class="ml-auto flex flex-wrap justify-end gap-2">

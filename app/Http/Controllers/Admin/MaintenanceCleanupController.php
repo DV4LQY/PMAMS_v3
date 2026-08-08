@@ -77,7 +77,13 @@ class MaintenanceCleanupController extends Controller
             'filter_q' => ['nullable', 'string', 'max:255'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
-            'remarks' => ['nullable', 'string', 'max:1000'],
+            // The report UI collects deletion remarks in a confirmation
+            // modal. Enforce the same requirement on the server so a crafted
+            // request cannot bypass the audit trail. Checklist Cleanup keeps
+            // its existing optional-remarks behaviour below.
+            'remarks' => $request->routeIs('admin.reports.checkedEquipment.delete')
+                ? ['required', 'string', 'max:1000']
+                : ['nullable', 'string', 'max:1000'],
         ]);
 
         $ids = collect($data['record_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();

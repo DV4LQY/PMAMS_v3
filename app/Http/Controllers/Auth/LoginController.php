@@ -11,6 +11,13 @@ class LoginController extends Controller
 {
     public function show()
     {
+        // Keep one browser session tied to its current account. Opening the
+        // login URL in another tab must not expose a second login form that
+        // could replace the account used by the other tabs.
+        if (Auth::check()) {
+            return redirect('/admin/dashboard');
+        }
+
         return view('auth.login');
     }
 
@@ -36,10 +43,45 @@ class LoginController extends Controller
             }
         }
 
-        if (Auth::attempt($credentials, $request->boolean('remember'))) {
+        $guard = Auth::guard();
+
+        // A browser profile has one session cookie shared by every tab. Do
+        // not let a second login silently replace the account that is already
+        // active in another tab. The user can sign out first to switch, or
+        // use a separate browser profile for a simultaneous account.
+        if ($guard->check()) {
+            $currentUser = $guard->user();
+            $candidate = $guard->getProvider()->retrieveByCredentials($credentials);
+
+            if ($candidate
+                && $currentUser
+                && (string) $candidate->getAuthIdentifier() !== (string) $currentUser->getAuthIdentifier()
+                && $guard->getProvider()->validateCredentials($candidate, $credentials)) {
+                return back()->withErrors([
+                    'email' => 'Another account is already active in this browser. Sign out first before changing accounts.',
+                ])->onlyInput('email');
+            }
+        }
+
+        // Validate the new account before ending the current one. This lets a
+        // user switch accounts in the same browser without logging out of the
+        // current account when a mistyped password is submitted.
+        if ($guard->validate($credentials)) {
+            if ($guard->check()) {
+                $guard->logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+
+            if (! $guard->attempt($credentials, $request->boolean('remember'))) {
+                return back()->withErrors([
+                    'email' => 'Unable to start the selected account session. Please try again.',
+                ])->onlyInput('email');
+            }
+
             $request->session()->regenerate();
 
-            $user = Auth::user();
+            $user = $guard->user();
 
             if (in_array($user?->role, ['super_admin', 'admin', 'unit_head'], true)) {
                 return redirect('/admin/dashboard');
@@ -103,7 +145,7 @@ class LoginController extends Controller
 
     public function logout(Request $request)
     {
-        Auth::logout();
+        Auth::guard()->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         return redirect('/login');

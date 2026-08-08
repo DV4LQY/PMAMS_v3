@@ -6,6 +6,13 @@
     <title>@yield('title', 'Admin')</title>
     <link rel="icon" type="image/png" href="{{ asset('images/ICTU-logo.png') }}">
 
+    {{-- Never restore a stale account page from the browser back/forward cache. --}}
+    <script>
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) window.location.reload();
+        });
+    </script>
+
     {{-- Apply saved theme BEFORE paint, to avoid a flash of the wrong colors --}}
     <script>
         (function () {
