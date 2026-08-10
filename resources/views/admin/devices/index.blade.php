@@ -315,7 +315,15 @@
                     return;
                 }
 
-                input.value = value ?? '';
+                const nextValue = value ?? '';
+                if (input.tagName === 'SELECT' && nextValue !== ''
+                    && !Array.from(input.options).some((option) => option.value === String(nextValue))) {
+                    const option = document.createElement('option');
+                    option.value = String(nextValue);
+                    option.textContent = String(nextValue);
+                    input.appendChild(option);
+                }
+                input.value = nextValue;
                 input.dispatchEvent(new Event('input', { bubbles: true }));
                 input.dispatchEvent(new Event('change', { bubbles: true }));
             };
@@ -334,6 +342,7 @@
             setValue('mac_address', device.mac_address);
             setValue('specs[memory]', specs.memory);
             setValue('specs[storage]', specs.storage);
+            form.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '', bubbles: true }));
             setValue('specs[form_factor]', specs.form_factor);
             setValue('os_version', this.addOsVersion);
             setValue('os_license', device.os_license);
@@ -1286,26 +1295,60 @@
 
                 <div x-show="isComputerType(editDevice.device_type_id)" x-cloak>
                     <label class="text-sm font-medium dark:text-gray-300">Memory</label>
-                    <input
+                    <select
                         name="specs[memory]"
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         x-model="editDevice.specs.memory"
-                        maxlength="50"
-                        placeholder="Example: 8GB RAM"
                         :disabled="!isComputerType(editDevice.device_type_id)"
                     >
+                        <option value="">-- Select Memory --</option>
+                        <option value="2GB">2GB</option>
+                        <option value="4GB">4GB</option>
+                        <option value="8GB">8GB</option>
+                        <option value="16GB">16GB</option>
+                        <option value="32GB">32GB</option>
+                        <option value="64GB">64GB</option>
+                        <option x-show="editDevice.specs.memory && !['2GB','4GB','8GB','16GB','32GB','64GB'].includes(editDevice.specs.memory)" :value="editDevice.specs.memory" x-text="editDevice.specs.memory"></option>
+                    </select>
                 </div>
 
-                <div x-show="isComputerType(editDevice.device_type_id)" x-cloak>
+                <div x-show="isComputerType(editDevice.device_type_id)" x-cloak x-data="{
+                        storageType: '',
+                        storageCapacity: '',
+                        storageRaw: '',
+                        capacities: { SSD: ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'], HDD: ['256GB', '500GB', '1TB', '2TB'] },
+                        get storageValue() {
+                            if (this.storageType && this.storageCapacity) return `${this.storageCapacity} ${this.storageType}`;
+                            return this.storageRaw || '';
+                        },
+                        parseStorage(value) {
+                            const raw = String(value || '').trim();
+                            const match = raw.match(/\b(SSD|HDD)\s*$/i);
+                            this.storageType = match ? match[1].toUpperCase() : '';
+                            this.storageCapacity = match ? raw.replace(/\s*(SSD|HDD)\s*$/i, '').trim() : '';
+                            this.storageRaw = raw;
+                        },
+                        syncStorageCapacity(clearRaw = false) {
+                            if (clearRaw) this.storageRaw = '';
+                            const available = this.capacities[this.storageType] || [];
+                            if (this.storageCapacity && !available.includes(this.storageCapacity)) this.storageCapacity = '';
+                        }
+                    }" x-init="parseStorage(editDevice.specs.storage)" x-on:pmams-storage-sync.window="parseStorage($event.detail)">
                     <label class="text-sm font-medium dark:text-gray-300">Storage</label>
-                    <input
-                        name="specs[storage]"
-                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        x-model="editDevice.specs.storage"
-                        maxlength="50"
-                        placeholder="Example: 256GB SSD"
-                        :disabled="!isComputerType(editDevice.device_type_id)"
-                    >
+                    <div class="mt-1 grid grid-cols-2 gap-2">
+                        <select x-model="storageType" @change="syncStorageCapacity(true)" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" :disabled="!isComputerType(editDevice.device_type_id)" aria-label="Storage type">
+                            <option value="">Select storage type</option>
+                            <option value="SSD">SSD</option>
+                            <option value="HDD">HDD</option>
+                        </select>
+                        <select x-model="storageCapacity" @change="syncStorageCapacity(true)" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" x-show="storageType" :disabled="!isComputerType(editDevice.device_type_id) || !storageType" aria-label="Storage capacity">
+                            <option value="" x-text="'Select capacity'" :selected="storageCapacity === ''">Select capacity</option>
+                            <template x-for="capacity in (capacities[storageType] || [])" :key="capacity"><option :value="capacity" x-text="capacity"></option></template>
+                            <option x-show="storageCapacity && !(capacities[storageType] || []).includes(storageCapacity)" :value="storageCapacity" x-text="storageCapacity"></option>
+                        </select>
+                    </div>
+                    <input type="hidden" name="specs[storage]" :value="storageValue" :disabled="!isComputerType(editDevice.device_type_id)">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Select a drive type, then choose its capacity.</p>
                 </div>
 
                 <div x-show="isDesktopType(editDevice.device_type_id)" x-cloak>

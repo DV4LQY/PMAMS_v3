@@ -5,24 +5,36 @@ namespace App\Services;
 use App\Models\Device;
 use App\Models\DeviceAssignment;
 use App\Models\DeviceMaintenanceRecord;
+use App\Models\SystemSetting;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
  * Builds a local, explainable maintenance-priority list.
  *
- * This deliberately uses only the inventory and maintenance history already
- * stored by PMAMS. It does not call an external AI service, so it also works
- * in an offline XAMPP installation and remains easy to audit.
+ * This uses only the inventory and maintenance history already stored by
+ * PMAMS. The Super Admin can select deterministic Laravel rules, the optional
+ * local model, or a hybrid. No external AI service is called, so the service
+ * remains usable in offline XAMPP installs.
  */
 class MaintenanceAttentionService
 {
+    public const MODE_SETTING_KEY = 'maintenance_attention_mode';
+
+    public const MODES = ['rules', 'ai', 'hybrid'];
+
+    public function __construct(private readonly LocalMaintenanceModelService $localModel)
+    {
+    }
+
     /**
      * Return equipment ordered by the likelihood that it needs attention at
      * the next preventive-maintenance cycle.
      */
-    public function recommendations(): Collection
+    public function recommendations(?string $mode = null, bool $includeModelFeatures = false): Collection
     {
+        $mode = self::normalizeMode($mode ?? SystemSetting::getValue(self::MODE_SETTING_KEY, 'hybrid'));
+
         $devices = Device::query()
             ->with([
                 'type',
@@ -63,14 +75,80 @@ class MaintenanceAttentionService
             ->groupBy('device_id')
             ->pluck('total', 'device_id');
 
-        return $devices
+        $scored = $devices
             ->map(function (Device $device) use ($recentRecords, $transferCounts) {
                 return $this->score(
                     $device,
                     $recentRecords->get($device->getKey(), collect()),
                     (int) $transferCounts->get($device->getKey(), 0)
                 );
-            })
+            });
+
+        // Training requests the feature vectors without spawning inference on
+        // the previous model first. In normal operation the Super Admin may
+        // choose Laravel rules, local AI, or a hybrid of both. A missing model
+        // always falls back to the visible Laravel rules so the page remains
+        // usable on a fresh/offline XAMPP installation.
+        $predictions = $includeModelFeatures || $mode === 'rules'
+            ? []
+            : $this->localModel->predict(
+                $scored->map(fn (array $item): array => $item['ai_features'])->values()->all()
+            );
+
+        $scored = $scored->map(function (array $item, int $index) use ($predictions, $mode, $includeModelFeatures): array {
+            $item['ai_recommended'] = false;
+            $item['recommendation_source'] = 'Laravel rules';
+
+            if ($includeModelFeatures) {
+                return $item;
+            }
+
+            if ($predictions !== [] && array_key_exists($index, $predictions)) {
+                $probability = isset($predictions[$index])
+                    ? max(0, min(1, (float) $predictions[$index]))
+                    : null;
+
+                if ($probability === null) {
+                    return $item;
+                }
+
+                $item['ai_probability'] = $probability;
+                $item['ai_score'] = (int) round($probability * 100);
+                $item['ai_recommended'] = $probability >= 0.70;
+
+                if ($mode === 'ai') {
+                    $item['score'] = $item['ai_score'];
+                    $item['priority'] = $this->priorityForScore($item['score']);
+                    $item['recommendation_source'] = 'Local AI';
+                    $item['reasons'] = $item['ai_recommended']
+                        ? ['Local AI recommends maintenance attention (' . (int) round($probability * 100) . '% confidence)']
+                        : ['Local AI found no high-confidence attention signal (' . (int) round($probability * 100) . '% confidence)'];
+                } else {
+                    // Hybrid keeps the existing rule score and only lets AI
+                    // raise the priority. This avoids hiding auditable rules.
+                    $item['score'] = max($item['score'], $item['ai_score']);
+                    $item['priority'] = $this->priorityForScore($item['score']);
+                    $item['recommendation_source'] = $item['ai_recommended']
+                        ? 'Laravel rules + Local AI'
+                        : 'Laravel rules';
+
+                    if ($item['ai_recommended']) {
+                        $item['reasons'][] = 'Local AI recommends attention (' . (int) round($probability * 100) . '% confidence)';
+                    }
+                }
+
+                return $item;
+            }
+
+            if ($mode === 'ai' && $predictions === []) {
+                $item['recommendation_source'] = 'Laravel fallback';
+                $item['reasons'][] = 'Local AI model unavailable; Laravel rules shown';
+            }
+
+            return $item;
+        });
+
+        return $scored
             ->sort(function (array $left, array $right) {
                 $score = $right['score'] <=> $left['score'];
                 if ($score !== 0) {
@@ -86,7 +164,47 @@ class MaintenanceAttentionService
                 // score is otherwise tied.
                 return $left['last_maintenance_sort'] <=> $right['last_maintenance_sort'];
             })
+            ->map(function (array $item) use ($includeModelFeatures): array {
+                // Feature vectors are for the model bridge only and should
+                // never be exposed as part of the view data.
+                if (! $includeModelFeatures) {
+                    unset($item['ai_features']);
+                }
+
+                return $item;
+            })
             ->values();
+    }
+
+    /**
+     * Build labels from the same auditable signals used by the page. This is
+     * intentionally a bootstrap dataset, not a hidden source of truth.
+     *
+     * @return array<int, array<string, int|float>>
+     */
+    public function trainingRows(): array
+    {
+        return $this->recommendations('rules', true)
+            ->map(function (array $item): array {
+                $features = $item['ai_features'] ?? [];
+                $positive = (int) ($features['is_unserviceable'] ?? 0) === 1
+                    || (int) ($features['is_repair'] ?? 0) === 1
+                    || (int) ($features['is_not_in_use'] ?? 0) === 1
+                    || (int) ($features['recent_issue_count'] ?? 0) > 0
+                    || (int) ($features['maintenance_overdue_days'] ?? 0) > 365
+                    || (int) ($features['age_years'] ?? 0) >= 7;
+
+                return $features + ['label' => $positive ? 1 : 0];
+            })
+            ->values()
+            ->all();
+    }
+
+    public static function normalizeMode(?string $mode): string
+    {
+        $mode = strtolower(trim((string) $mode));
+
+        return in_array($mode, self::MODES, true) ? $mode : 'hybrid';
     }
 
     /**
@@ -104,6 +222,7 @@ class MaintenanceAttentionService
         $status = $this->key($device->status);
         $osVersion = strtolower(trim((string) $device->os_version));
         $memoryGb = $this->memoryGb($device);
+        $storage = strtolower(trim((string) data_get($device->specs, 'storage', '')));
 
         if ($condition === 'unserviceable') {
             $score += 35;
@@ -135,15 +254,25 @@ class MaintenanceAttentionService
             $reasons[] = 'Upgrade RAM to at least 8 GB';
         }
 
+        // Mechanical hard drives are a predictable performance bottleneck
+        // for desktop equipment. Recommend an SSD flash-storage upgrade only
+        // when the inventory explicitly records an HDD.
+        if ($this->key($device->type?->name) === 'desktop'
+            && preg_match('/\bhdd\b/i', $storage) === 1) {
+            $score += 15;
+            $attentionFlags[] = 'hdd_upgrade';
+            $reasons[] = 'Upgrade HDD storage to SSD flash storage';
+        }
+
         if ($this->key($device->os_license) === 'cracked') {
             $score += 20;
-            $attentionFlags[] = 'cracked_license';
+            $attentionFlags[] = 'cracked_os';
             $reasons[] = 'Procure a Genuine OS license';
         }
 
         if ($this->key($device->ms_office_license) === 'cracked') {
             $score += 20;
-            $attentionFlags[] = 'cracked_license';
+            $attentionFlags[] = 'cracked_ms_office';
             $reasons[] = 'Procure a Genuine Microsoft Office suite';
         }
 
@@ -192,6 +321,7 @@ class MaintenanceAttentionService
             ? ($lastMaintenance instanceof Carbon ? $lastMaintenance : Carbon::parse($lastMaintenance))
             : null;
 
+        $daysSinceMaintenance = null;
         if (! $lastMaintenance) {
             $score += 20;
             $reasons[] = 'No maintenance date is recorded';
@@ -235,7 +365,29 @@ class MaintenanceAttentionService
             'last_maintenance_sort' => $lastMaintenance?->timestamp ?? 0,
             'location' => $locationDetails['label'],
             'location_name' => $locationDetails['name'],
+            'office_name' => $locationDetails['office_name'],
+            'ai_features' => [
+                'memory_gb' => $memoryGb ?? 0,
+                'memory_known' => $memoryGb === null ? 0 : 1,
+                'has_hdd' => preg_match('/\bhdd\b/i', $storage) === 1 ? 1 : 0,
+                'is_desktop' => $this->key($device->type?->name) === 'desktop' ? 1 : 0,
+                'is_unserviceable' => $condition === 'unserviceable' ? 1 : 0,
+                'is_repair' => $status === 'repair' ? 1 : 0,
+                'is_not_in_use' => $status === 'not_in_use' ? 1 : 0,
+                'os_cracked' => $this->key($device->os_license) === 'cracked' ? 1 : 0,
+                'ms_office_cracked' => $this->key($device->ms_office_license) === 'cracked' ? 1 : 0,
+                'recent_issue_count' => $issueRecords->count(),
+                'transfer_count' => $transferCount,
+                'age_years' => $ageYears,
+                'maintenance_overdue_days' => $daysSinceMaintenance ?? 0,
+                'maintenance_missing' => $lastMaintenance ? 0 : 1,
+            ],
         ];
+    }
+
+    private function priorityForScore(int $score): string
+    {
+        return $score >= 75 ? 'Critical' : ($score >= 50 ? 'High' : ($score >= 25 ? 'Medium' : 'Low'));
     }
 
     /**
@@ -279,7 +431,11 @@ class MaintenanceAttentionService
         $officeName = $office?->name;
 
         if ($locationName && $officeName) {
-            return ['label' => $locationName . ' - ' . $officeName, 'name' => $locationName];
+            return [
+                'label' => $locationName . ' - ' . $officeName,
+                'name' => $locationName,
+                'office_name' => $officeName,
+            ];
         }
 
         $name = $locationName ?: $officeName;
@@ -287,6 +443,7 @@ class MaintenanceAttentionService
         return [
             'label' => $name ?: 'Location not assigned',
             'name' => $name ?: 'Location not assigned',
+            'office_name' => $officeName ?: 'Office not assigned',
         ];
     }
 

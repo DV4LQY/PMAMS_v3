@@ -8,6 +8,19 @@
     $formDeviceSpecs = is_array($formDevice?->specs) ? $formDevice->specs : [];
     $formDeviceDateAcquired = $formDevice?->date_acquired?->format('Y-m-d');
     $formDeviceLastMaintenanceDate = $formDevice?->last_maintenance_date?->format('Y-m-d');
+    $memoryOptions = ['2GB', '4GB', '8GB', '16GB', '32GB', '64GB'];
+    $storageCapacityOptions = [
+        'SSD' => ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'],
+        'HDD' => ['256GB', '500GB', '1TB', '2TB'],
+    ];
+    $existingMemory = trim((string) old('specs.memory', data_get($formDeviceSpecs, 'memory', '')));
+    $existingStorage = trim((string) old('specs.storage', data_get($formDeviceSpecs, 'storage', '')));
+    $existingStorageType = preg_match('/\b(HDD|SSD)\s*$/i', $existingStorage, $storageTypeMatch)
+        ? strtoupper($storageTypeMatch[1])
+        : '';
+    $existingStorageCapacity = $existingStorageType !== ''
+        ? trim((string) preg_replace('/\s*(HDD|SSD)\s*$/i', '', $existingStorage))
+        : '';
 @endphp
 
 <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -275,27 +288,67 @@
 
     <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Memory</label>
-        <input
+        <select
             name="specs[memory]"
-            value="{{ old('specs.memory', data_get($formDeviceSpecs, 'memory')) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            maxlength="50"
-            placeholder="Example: 8GB RAM"
             :disabled="!isComputerType(addTypeId)"
         >
+            <option value="">-- Select Memory --</option>
+            @foreach($memoryOptions as $memoryOption)
+                <option value="{{ $memoryOption }}" @selected($existingMemory === $memoryOption)>{{ $memoryOption }}</option>
+            @endforeach
+            @if($existingMemory !== '' && !in_array($existingMemory, $memoryOptions, true))
+                <option value="{{ $existingMemory }}" selected>{{ $existingMemory }}</option>
+            @endif
+        </select>
         @error('specs.memory')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
-    <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
+    <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer" x-data="{
+            storageType: @js($existingStorageType),
+            storageCapacity: @js($existingStorageCapacity),
+            storageRaw: @js($existingStorage),
+            capacities: @js($storageCapacityOptions),
+            get storageValue() {
+                if (this.storageType && this.storageCapacity) return `${this.storageCapacity} ${this.storageType}`;
+                return this.storageRaw || '';
+            },
+            syncStorageCapacity(clearRaw = false) {
+                if (clearRaw) this.storageRaw = '';
+                const available = this.capacities[this.storageType] || [];
+                if (this.storageCapacity && !available.includes(this.storageCapacity)) this.storageCapacity = '';
+            }
+        }" x-init="syncStorageCapacity()" x-on:pmams-storage-sync.window="storageRaw = String($event.detail || ''); const match = storageRaw.match(/\b(SSD|HDD)\s*$/i); storageType = match ? match[1].toUpperCase() : ''; storageCapacity = match ? storageRaw.replace(/\s*(SSD|HDD)\s*$/i, '').trim() : ''; syncStorageCapacity()">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Storage</label>
-        <input
-            name="specs[storage]"
-            value="{{ old('specs.storage', data_get($formDeviceSpecs, 'storage')) }}"
-            class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-700 dark:text-white"
-            maxlength="50"
-            placeholder="Example: 256GB SSD"
-            :disabled="!isComputerType(addTypeId)"
-        >
+        <div class="mt-1 grid grid-cols-2 gap-2">
+            <select
+                x-model="storageType"
+                @change="syncStorageCapacity(true)"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                :disabled="!isComputerType(addTypeId)"
+                aria-label="Storage type"
+            >
+                <option value="">Select storage type</option>
+                <option value="SSD">SSD</option>
+                <option value="HDD">HDD</option>
+            </select>
+            <select
+                x-model="storageCapacity"
+                @change="syncStorageCapacity(true)"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                x-show="storageType"
+                :disabled="!isComputerType(addTypeId) || !storageType"
+                aria-label="Storage capacity"
+            >
+                <option value="" x-text="'Select capacity'" :selected="storageCapacity === ''">Select capacity</option>
+                <template x-for="capacity in (capacities[storageType] || [])" :key="capacity">
+                    <option :value="capacity" x-text="capacity"></option>
+                </template>
+                <option x-show="storageCapacity && !(capacities[storageType] || []).includes(storageCapacity)" :value="storageCapacity" x-text="storageCapacity"></option>
+            </select>
+        </div>
+        <input type="hidden" name="specs[storage]" :value="storageValue" :disabled="!isComputerType(addTypeId)">
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Select a drive type, then choose its capacity.</p>
         @error('specs.storage')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 

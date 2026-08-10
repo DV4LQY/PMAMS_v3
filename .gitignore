@@ -36,3 +36,6 @@ Thumbs.db
 # Local scheduled database backups are intentionally kept out of Git.
 /storage/app/backups/*.sql
 /storage/app/private/backups/*.sql
+# Offline maintenance-attention model artifacts are generated per deployment.
+/storage/app/ai/*.onnx
+/storage/app/ai/*.json

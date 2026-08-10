@@ -96,6 +96,8 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
         Route::get('/maintenance-attention', [MaintenanceAttentionController::class, 'index'])
             ->name('admin.maintenance-attention.index');
+        Route::post('/maintenance-attention/mode', [MaintenanceAttentionController::class, 'updateMode'])
+            ->name('admin.maintenance-attention.mode');
         Route::view('/org-browser', 'admin.org-browser')->name('admin.org-browser');
         Route::view('/scanner', 'admin.scanner')->name('admin.scanner');
         // Keep the legacy support URL working while exposing the renamed Contributors page.

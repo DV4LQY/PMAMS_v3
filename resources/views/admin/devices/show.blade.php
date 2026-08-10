@@ -165,7 +165,15 @@
                         return;
                     }
 
-                    input.value = value ?? '';
+                    const nextValue = value ?? '';
+                    if (input.tagName === 'SELECT' && nextValue !== ''
+                        && !Array.from(input.options).some((option) => option.value === String(nextValue))) {
+                        const option = document.createElement('option');
+                        option.value = String(nextValue);
+                        option.textContent = String(nextValue);
+                        input.appendChild(option);
+                    }
+                    input.value = nextValue;
                     input.dispatchEvent(new Event('input', { bubbles: true }));
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                 };
@@ -184,6 +192,7 @@
                 setValue('mac_address', device.mac_address);
                 setValue('specs[memory]', specs.memory);
                 setValue('specs[storage]', specs.storage);
+                form.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '', bubbles: true }));
                 setValue('specs[form_factor]', specs.form_factor);
                 setValue('os_version', this.addOsVersion);
                 setValue('os_license', device.os_license);

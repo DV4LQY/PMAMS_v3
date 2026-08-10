@@ -9,6 +9,16 @@
     <span>Add Equipment</span>
 @endsection
 
+@php
+    $createStorage = trim((string) old('specs.storage', ''));
+    $createStorageType = preg_match('/\b(HDD|SSD)\s*$/i', $createStorage, $createStorageTypeMatch)
+        ? strtoupper($createStorageTypeMatch[1])
+        : '';
+    $createStorageCapacity = $createStorageType !== ''
+        ? trim((string) preg_replace('/\s*(HDD|SSD)\s*$/i', '', $createStorage))
+        : '';
+@endphp
+
 @section('content')
 <div class="bg-white rounded shadow-sm p-6 max-w-4xl">
     <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-6">
@@ -143,6 +153,39 @@
                 @error('mac_address')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
+            </div>
+
+            {{-- Memory (Computer only) --}}
+            <div id="memory_wrapper" style="display:none;">
+                <label class="text-sm font-medium">Memory</label>
+                <select name="specs[memory]" id="memory_select" class="mt-1 w-full border rounded px-3 py-2" disabled>
+                    <option value="">-- Select Memory --</option>
+                    @foreach(['2GB', '4GB', '8GB', '16GB', '32GB', '64GB'] as $memoryOption)
+                        <option value="{{ $memoryOption }}" @selected(old('specs.memory') === $memoryOption)>{{ $memoryOption }}</option>
+                    @endforeach
+                    @if(old('specs.memory') && !in_array(old('specs.memory'), ['2GB', '4GB', '8GB', '16GB', '32GB', '64GB'], true))
+                        <option value="{{ old('specs.memory') }}" selected>{{ old('specs.memory') }}</option>
+                    @endif
+                </select>
+                @error('specs.memory')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+            </div>
+
+            {{-- Storage (Computer only) --}}
+            <div id="storage_wrapper" style="display:none;">
+                <label class="text-sm font-medium">Storage</label>
+                <div class="mt-1 grid grid-cols-2 gap-2">
+                    <select id="storage_type_select" class="w-full border rounded px-3 py-2" disabled>
+                        <option value="">Select storage type</option>
+                        <option value="SSD" @selected($createStorageType === 'SSD')>SSD</option>
+                        <option value="HDD" @selected($createStorageType === 'HDD')>HDD</option>
+                    </select>
+                    <select id="storage_capacity_select" class="w-full border rounded px-3 py-2" data-initial-capacity="{{ $createStorageCapacity }}" style="display:none;" disabled>
+                        <option value="" selected>Select capacity</option>
+                    </select>
+                </div>
+                <input type="hidden" name="specs[storage]" id="storage_value_input" value="{{ $createStorage }}" data-raw-value="{{ $createStorage }}" disabled>
+                <p class="mt-1 text-xs text-gray-500">Select a drive type, then choose its capacity.</p>
+                @error('specs.storage')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
             {{-- Date Acquired --}}
@@ -280,6 +323,16 @@
         var msLicenseWrap   = document.getElementById('ms_office_license_wrapper');
         var computerNameWrap = document.getElementById('computer_name_wrapper');
         var computerNameInput = document.getElementById('computer_name_input');
+        var memoryWrap = document.getElementById('memory_wrapper');
+        var memorySelect = document.getElementById('memory_select');
+        var storageWrap = document.getElementById('storage_wrapper');
+        var storageTypeSelect = document.getElementById('storage_type_select');
+        var storageCapacitySelect = document.getElementById('storage_capacity_select');
+        var storageValueInput = document.getElementById('storage_value_input');
+        var storageCapacities = {
+            SSD: ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'],
+            HDD: ['256GB', '500GB', '1TB', '2TB']
+        };
 
         function isComputer(name) {
             name = String(name || '').trim().toLowerCase();
@@ -292,6 +345,37 @@
 
         function show(el) { el.style.display = ''; }
         function hide(el) { el.style.display = 'none'; }
+
+        function syncStorageValue() {
+            if (!storageTypeSelect || !storageCapacitySelect || !storageValueInput) return;
+            var type = storageTypeSelect.value || '';
+            var capacity = storageCapacitySelect.value || '';
+            storageValueInput.value = type && capacity
+                ? capacity + ' ' + type
+                : (storageValueInput.dataset.rawValue || '');
+        }
+
+        function updateStorageCapacities(resetCapacity) {
+            if (!storageTypeSelect || !storageCapacitySelect) return;
+            var type = storageTypeSelect.value || '';
+            var previous = resetCapacity ? '' : (storageCapacitySelect.value || storageCapacitySelect.dataset.initialCapacity || '');
+            if (resetCapacity && storageValueInput) storageValueInput.dataset.rawValue = '';
+            storageCapacitySelect.replaceChildren();
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select capacity';
+            storageCapacitySelect.appendChild(placeholder);
+            (storageCapacities[type] || []).forEach(function (capacity) {
+                var option = document.createElement('option');
+                option.value = capacity;
+                option.textContent = capacity;
+                storageCapacitySelect.appendChild(option);
+            });
+            if (previous && (storageCapacities[type] || []).includes(previous)) {
+                storageCapacitySelect.value = previous;
+            }
+            syncStorageValue();
+        }
 
         function updateStatusField() {
             var visible = conditionSelect && String(conditionSelect.value || '').toLowerCase() === 'unserviceable';
@@ -319,10 +403,24 @@
             if (computer) {
                 show(computerNameWrap);
                 computerNameInput.disabled = false;
+                show(memoryWrap);
+                memorySelect.disabled = false;
+                show(storageWrap);
+                storageTypeSelect.disabled = false;
+                storageCapacitySelect.disabled = !storageTypeSelect.value;
+                storageValueInput.disabled = false;
             } else {
                 hide(computerNameWrap);
                 computerNameInput.disabled = true;
                 computerNameInput.value = '';
+                hide(memoryWrap);
+                memorySelect.disabled = true;
+                hide(storageWrap);
+                storageTypeSelect.disabled = true;
+                storageCapacitySelect.disabled = true;
+                storageValueInput.disabled = true;
+                storageTypeSelect.value = '';
+                updateStorageCapacities(true);
             }
 
             if (computer) {
@@ -342,6 +440,12 @@
 
         typeSelect.addEventListener('change', updateFields);
         conditionSelect.addEventListener('change', updateStatusField);
+            storageTypeSelect.addEventListener('change', function () {
+                updateStorageCapacities(true);
+                storageCapacitySelect.style.display = this.value ? '' : 'none';
+                storageCapacitySelect.disabled = !this.value;
+            });
+        storageCapacitySelect.addEventListener('change', syncStorageValue);
 
         osVersionSel.addEventListener('change', function () {
             if (this.value) { show(osLicenseWrap); } else { hide(osLicenseWrap); }
@@ -352,6 +456,8 @@
         });
 
         // Run on page load
+        updateStorageCapacities(false);
+        storageCapacitySelect.style.display = storageTypeSelect.value ? '' : 'none';
         updateFields();
         updateStatusField();
     })();

@@ -34,3 +34,20 @@ Schedule::command('database:backup-monthly')
 
         return $dateMatches && now()->format('H:i') === $time;
     });
+
+// Retrain the optional local model once per month after the scheduled backup.
+// The scheduler is evaluated daily so the day/time can be changed in .env
+// without editing code or restarting the scheduler worker.
+Schedule::command('maintenance:train-model', [
+    '--min-samples' => max(2, (int) config('maintenance.attention_ai.min_samples', 20)),
+])
+    ->dailyAt((string) config('maintenance.attention_ai.train_time', '03:30'))
+    ->withoutOverlapping(60)
+    ->when(function (): bool {
+        if (! filter_var(config('maintenance.attention_ai.auto_train', true), FILTER_VALIDATE_BOOL)
+            || ! filter_var(config('maintenance.attention_ai.enabled', true), FILTER_VALIDATE_BOOL)) {
+            return false;
+        }
+
+        return now()->day === min(28, max(1, (int) config('maintenance.attention_ai.train_day', 1)));
+    });
