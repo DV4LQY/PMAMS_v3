@@ -102,6 +102,7 @@
         >
             <input
                 name="q"
+                data-pmams-search
                 value="{{ $q }}"
                 x-on:input="submitFilters()"
                 x-on:keydown.enter.prevent="$refs.filterForm.requestSubmit()"
@@ -152,6 +153,7 @@
             <input
                 type="number"
                 name="year"
+                data-pmams-persist-input
                 min="2000"
                 max="2100"
                 value="{{ $selectedYear }}"

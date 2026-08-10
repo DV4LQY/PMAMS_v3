@@ -256,6 +256,87 @@
         </div>
     </div>
 
+    {{-- The detailed list lives on a dedicated paginated page. --}}
+    <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <div>
+                <h2 class="text-base font-semibold text-amber-950 dark:text-amber-100">Maintenance attention</h2>
+                <p class="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">Review local, explainable recommendations for the next preventive-maintenance cycle.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-950 dark:bg-amber-900/70 dark:text-amber-100">
+                    {{ number_format($maintenanceAttentionCount ?? 0) }} item(s) need review
+                </span>
+                <a href="{{ route('admin.maintenance-attention.index') }}" class="rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
+                    Open maintenance attention
+                </a>
+            </div>
+        </div>
+    </section>
+
+    @if(false)
+    {{-- Local maintenance-attention recommendations --}}
+    <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h2 class="text-base font-semibold text-amber-950 dark:text-amber-100">Maintenance attention</h2>
+                <p class="mt-1 max-w-3xl text-sm text-amber-900/80 dark:text-amber-200/80">
+                    Local, explainable recommendations for the next preventive-maintenance cycle. Condemned equipment is excluded.
+                    Review the reasons before taking action.
+                </p>
+            </div>
+            <span class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-950 dark:bg-amber-900/70 dark:text-amber-100">
+                {{ number_format($maintenanceAttentionCount ?? 0) }} item(s) need review
+            </span>
+        </div>
+
+        @if(($maintenanceAttention ?? collect())->isNotEmpty())
+            <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                @foreach($maintenanceAttention as $attention)
+                    @php
+                        $device = $attention['device'];
+                        $priorityClasses = match ($attention['priority']) {
+                            'Critical' => 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200',
+                            'High' => 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200',
+                            'Medium' => 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200',
+                            default => 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+                        };
+                    @endphp
+                    <article class="rounded-xl border border-amber-200 bg-white/80 p-4 dark:border-amber-900/50 dark:bg-gray-900/60">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <a href="{{ route('admin.devices.index', ['q' => $device->property_number]) }}" class="truncate font-semibold text-blue-700 hover:underline dark:text-blue-300">
+                                    {{ $device->property_number ?: 'Unnumbered equipment' }}
+                                </a>
+                                <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                    {{ $device->type?->name ?? 'Equipment' }} · {{ $attention['location'] }}
+                                </p>
+                            </div>
+                            <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold {{ $priorityClasses }}">
+                                {{ $attention['priority'] }} · {{ $attention['score'] }}/100
+                            </span>
+                        </div>
+                        <ul class="mt-3 space-y-1 text-xs text-gray-700 dark:text-gray-300">
+                            @foreach(array_slice($attention['reasons'], 0, 3) as $reason)
+                                <li class="flex gap-2"><span aria-hidden="true">•</span><span>{{ $reason }}</span></li>
+                            @endforeach
+                        </ul>
+                        <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span>Last maintenance: {{ $attention['last_maintenance']?->format('M d, Y') ?? 'Not recorded' }}</span>
+                            <a href="{{ route('admin.devices.index', ['q' => $device->property_number]) }}" class="font-medium text-blue-700 hover:underline dark:text-blue-300">Review equipment</a>
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+        @else
+            <div class="mt-4 rounded-xl border border-dashed border-amber-300 bg-white/60 px-4 py-6 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-gray-900/40 dark:text-amber-200">
+                No equipment currently meets the review threshold. Continue recording checklist history for better recommendations.
+            </div>
+        @endif
+    </section>
+
+    @endif
+
     {{-- Charts 2x2 --}}
     <div
         class="grid grid-cols-1 gap-6 xl:grid-cols-2"

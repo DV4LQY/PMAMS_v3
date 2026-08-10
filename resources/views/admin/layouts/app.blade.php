@@ -672,6 +672,7 @@
         request()->routeIs('admin.staff.*'),
         request()->routeIs('admin.org-browser') => 'locations',
         request()->routeIs('admin.devices.*') => 'devices',
+        request()->routeIs('admin.maintenance-attention.*') => 'maintenance-attention',
         request()->routeIs('admin.maintenance-plan.*') => 'maintenance-plan',
         request()->routeIs('admin.issuance.*') => 'reports',
         request()->routeIs('admin.reports.*') => 'reports',
@@ -810,6 +811,21 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0v10l-8 4m8-14l-8 4m0 10L4 17V7m8 4L4 7m8 4l8-4"/>
                     </svg>
                     <span>Equipment</span>
+                </a>
+                @endif
+                @if(auth()->user()?->canMenu('equipment'))
+                <a
+                    href="{{ route('admin.maintenance-attention.index') }}"
+                    data-nav-group="maintenance-attention"
+                    data-active="{{ $currentNavGroup === 'maintenance-attention' ? 'true' : 'false' }}"
+                    @if($currentNavGroup === 'maintenance-attention') aria-current="page" @endif
+                    class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition
+                    {{ request()->routeIs('admin.maintenance-attention.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
+                >
+                    <svg class="w-5 h-5 {{ request()->routeIs('admin.maintenance-attention.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v18m9-9H3m15.36-6.36L5.64 18.36m12.72 0L5.64 5.64"/>
+                    </svg>
+                    <span>Maintenance Attention</span>
                 </a>
                 @endif
                 @if(auth()->user()?->canMenu('maintenance_plan'))
@@ -1646,6 +1662,126 @@
             },
         };
     };
+</script>
+
+<script>
+    // Keep page-level auto-search values stable while GET filters are submitted
+    // and Livewire swaps the page. Session storage is deliberately scoped to
+    // the browser tab, so one tab cannot leak a search into another account.
+    (function setupPmamsSearchState() {
+        if (window.__pmamsSearchStateReady) return;
+        window.__pmamsSearchStateReady = true;
+
+        const selector = 'input[data-pmams-search], input[data-pmams-persist-input]';
+        const storage = () => {
+            try { return window.sessionStorage; } catch (error) { return null; }
+        };
+        const fieldName = (field) => field.getAttribute('name') || field.id || '';
+        const keyFor = (field) => {
+            const name = fieldName(field);
+            return name ? `pmams.search:${window.location.pathname}:${name}` : '';
+        };
+        const read = (key) => {
+            if (!key) return '';
+            const store = storage();
+            if (!store) return '';
+            try { return store.getItem(key) || ''; } catch (error) { return ''; }
+        };
+        const write = (key, value) => {
+            if (!key) return;
+            const store = storage();
+            if (!store) return;
+            try {
+                const text = String(value ?? '');
+                if (text.trim() === '') store.removeItem(key);
+                else store.setItem(key, text);
+            } catch (error) {
+                // Storage can be unavailable in private/restricted browsers;
+                // the server-rendered query remains the source of truth.
+            }
+        };
+        const removeForCurrentPage = () => {
+            document.querySelectorAll(selector).forEach((field) => write(keyFor(field), ''));
+        };
+        const persistFields = (root = document) => {
+            root.querySelectorAll?.(selector).forEach((field) => write(keyFor(field), field.value));
+        };
+        const focusSearchField = () => {
+            const field = Array.from(document.querySelectorAll('input[data-pmams-search]'))
+                .find((candidate) => candidate.offsetParent !== null || candidate.getClientRects().length > 0);
+
+            if (!field) return;
+
+            requestAnimationFrame(() => {
+                // Keep the query active after Livewire swaps the page so the
+                // next keystroke continues the same search. Do not scroll the
+                // page just to restore focus, and place the caret at the end.
+                field.focus({ preventScroll: true });
+                const end = field.value.length;
+                try { field.setSelectionRange(end, end); } catch (error) { /* input may not support selection */ }
+            });
+        };
+        const restoreFields = () => {
+            const params = new URLSearchParams(window.location.search);
+            const explicitReset = params.has('reset') || params.get('load') === '1';
+
+            document.querySelectorAll(selector).forEach((field) => {
+                const name = fieldName(field);
+                const key = keyFor(field);
+                if (!name) return;
+
+                if (explicitReset && !params.has(name)) {
+                    write(key, '');
+                    return;
+                }
+
+                if (params.has(name)) {
+                    // The URL is canonical after an auto-submit. An empty URL
+                    // value is an intentional clear and must not be restored.
+                    write(key, params.get(name) || '');
+                    return;
+                }
+
+                if (field.value.trim() !== '') {
+                    write(key, field.value);
+                    return;
+                }
+
+                const saved = read(key);
+                if (saved !== '') field.value = saved;
+            });
+
+            focusSearchField();
+        };
+
+        document.addEventListener('input', (event) => {
+            const field = event.target.closest?.(selector);
+            if (field) write(keyFor(field), field.value);
+        }, true);
+
+        document.addEventListener('submit', (event) => {
+            const form = event.target;
+            if (form instanceof HTMLFormElement) persistFields(form);
+        }, true);
+
+        document.addEventListener('livewire:navigating', () => persistFields());
+        document.addEventListener('livewire:navigated', restoreFields);
+        document.addEventListener('DOMContentLoaded', restoreFields, { once: true });
+
+        document.addEventListener('click', (event) => {
+            const control = event.target.closest?.('a, button, input[type="reset"]');
+            if (!control) return;
+            const label = (control.textContent || control.value || '').trim();
+            const href = control.getAttribute('href') || '';
+            if (/\breset\b/i.test(label) || /(?:[?&](?:reset|load)=1)(?:&|$)/.test(href)) {
+                removeForCurrentPage();
+            }
+        }, true);
+
+        // Run immediately for a full load; Livewire will run this again after
+        // a SPA navigation replaces the page controls.
+        restoreFields();
+    })();
 </script>
 
 @stack('scripts')

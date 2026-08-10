@@ -15,6 +15,7 @@ PMAMS (Preventive Maintenance and Asset Monitoring System) is a Laravel-based IC
 - Activity logging for equipment and organization changes
 - Responsive mobile sidebar and SPA-style page navigation powered by Livewire
 - Dark mode and synchronized support contacts on the login and authenticated support pages
+- Local maintenance-attention recommendations that work offline and explain why equipment is prioritized, available from the dashboard summary and paginated sidebar page
 
 ## Technology stack
 
@@ -97,6 +98,36 @@ http://localhost/pms_systemv2/public
 ```
 
 Alternatively, use `php artisan serve` from the project directory.
+
+### Offline XAMPP deployment
+
+The dashboard maintenance-attention recommendations are calculated locally from the PMAMS database; they do not require an internet connection, an API key, or a separate AI service. Copy the project to `C:\xampp\htdocs\pms_systemv2`, start Apache and MySQL, configure `.env`, and open:
+
+```text
+http://localhost/pms_systemv2/public
+```
+
+Install the PHP dependencies before serving the application and build the production assets once:
+
+```bat
+cd C:\xampp\htdocs\pms_systemv2
+composer install --no-dev --optimize-autoloader
+php artisan key:generate
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+npm install
+npm run build
+```
+
+The **Maintenance attention** dashboard summary links to a dedicated paginated page. The page is lazy-loaded: choose a filter (the dropdowns submit automatically) or press **Reset** before recommendations are queried. The recommendations are advisory: they score existing equipment using condition/status, recent checklist issues, equipment age, maintenance recency, repeated maintenance, transfers, RAM/OS compatibility, and license status. The page can be filtered by location, RAM-upgrade attention, cracked OS/MS Office licensing, or equipment at least five years old. Windows 10/11 systems with 8 GB or less are advised to upgrade to at least 16 GB; Windows 7/8 systems with 4 GB or less are advised to upgrade to at least 8 GB. Cracked OS or Microsoft Office entries recommend procuring genuine software. Condemned equipment is excluded. Review the reasons and use the existing equipment/checklist actions for the final decision; those actions continue to be recorded by the normal activity-history workflow.
+
+The score is intentionally explainable: unserviceable/repair signals carry the greatest weight, followed by overdue or missing maintenance dates, repeated recent issues, equipment age, and repeated transfers. Scores are shown as Low, Medium, High, or Critical with the contributing reasons, so a supervisor can verify the recommendation without trusting an opaque model.
+
+#### Future local-model extension (ONNX)
+
+The current scorer is the safe baseline until PMAMS has enough historical outcomes. Later, checklist history can be exported for a Python training job, labelled with the eventual outcome (for example, repair, upgrade, or no action), and exported to ONNX. The ONNX model can then be deployed under `storage/app/private/models/` and called by a local adapter while retaining `MaintenanceAttentionService` as the fallback. This keeps XAMPP deployments offline and preserves the current dashboard contract if the model is unavailable.
 
 ## User roles
 

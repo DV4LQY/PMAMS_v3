@@ -7,10 +7,11 @@ use App\Models\DeviceMaintenanceRecord;
 use App\Models\DeviceType;
 use App\Models\MaintenancePlanSchedule;
 use App\Models\Staff;
+use App\Services\MaintenanceAttentionService;
 use Carbon\Carbon;
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(MaintenanceAttentionService $maintenanceAttentionService)
     {
         $totalDevices = Device::count();
         $availableDevices = Device::where('status', 'available')->count();
@@ -166,6 +167,15 @@ class DashboardController extends Controller
             'Completed' => 0,
         ]);
 
+        // Local, explainable recommendations for the next PM cycle. This is
+        // intentionally advisory: existing checklist/edit/reissue workflows
+        // remain the approval point for any action.
+        $maintenanceAttentionRecommendations = $maintenanceAttentionService->recommendations();
+        $maintenanceAttentionCount = $maintenanceAttentionRecommendations
+            ->where('score', '>=', 25)
+            ->count();
+        $maintenanceAttention = $maintenanceAttentionRecommendations->take(8);
+
         $maintenancePlans = MaintenancePlanSchedule::query()
             ->visibleTo(auth()->user())
             ->with(['latestOverride', 'completion'])
@@ -235,6 +245,8 @@ class DashboardController extends Controller
             'maintenanceSemiannually',
             'transferSemiannually',
             'maintenancePlanStatuses',
-        ));
+            'maintenanceAttention',
+            'maintenanceAttentionCount',
+         ));
     }
 }

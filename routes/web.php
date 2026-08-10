@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\StaffController;
 use App\Http\Controllers\Admin\StaffDeviceController;
 use App\Http\Controllers\Admin\DeviceController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\MaintenanceAttentionController;
 use App\Http\Controllers\Admin\IssuanceController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\ActivityLogController;
@@ -93,6 +94,8 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
     */
     Route::prefix('admin')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
+        Route::get('/maintenance-attention', [MaintenanceAttentionController::class, 'index'])
+            ->name('admin.maintenance-attention.index');
         Route::view('/org-browser', 'admin.org-browser')->name('admin.org-browser');
         Route::view('/scanner', 'admin.scanner')->name('admin.scanner');
         // Keep the legacy support URL working while exposing the renamed Contributors page.

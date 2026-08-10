@@ -81,7 +81,7 @@
 
                 <form method="GET" action="{{ route('admin.maintenance-gallery.index') }}" class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_10rem_auto]">
                     <label class="sr-only" for="gallery-search">Search gallery</label>
-                    <input id="gallery-search" name="q" value="{{ $search }}" type="search" placeholder="Search property, serial, type, or caption" class="min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400">
+                    <input id="gallery-search" name="q" data-pmams-search value="{{ $search }}" type="search" placeholder="Search property, serial, type, or caption" class="min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400">
                     <label class="sr-only" for="date-from">Date from</label>
                     <input id="date-from" name="date_from" value="{{ $dateFrom }}" type="date" class="min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
                     <label class="sr-only" for="date-to">Date to</label>

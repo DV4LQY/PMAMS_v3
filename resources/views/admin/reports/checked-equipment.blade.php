@@ -104,6 +104,7 @@
 
             <input
                 name="q"
+                data-pmams-search
                 value="{{ $q }}"
                 placeholder="Search property #, remarks..."
                 class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">

@@ -632,6 +632,7 @@
 
             <input
                 name="q"
+                data-pmams-search
                 value="{{ $q ?? '' }}"
                 x-on:input="submitEquipmentFilters()"
                 x-on:keydown.enter.prevent="$refs.equipmentFilterForm.requestSubmit()"

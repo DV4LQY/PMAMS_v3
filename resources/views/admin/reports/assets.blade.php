@@ -46,6 +46,7 @@
             <input
                 id="asset-search"
                 name="q"
+                data-pmams-search
                 value="{{ $q }}"
                 placeholder="Search property #, serial #, brand..."
                 autocomplete="off"

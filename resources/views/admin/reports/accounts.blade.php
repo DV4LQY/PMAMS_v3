@@ -40,7 +40,7 @@
 
     <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm no-print dark:border-gray-700 dark:bg-gray-900">
         <form method="GET" class="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <input name="q" value="{{ $q }}" placeholder="Search name, email, role..." class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:ring-blue-900/40">
+            <input name="q" data-pmams-search value="{{ $q }}" placeholder="Search name, email, role..." class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:ring-blue-900/40">
 
             <select name="role" class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:ring-blue-900/40">
                 <option value="">All roles</option>
