@@ -21,17 +21,39 @@ class DatabaseBackupController extends Controller
     private const SUPPORTED_DRIVERS = ['mysql', 'mariadb'];
     public const BACKUP_DAY_KEY = 'database_backup_day';
     public const BACKUP_TIME_KEY = 'database_backup_time';
+    public const BACKUP_FREQUENCY_KEY = 'database_backup_frequency';
+    public const BACKUP_WEEKDAY_KEY = 'database_backup_weekday';
     // Keep each INSERT comfortably below XAMPP's default max_allowed_packet.
     private const MAX_INSERT_BYTES = 262144;
 
     public function index(Request $request)
     {
         abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('database'), 403);
+        $this->ensureSupportedDriver();
+
+        $backupFiles = collect(Storage::disk('local')->files('backups'))
+            ->filter(fn (string $path): bool => str_ends_with(strtolower($path), '.sql'))
+            ->map(function (string $path): array {
+                return [
+                    'path' => $path,
+                    'name' => basename($path),
+                    'size' => (int) Storage::disk('local')->size($path),
+                    'modified_at' => Storage::disk('local')->lastModified($path),
+                ];
+            })
+            ->sortByDesc('modified_at')
+            ->take(10)
+            ->values()
+            ->all();
 
         return view('admin.database.index', [
             'driver' => DB::connection()->getDriverName(),
             'database' => DB::getDatabaseName(),
+            'backupTables' => $this->backupTableNames(),
+            'backupFiles' => $backupFiles,
+            'backupFrequency' => (string) SystemSetting::getValue(self::BACKUP_FREQUENCY_KEY, 'monthly'),
             'backupDay' => (int) SystemSetting::getValue(self::BACKUP_DAY_KEY, 1),
+            'backupWeekday' => (int) SystemSetting::getValue(self::BACKUP_WEEKDAY_KEY, 1),
             'backupTime' => (string) SystemSetting::getValue(self::BACKUP_TIME_KEY, '02:00'),
             'deletedUsersCount' => User::onlyTrashed()->count(),
             'deletedDevicesCount' => Device::onlyTrashed()->count(),
@@ -50,14 +72,22 @@ class DatabaseBackupController extends Controller
 
         $data = $request->validate([
             // Days 1–28 exist in every month, so the backup is never skipped.
-            'backup_day' => ['required', 'integer', 'min:1', 'max:28'],
+            'backup_frequency' => ['required', 'in:monthly,weekly'],
+            'backup_day' => ['nullable', 'integer', 'min:1', 'max:28', 'required_if:backup_frequency,monthly'],
+            'backup_weekday' => ['nullable', 'integer', 'min:0', 'max:6', 'required_if:backup_frequency,weekly'],
             'backup_time' => ['required', 'date_format:H:i'],
         ]);
 
-        SystemSetting::putValue(self::BACKUP_DAY_KEY, $data['backup_day']);
+        $backupDay = (int) ($data['backup_day'] ?? SystemSetting::getValue(self::BACKUP_DAY_KEY, 1));
+        $backupWeekday = (int) ($data['backup_weekday'] ?? SystemSetting::getValue(self::BACKUP_WEEKDAY_KEY, 1));
+        SystemSetting::putValue(self::BACKUP_FREQUENCY_KEY, $data['backup_frequency']);
+        SystemSetting::putValue(self::BACKUP_DAY_KEY, $backupDay);
+        SystemSetting::putValue(self::BACKUP_WEEKDAY_KEY, $backupWeekday);
         SystemSetting::putValue(self::BACKUP_TIME_KEY, $data['backup_time']);
         ActivityLog::record('updated', 'Updated the automatic database backup schedule.', null, [
-            'day' => (int) $data['backup_day'],
+            'frequency' => $data['backup_frequency'],
+            'day' => $backupDay,
+            'weekday' => $backupWeekday,
             'time' => $data['backup_time'],
         ]);
 
@@ -329,23 +359,29 @@ class DatabaseBackupController extends Controller
         abort_unless(in_array(DB::connection()->getDriverName(), self::SUPPORTED_DRIVERS, true), 422, 'Database backup and restore require a MySQL or MariaDB connection.');
     }
 
-    private function buildDump(): string
+    private function backupTableNames(): array
     {
-        $pdo = DB::connection()->getPdo();
         $tables = [];
 
         foreach (DB::select('SHOW FULL TABLES') as $row) {
             $values = array_values((array) $row);
             $name = (string) ($values[0] ?? '');
             $type = strtoupper((string) ($values[1] ?? 'BASE TABLE'));
-            // Sessions are transient and are deliberately excluded so importing
-            // a PMAMS backup does not log out the Super Admin who started it.
-            if ($name !== '' && strtolower($name) !== 'sessions' && $type === 'BASE TABLE') {
+            // A database backup must be complete. Include every base table,
+            // including sessions; restoring a backup may invalidate old sessions
+            // but silently omitting authentication state is worse.
+            if ($name !== '' && $type === 'BASE TABLE') {
                 $tables[] = $name;
             }
         }
 
-        $tables = $this->orderTablesByDependencies(array_values(array_unique($tables)));
+        return $this->orderTablesByDependencies(array_values(array_unique($tables)));
+    }
+
+    private function buildDump(): string
+    {
+        $pdo = DB::connection()->getPdo();
+        $tables = $this->backupTableNames();
 
         $sql = "-- PMAMS MySQL/MariaDB database backup\n";
         $sql .= '-- Generated: ' . now()->toDateTimeString() . "\n";
@@ -384,33 +420,32 @@ class DatabaseBackupController extends Controller
 
             $columnSql = implode(', ', array_map(fn ($column) => $this->quoteIdentifier($column), $columns));
             $insertPrefix = 'INSERT INTO ' . $identifier . ' (' . $columnSql . ") VALUES\n";
-            // Query the table directly rather than through an Eloquent model,
-            // so SoftDeletes rows (including deleted Locations and PM Plans)
-            // are preserved and can be restored after importing the SQL backup.
-            foreach (DB::table($table)->select($columns)->get()->chunk(500) as $chunk) {
-                $rows = [];
-                $statementBytes = strlen($insertPrefix);
-                foreach ($chunk as $record) {
-                    $values = [];
-                    foreach ($columns as $column) {
-                        $values[] = $this->quoteValue($pdo, data_get((array) $record, $column));
-                    }
-                    $row = '(' . implode(', ', $values) . ')';
-                    $rowBytes = strlen($row) + 2;
-
-                    if ($rows !== [] && ($statementBytes + $rowBytes) > self::MAX_INSERT_BYTES) {
-                        $sql .= $insertPrefix . implode(",\n", $rows) . ";\n\n";
-                        $rows = [];
-                        $statementBytes = strlen($insertPrefix);
-                    }
-
-                    $rows[] = $row;
-                    $statementBytes += $rowBytes;
+            // Query the table directly rather than through an Eloquent model, so
+            // SoftDeletes rows (including deleted Locations and PM Plans) are
+            // preserved. A cursor avoids loading a large table into memory and
+            // visits every row while each INSERT remains packet-safe.
+            $rows = [];
+            $statementBytes = strlen($insertPrefix);
+            foreach (DB::table($table)->select($columns)->cursor() as $record) {
+                $values = [];
+                foreach ($columns as $column) {
+                    $values[] = $this->quoteValue($pdo, data_get((array) $record, $column));
                 }
+                $row = '(' . implode(', ', $values) . ')';
+                $rowBytes = strlen($row) + 2;
 
-                if ($rows !== []) {
+                if ($rows !== [] && ($statementBytes + $rowBytes) > self::MAX_INSERT_BYTES) {
                     $sql .= $insertPrefix . implode(",\n", $rows) . ";\n\n";
+                    $rows = [];
+                    $statementBytes = strlen($insertPrefix);
                 }
+
+                $rows[] = $row;
+                $statementBytes += $rowBytes;
+            }
+
+            if ($rows !== []) {
+                $sql .= $insertPrefix . implode(",\n", $rows) . ";\n\n";
             }
         }
 

@@ -1299,7 +1299,7 @@
         </main>
 
         <footer class="px-3 pb-5 text-center text-xs text-gray-500 dark:text-gray-400 sm:px-6">
-            PMAMS Version 3.2.7 &copy; 2026. All rights reserved.
+            PMAMS Version 3.5.2 &copy; 2026. All rights reserved.
         </footer>
     </div>
 </div>
@@ -1454,6 +1454,23 @@
             });
         });
     })();
+</script>
+
+<script>
+    // This handler lives in the persistent layout so it also works after SPA
+    // navigation, where page-specific scripts may not be evaluated again.
+    window.syncDatabaseBackupFrequency = window.syncDatabaseBackupFrequency || function (frequency) {
+        const month = document.getElementById('backup-day-wrapper');
+        const week = document.getElementById('backup-weekday-wrapper');
+        if (month) month.hidden = frequency !== 'monthly';
+        if (week) week.hidden = frequency !== 'weekly';
+    };
+
+    document.addEventListener('change', function (event) {
+        if (event.target?.id === 'backup-frequency') {
+            window.syncDatabaseBackupFrequency(event.target.value);
+        }
+    });
 </script>
 
 <script>

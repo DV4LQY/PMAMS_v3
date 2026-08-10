@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\Admin\DatabaseBackupController;
+use App\Models\SystemSetting;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -17,17 +18,20 @@ class DatabaseBackupMonthly extends Command
     {
         try {
             $sql = $backupController->generateDumpForScheduler();
-            $relativePath = 'backups/pmams-backup-' . now()->format('Y-m') . '.sql';
+            $frequency = (string) SystemSetting::getValue(DatabaseBackupController::BACKUP_FREQUENCY_KEY, 'monthly');
+            $relativePath = $frequency === 'weekly'
+                ? 'backups/pmams-backup-weekly-' . now()->format('Y-m-d') . '.sql'
+                : 'backups/pmams-backup-' . now()->format('Y-m') . '.sql';
 
             Storage::disk('local')->makeDirectory('backups');
             Storage::disk('local')->put($relativePath, $sql);
 
-            $this->info('Monthly backup saved to ' . Storage::disk('local')->path($relativePath));
+            $this->info(ucfirst($frequency) . ' backup saved to ' . Storage::disk('local')->path($relativePath));
 
             return self::SUCCESS;
         } catch (Throwable $exception) {
             report($exception);
-            $this->error('The monthly backup could not be created. Check the application log for details.');
+            $this->error('The scheduled backup could not be created. Check the application log for details.');
 
             return self::FAILURE;
         }
