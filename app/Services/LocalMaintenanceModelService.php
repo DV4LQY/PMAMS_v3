@@ -21,7 +21,10 @@ class LocalMaintenanceModelService
      */
     public function predict(array $rows): array
     {
-        if (! $this->isEnabled() || $rows === [] || ! is_file($this->modelPath())) {
+        // A model trained before a rule/threshold change must not silently
+        // produce recommendations from stale labels. Laravel rules remain a
+        // safe fallback until the model is retrained with the current policy.
+        if (! $this->isEnabled() || $rows === [] || ! $this->modelIsCurrent()) {
             return [];
         }
 
@@ -77,6 +80,27 @@ class LocalMaintenanceModelService
     public function modelPath(): string
     {
         return (string) config('maintenance.attention_ai.model');
+    }
+
+    private function modelIsCurrent(): bool
+    {
+        $modelPath = $this->modelPath();
+        $metadataPath = (string) config('maintenance.attention_ai.metadata');
+
+        if (! is_file($modelPath) || ! is_file($metadataPath)) {
+            return false;
+        }
+
+        try {
+            $metadata = json_decode((string) file_get_contents($metadataPath), true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return is_array($metadata)
+            && ($metadata['rules_version'] ?? null) === MaintenanceAttentionService::AI_RULES_VERSION
+            && (int) ($metadata['old_equipment_threshold_years'] ?? 0)
+                === MaintenanceAttentionService::OLD_EQUIPMENT_AGE_YEARS;
     }
 
     /**

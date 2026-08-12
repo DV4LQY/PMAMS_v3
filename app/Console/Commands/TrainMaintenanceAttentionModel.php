@@ -45,6 +45,7 @@ class TrainMaintenanceAttentionModel extends Command
 
         $this->info('Offline maintenance-attention model trained successfully.');
         $this->line('Examples: ' . ($result['samples'] ?? count($rows)));
+        $this->line('Old-equipment label threshold: ' . MaintenanceAttentionService::OLD_EQUIPMENT_AGE_YEARS . ' years.');
         $this->line('Model: ' . $modelService->modelPath());
 
         return self::SUCCESS;

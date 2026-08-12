@@ -35,7 +35,12 @@ class PermissionMiddleware
     private function permissionForRoute(string $route): array
     {
         if ($route === 'admin.dashboard') return ['dashboard', null, null];
-        if ($route === 'admin.maintenance-attention.index') return ['equipment', null, null];
+        if (in_array($route, [
+            'admin.maintenance-attention.index',
+            'admin.maintenance-attention.pdf',
+            'admin.maintenance-attention.excel',
+            'admin.maintenance-attention.mode',
+        ], true)) return ['reports', null, null];
         if ($route === 'admin.scanner') return ['scanner', null, null];
         if (in_array($route, ['admin.support', 'admin.contributors'], true)) return ['support', null, null];
         if (str_starts_with($route, 'admin.logs.')) return ['activity_logs', null, null];

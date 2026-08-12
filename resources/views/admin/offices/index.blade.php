@@ -21,6 +21,7 @@
     $officePageIds = $offices->getCollection()->pluck('id')->map(fn ($id) => (string) $id)->values()->all();
 @endphp
 <script>
+window.__pmamsOfficeManagerPageScriptLoaded = true;
 function registerOfficeManager() {
     if (!window.Alpine) return;
 
@@ -116,6 +117,7 @@ document.addEventListener('livewire:navigated', () => {
 </script>
 <div
     x-data="officeManager"
+    data-office-page-ids='@json($officePageIds)'
     class="space-y-5"
 >
     {{-- Breadcrumb --}}
@@ -205,26 +207,30 @@ document.addEventListener('livewire:navigated', () => {
                     <div class="flex flex-wrap gap-2 pt-1">
                         @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && (auth()->user()->canAction('offices', 'edit') || auth()->user()->canAction('offices', 'delete')))
                             @if(auth()->user()->canAction('offices', 'edit'))
-                            <button
+                            <x-action-icon
                                 type="button"
-                                class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
+                                icon="edit"
+                                variant="slate"
+                                label="Edit office"
+                                class="h-10 w-10"
+                                data-office-edit-id="{{ $o->id }}"
+                                data-office-edit-name="{{ $o->name }}"
                                 @click="openEdit({
                                     id: {{ $o->id }},
                                     name: @js($o->name)
                                 })"
-                            >
-                                Edit
-                            </button>
+                            />
                             @endif
 
                             @if(auth()->user()->canAction('offices', 'delete'))
-                            <button
+                            <x-action-icon
                                 type="button"
-                                class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                                icon="trash"
+                                variant="red"
+                                label="Delete office"
+                                class="h-10 w-10"
                                 @click="openDelete({{ $o->id }})"
-                            >
-                                Delete
-                            </button>
+                            />
                             @endif
                         @endif
                     </div>
@@ -285,26 +291,28 @@ document.addEventListener('livewire:navigated', () => {
                                 <div class="flex items-center gap-2">
                                     @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && (auth()->user()->canAction('offices', 'edit') || auth()->user()->canAction('offices', 'delete')))
                                         @if(auth()->user()->canAction('offices', 'edit'))
-                                        <button
+                                        <x-action-icon
                                             type="button"
-                                            class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
+                                            icon="edit"
+                                            variant="slate"
+                                            label="Edit office"
+                                            data-office-edit-id="{{ $o->id }}"
+                                            data-office-edit-name="{{ $o->name }}"
                                             @click="openEdit({
                                                 id: {{ $o->id }},
                                                 name: @js($o->name)
                                             })"
-                                        >
-                                            Edit
-                                        </button>
+                                        />
                                         @endif
 
                                         @if(auth()->user()->canAction('offices', 'delete'))
-                                        <button
+                                        <x-action-icon
                                             type="button"
-                                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                                            icon="trash"
+                                            variant="red"
+                                            label="Delete office"
                                             @click="openDelete({{ $o->id }})"
-                                        >
-                                            Delete
-                                        </button>
+                                        />
                                         @endif
                                     @else
                                         <span class="text-xs text-gray-400">View only</span>

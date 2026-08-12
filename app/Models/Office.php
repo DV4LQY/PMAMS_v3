@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Office extends Model
 {
@@ -26,6 +27,25 @@ class Office extends Model
     public function staff(): HasMany
     {
         return $this->hasMany(Staff::class);
+    }
+
+    public function responsibleStaff(): HasOne
+    {
+        return $this->hasOne(Staff::class)
+            ->where('is_office_head', true)
+            ->where('is_active', true);
+    }
+
+    /**
+     * Colleges use the title Dean; administrative locations use Head of Unit.
+     * The check is intentionally based on the registered parent location so
+     * the report remains correct when an office is renamed.
+     */
+    public function responsibleTitle(): string
+    {
+        $locationName = strtolower(trim((string) $this->location?->name));
+
+        return str_contains($locationName, 'college') ? 'Dean' : 'Head of Unit';
     }
 
     public function getCollegeIdAttribute(): ?int

@@ -32,6 +32,12 @@ FEATURE_NAMES = [
     "maintenance_missing",
 ]
 
+# Must match MaintenanceAttentionService. The values are stored in metadata
+# so PHP can reject an artifact trained with an older age policy and safely
+# fall back to the visible Laravel rules until retraining is completed.
+OLD_EQUIPMENT_AGE_YEARS = 6
+RULES_VERSION = "age-threshold-6"
+
 
 def fail(message: str, code: int = 1) -> int:
     print(json.dumps({"ok": False, "error": message}), file=sys.stderr)
@@ -120,6 +126,8 @@ def train(payload: dict[str, Any], model_path: str, metadata_path: str) -> int:
                 "positive_samples": int(sum(labels)),
                 "trained_at": datetime.now(timezone.utc).isoformat(),
                 "algorithm": "RandomForestClassifier",
+                "rules_version": RULES_VERSION,
+                "old_equipment_threshold_years": OLD_EQUIPMENT_AGE_YEARS,
             },
             handle,
             indent=2,

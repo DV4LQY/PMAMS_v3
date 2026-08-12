@@ -51,3 +51,9 @@ Schedule::command('maintenance:train-model', [
 
         return now()->day === min(28, max(1, (int) config('maintenance.attention_ai.train_day', 1)));
     });
+
+// Persist one month-to-date attention point daily. updateOrCreate keeps the
+// current month accurate while preserving completed months for trend history.
+Schedule::command('maintenance:record-attention-snapshot')
+    ->dailyAt('00:15')
+    ->withoutOverlapping(30);

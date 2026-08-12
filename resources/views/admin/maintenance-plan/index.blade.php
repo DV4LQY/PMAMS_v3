@@ -81,7 +81,7 @@
                         <input type="month" name="schedule_month_from" value="{{ old('schedule_month_from', now()->format('Y-m')) }}" required aria-label="Starting month" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                         <input type="month" name="schedule_month_to" value="{{ old('schedule_month_to', old('schedule_month_from', now()->format('Y-m'))) }}" aria-label="Ending month" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                     </div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use the same month for a single-month plan, or choose an ending month for a range.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use the same month for a single-month plan, or choose an ending month for a range. Duplicate plans are blocked when the location/office coverage overlaps an existing month range, including plans in the recycle bin.</p>
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Schedule title <span class="text-red-500">*</span></label>
@@ -274,6 +274,7 @@
                                                         <input type="month" name="schedule_month_from" value="{{ optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                         <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                     </div>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">The edited range cannot overlap another PM Plan for the same location and office. Recycled plans are included in the duplicate check.</p>
                                                     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin</label>
                                                     <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                         @foreach($admins as $admin)<option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $scheduleAssignedIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>@endforeach

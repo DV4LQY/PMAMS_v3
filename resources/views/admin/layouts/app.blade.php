@@ -467,13 +467,13 @@
         |--------------------------------------------------------------------------
         | Light-mode header gradient
         |--------------------------------------------------------------------------
-        | A soft yellow-gold tint gives the application chrome a warm visual
-        | anchor without using a high-glare solid yellow. The dark theme continues to
-        | use its existing neutral header colors.
+        | A bright blue gradient keeps the application chrome visually clear while
+        | avoiding a high-glare solid color. The dark theme continues to use its
+        | existing neutral header colors.
         */
         html:not(.dark):not([data-pmams-theme="dark"]) .admin-header {
-            background: linear-gradient(90deg, #ffefb8 0%, #fff8df 24%, #fffdf5 50%, #fff8df 76%, #ffefb8 100%) !important;
-            border-bottom-color: #e5d394 !important;
+            background: linear-gradient(90deg, #a9d5ff 0%, #d8ecff 24%, #f5faff 50%, #d8ecff 76%, #a9d5ff 100%) !important;
+            border-bottom-color: #86b9e8 !important;
         }
 
         /* Keep the sidebar identity mark prominent and readable in both themes. */
@@ -672,7 +672,9 @@
         request()->routeIs('admin.staff.*'),
         request()->routeIs('admin.org-browser') => 'locations',
         request()->routeIs('admin.devices.*') => 'devices',
-        request()->routeIs('admin.maintenance-attention.*') => 'maintenance-attention',
+        // Maintenance Attention is a report, so keep the Reports navigation
+        // item active while viewing the page or downloading its exports.
+        request()->routeIs('admin.maintenance-attention.*') => 'reports',
         request()->routeIs('admin.maintenance-plan.*') => 'maintenance-plan',
         request()->routeIs('admin.issuance.*') => 'reports',
         request()->routeIs('admin.reports.*') => 'reports',
@@ -813,21 +815,6 @@
                     <span>Equipment</span>
                 </a>
                 @endif
-                @if(auth()->user()?->canMenu('equipment'))
-                <a
-                    href="{{ route('admin.maintenance-attention.index') }}"
-                    data-nav-group="maintenance-attention"
-                    data-active="{{ $currentNavGroup === 'maintenance-attention' ? 'true' : 'false' }}"
-                    @if($currentNavGroup === 'maintenance-attention') aria-current="page" @endif
-                    class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition
-                    {{ request()->routeIs('admin.maintenance-attention.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
-                >
-                    <svg class="w-5 h-5 {{ request()->routeIs('admin.maintenance-attention.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v18m9-9H3m15.36-6.36L5.64 18.36m12.72 0L5.64 5.64"/>
-                    </svg>
-                    <span>Maintenance Attention</span>
-                </a>
-                @endif
                 @if(auth()->user()?->canMenu('maintenance_plan'))
                 <a
                     href="{{ route('admin.maintenance-plan.index') }}"
@@ -850,9 +837,9 @@
                     data-active="{{ $currentNavGroup === 'reports' ? 'true' : 'false' }}"
                     @if($currentNavGroup === 'reports') aria-current="page" @endif
                     class="group flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition
-                    {{ request()->routeIs('admin.reports.*') ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
+                    {{ $currentNavGroup === 'reports' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700' }}"
                 >
-                    <svg class="w-5 h-5 {{ request()->routeIs('admin.reports.*') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 {{ $currentNavGroup === 'reports' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 17v-6m4 6V7m4 10v-3M5 19h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                     </svg>
                     <span>Reports</span>
@@ -1013,9 +1000,10 @@
     </aside>
     @endpersist
 
-    <div class="lg:ml-64 min-h-screen print:ml-0">
+    <div class="lg:ml-64 flex min-h-screen flex-col print:ml-0">
         <header class="admin-header sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200 dark:bg-gray-800/90 dark:border-gray-700 print:hidden">
-            <div class="min-h-16 px-3 py-2 sm:px-6 flex items-center justify-between">
+            {{-- Keep the header's computed height equal to the sidebar brand row (4rem). --}}
+            <div class="min-h-16 px-3 py-0 sm:px-6 flex items-center justify-between">
                 <div class="flex items-center gap-3 min-w-0">
                     <button
                         type="button"
@@ -1199,7 +1187,7 @@
             </div>
         </header>
 
-        <main id="main-content" class="p-3 sm:p-6" data-current-nav-group="{{ $currentNavGroup }}">
+        <main id="main-content" class="flex-1 p-3 sm:p-6" data-current-nav-group="{{ $currentNavGroup }}">
             @if (session('success'))
                 <div class="notification mb-4 px-1 py-1 text-emerald-600 dark:text-emerald-400" role="status" aria-live="polite">
                     {{ session('success') }}
@@ -1314,9 +1302,6 @@
             @yield('content')
         </main>
 
-        <footer class="px-3 pb-5 text-center text-xs text-gray-500 dark:text-gray-400 sm:px-6">
-            PMAMS Version 3.5.2 &copy; 2026. All rights reserved.
-        </footer>
     </div>
 </div>
 
@@ -1662,6 +1647,257 @@
             },
         };
     };
+</script>
+
+<script>
+    // Register the office/staff modal managers in the persistent layout as a
+    // fallback for Livewire SPA navigations. Livewire intentionally does not
+    // execute ordinary <script> tags inside a navigated page again, so a page
+    // reached through the sidebar could otherwise render edit buttons whose
+    // Alpine click handlers were never registered. The page-local scripts
+    // still override these defaults on a full load (including validation data).
+    (function registerPersistentCrudManagers() {
+        const initializeCrudManagerTrees = () => {
+            if (!window.Alpine) return;
+
+            // Livewire navigation can insert a page root after Alpine has
+            // already started. In that case Alpine does not automatically
+            // initialize the newly inserted x-data tree, so the edit/delete
+            // handlers appear rendered but do nothing. Initialize only roots
+            // that are not already backed by the expected manager methods.
+            document.querySelectorAll('[x-data="officeManager"], [x-data="staffManager"]').forEach((element) => {
+                const data = element._x_dataStack?.[0];
+                const managerReady = data
+                    && typeof data.openEdit === 'function'
+                    && typeof data.openDelete === 'function';
+
+                if (managerReady) return;
+
+                if (data && typeof window.Alpine.destroyTree === 'function') {
+                    window.Alpine.destroyTree(element);
+                }
+
+                window.Alpine.initTree(element);
+            });
+        };
+
+        const register = () => {
+            if (!window.Alpine) return;
+
+            if (!window.__pmamsOfficeManagerFallbackRegistered) {
+                window.Alpine.data('officeManager', () => ({
+                    addOpen: false,
+                    editOpen: false,
+                    deleteOpen: false,
+                    selectedOfficeIds: [],
+                    officePageIds: (() => {
+                        try {
+                            const root = document.querySelector('[data-office-page-ids]');
+                            return JSON.parse(root?.getAttribute('data-office-page-ids') || '[]');
+                        } catch (error) {
+                            return [];
+                        }
+                    })(),
+                    bulkEnabled: false,
+                    addSingle: { name: '', nameError: '' },
+                    bulkRows: [{ name: '', nameError: '' }, { name: '', nameError: '' }],
+                    editOffice: { id: null, name: '', nameError: '' },
+                    deleteOfficeId: null,
+
+                    openAdd() {
+                        this.addOpen = true;
+                        this.bulkEnabled = false;
+                        this.addSingle = { name: '', nameError: '' };
+                        this.bulkRows = [
+                            { name: '', nameError: '' },
+                            { name: '', nameError: '' },
+                        ];
+                    },
+
+                    addBulkRow() {
+                        if (this.bulkRows.length < 3) this.bulkRows.push({ name: '', nameError: '' });
+                    },
+
+                    removeBulkRow() {
+                        if (this.bulkRows.length > 1) this.bulkRows.pop();
+                    },
+
+                    openEdit(office) {
+                        this.editOffice = {
+                            id: office?.id ?? null,
+                            name: office?.name ?? '',
+                            nameError: '',
+                        };
+                        this.editOpen = true;
+                    },
+
+                    openDelete(id) {
+                        this.deleteOfficeId = id;
+                        this.deleteOpen = true;
+                        this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
+                    },
+
+                    toggleAllOffices(checked) {
+                        this.selectedOfficeIds = checked ? [...this.officePageIds] : [];
+                    },
+                }));
+                window.__pmamsOfficeManagerFallbackRegistered = true;
+            }
+
+            if (!window.__pmamsStaffManagerFallbackRegistered) {
+                const commonPositions = [
+                    'Dean', 'Associate Dean', 'Department Chairperson', 'Program Coordinator',
+                    'College Secretary', 'Administrative Officer', 'Administrative Aide',
+                    'Records Officer', 'Guidance Counselor', 'Librarian', 'Library Assistant',
+                    'Registrar Staff', 'Faculty / Instructor', 'Assistant Professor',
+                    'Associate Professor', 'Professor', 'Laboratory Technician', 'IT / MIS Staff',
+                    'Property Custodian', 'Budget Officer', 'Accounting Staff', 'Cashier',
+                    'Human Resources Officer', 'Clerk', 'Utility Worker', 'Security Guard', 'Driver',
+                ];
+
+                window.Alpine.data('staffManager', () => ({
+                    addOpen: false,
+                    returnTo: '',
+                    editOpen: false,
+                    deleteOpen: false,
+                    bulkEnabled: false,
+                    commonPositions,
+                    addSingle: {
+                        first_name: '', last_name: '', position: '', positionOther: '',
+                        email: '', phone: '', is_active: true, is_office_head: false,
+                        firstNameError: '', lastNameError: '', positionError: '', emailError: '', phoneError: '',
+                    },
+                    bulkRows: [],
+                    editStaff: {
+                        id: null, first_name: '', last_name: '', position: '', positionOther: '',
+                        email: '', phone: '', is_active: true, is_office_head: false,
+                        firstNameError: '', lastNameError: '', positionError: '', emailError: '', phoneError: '',
+                    },
+                    deleteStaffId: null,
+
+                    resolvePosition(value) {
+                        if (!value) return { position: '', positionOther: '' };
+                        return this.commonPositions.includes(value)
+                            ? { position: value, positionOther: '' }
+                            : { position: '__other__', positionOther: value };
+                    },
+
+                    blankRow() {
+                        return {
+                            first_name: '', last_name: '', position: '', positionOther: '',
+                            email: '', phone: '', is_active: true, is_office_head: false,
+                            firstNameError: '', lastNameError: '', positionError: '', emailError: '', phoneError: '',
+                        };
+                    },
+
+                    openAdd() {
+                        this.addOpen = true;
+                        this.bulkEnabled = false;
+                        this.addSingle = this.blankRow();
+                        this.bulkRows = [this.blankRow(), this.blankRow()];
+                    },
+
+                    closeAdd() {
+                        this.addOpen = false;
+                        if (this.returnTo) {
+                            if (window.Livewire && typeof window.Livewire.navigate === 'function') {
+                                window.Livewire.navigate(this.returnTo);
+                            } else {
+                                window.location.href = this.returnTo;
+                            }
+                        }
+                    },
+
+                    addBulkRow() {
+                        if (this.bulkRows.length < 3) this.bulkRows.push(this.blankRow());
+                    },
+
+                    removeBulkRow() {
+                        if (this.bulkRows.length > 1) this.bulkRows.pop();
+                    },
+
+                    openEdit(staff) {
+                        const resolved = this.resolvePosition(staff?.position ?? '');
+                        this.editStaff = {
+                            id: staff?.id ?? null,
+                            first_name: staff?.first_name ?? '',
+                            last_name: staff?.last_name ?? '',
+                            position: resolved.position,
+                            positionOther: resolved.positionOther,
+                            email: staff?.email ?? '',
+                            phone: staff?.phone ?? '',
+                            is_active: !!staff?.is_active,
+                            is_office_head: !!staff?.is_office_head,
+                            firstNameError: '', lastNameError: '', positionError: '', emailError: '', phoneError: '',
+                        };
+                        this.editOpen = true;
+                    },
+
+                    openDelete(id) {
+                        this.deleteStaffId = id;
+                        this.deleteOpen = true;
+                        this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
+                    },
+                }));
+                window.__pmamsStaffManagerFallbackRegistered = true;
+            }
+        };
+
+        document.addEventListener('alpine:init', register, { once: true });
+        register();
+        document.addEventListener('DOMContentLoaded', () => {
+            window.setTimeout(initializeCrudManagerTrees, 0);
+        }, { once: true });
+        document.addEventListener('livewire:navigated', () => {
+            window.setTimeout(initializeCrudManagerTrees, 0);
+        });
+
+        // Keep edit actions reliable after SPA morphing. The click handler is
+        // delegated from document so it also covers icons inserted after the
+        // initial Alpine pass. It intentionally only handles edit triggers;
+        // delete actions continue to use their existing Alpine confirmation.
+        if (!window.__pmamsCrudEditDelegationRegistered) {
+            document.addEventListener('click', (event) => {
+                const trigger = event.target.closest?.('[data-office-edit-id], [data-staff-edit-id]');
+                if (!trigger) return;
+
+                const root = trigger.closest('[x-data="officeManager"], [x-data="staffManager"]');
+                if (!root) return;
+
+                let data = root._x_dataStack?.[0];
+                if ((!data || typeof data.openEdit !== 'function') && window.Alpine) {
+                    window.Alpine.initTree(root);
+                    data = root._x_dataStack?.[0];
+                }
+
+                if (!data || typeof data.openEdit !== 'function') return;
+
+                event.preventDefault();
+                event.stopImmediatePropagation();
+
+                if (trigger.hasAttribute('data-office-edit-id')) {
+                    data.openEdit({
+                        id: Number(trigger.getAttribute('data-office-edit-id')),
+                        name: trigger.getAttribute('data-office-edit-name') || '',
+                    });
+                    return;
+                }
+
+                data.openEdit({
+                    id: Number(trigger.getAttribute('data-staff-edit-id')),
+                    first_name: trigger.getAttribute('data-staff-edit-first-name') || '',
+                    last_name: trigger.getAttribute('data-staff-edit-last-name') || '',
+                    position: trigger.getAttribute('data-staff-edit-position') || '',
+                    email: trigger.getAttribute('data-staff-edit-email') || '',
+                    phone: trigger.getAttribute('data-staff-edit-phone') || '',
+                    is_active: trigger.getAttribute('data-staff-edit-active') === '1',
+                    is_office_head: trigger.getAttribute('data-staff-edit-office-head') === '1',
+                });
+            }, true);
+            window.__pmamsCrudEditDelegationRegistered = true;
+        }
+    })();
+
 </script>
 
 <script>

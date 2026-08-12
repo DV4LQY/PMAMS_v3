@@ -5,6 +5,7 @@ use App\Models\Device;
 use App\Models\DeviceAssignment;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\DeviceType;
+use App\Models\MaintenanceAttentionSnapshot;
 use App\Models\MaintenancePlanSchedule;
 use App\Models\Staff;
 use App\Services\MaintenanceAttentionService;
@@ -176,6 +177,14 @@ class DashboardController extends Controller
             ->count();
         $maintenanceAttention = $maintenanceAttentionRecommendations->take(8);
 
+        // Trend points are persisted monthly rather than reconstructed from
+        // mutable inventory records. The current month is updated by the
+        // scheduled snapshot command; prior months remain historical.
+        $maintenanceAttentionSnapshots = MaintenanceAttentionSnapshot::query()
+            ->whereDate('snapshot_month', '>=', now()->startOfMonth()->subMonths(11)->toDateString())
+            ->orderBy('snapshot_month')
+            ->get();
+
         $maintenancePlans = MaintenancePlanSchedule::query()
             ->visibleTo(auth()->user())
             ->with(['latestOverride', 'completion'])
@@ -247,6 +256,7 @@ class DashboardController extends Controller
             'maintenancePlanStatuses',
             'maintenanceAttention',
             'maintenanceAttentionCount',
+            'maintenanceAttentionSnapshots',
          ));
     }
 }

@@ -116,22 +116,33 @@ class PreventiveMaintenancePlanController extends Controller
         $targets = $offices->isEmpty() ? collect([null]) : $offices;
         $created = 0;
         $duplicates = 0;
+        $duplicateTargets = [];
 
-        DB::transaction(function () use ($targets, $data, $assignedUserIds, $location, $monthFrom, $monthTo, &$created, &$duplicates, $request) {
+        DB::transaction(function () use ($targets, $data, $assignedUserIds, $location, $monthFrom, $monthTo, &$created, &$duplicates, &$duplicateTargets, $request) {
+            // Range overlap cannot be enforced by a normal unique index. Lock
+            // all plans for this location while checking so concurrent
+            // publishes cannot create two plans for the same coverage window.
+            // Trashed plans remain candidates because restoring one later must
+            // not create a second overlapping plan.
+            $existingSchedules = MaintenancePlanSchedule::withTrashed()
+                ->where('location_id', $location->id)
+                ->lockForUpdate()
+                ->get();
+
             foreach ($targets as $office) {
-                // Include soft-deleted schedules in duplicate detection. This
-                // prevents publishing a second hidden copy that would later
-                // collide with the original when it is restored from the
-                // recycle bin.
-                $duplicateExists = MaintenancePlanSchedule::withTrashed()
-                    ->where('location_id', $location->id)
-                    ->where('office_id', $office?->id)
-                    ->whereDate('schedule_month_from', $monthFrom->toDateString())
-                    ->whereDate('schedule_month_to', $monthTo->toDateString())
-                    ->exists();
+                $duplicate = $existingSchedules->first(function (MaintenancePlanSchedule $existing) use ($office, $monthFrom, $monthTo) {
+                    [$existingFrom, $existingTo] = $this->scheduleWindow($existing);
 
-                if ($duplicateExists) {
+                    return $existingFrom
+                        && $existingTo
+                        && $this->scheduleTargetsOverlap($existing->office_id, $office?->id)
+                        && $this->scheduleWindowsOverlap($existingFrom, $existingTo, $monthFrom, $monthTo);
+                });
+
+                if ($duplicate) {
                     $duplicates++;
+                    $target = $location->name . ($office?->name ? ' / ' . $office->name : ' (all offices)');
+                    $duplicateTargets[] = $target;
                     continue;
                 }
 
@@ -164,16 +175,20 @@ class PreventiveMaintenancePlanController extends Controller
                     ])
                 );
                 $created++;
+                // This also catches duplicate targets supplied in one request
+                // if a client bypasses the distinct checkbox values.
+                $existingSchedules->push($schedule);
             }
         });
 
         $message = $created > 0
             ? "PM Plan published successfully. Created {$created} preventive maintenance schedule(s)."
             : 'No new schedule was published.';
+        $duplicateSummary = collect($duplicateTargets)->unique()->take(4)->implode('; ');
         $warning = $duplicates > 0
             ? ($created > 0
-                ? "Duplicate detection: {$duplicates} schedule(s) were skipped because the selected location/office and month range already exist."
-                : 'Duplicate PM Plan detected. No new schedule was published because the selected location/office and month range already exist.')
+                ? "Duplicate detection: {$duplicates} schedule(s) were skipped for {$duplicateSummary}. The target already has a PM Plan covering an overlapping month range (including recycled plans)."
+                : "Duplicate PM Plan detected for {$duplicateSummary}. No new schedule was published because the location/office target already has a plan covering an overlapping month range (including recycled plans).")
             : null;
 
         if ($request->header('X-SPA-Request') === '1') {
@@ -230,15 +245,43 @@ class PreventiveMaintenancePlanController extends Controller
             return back()->withInput()->withErrors(['schedule_month_to' => 'The ending month must be the same as or after the starting month.']);
         }
 
-        $schedule->update([
-            'scheduled_date' => $monthFrom->toDateString(),
-            'schedule_month_from' => $monthFrom->toDateString(),
-            'schedule_month_to' => $monthTo->toDateString(),
-            'assigned_user_id' => $assignedUserIds[0] ?? null,
-            'title' => $data['title'],
-            'notes' => $data['notes'] ?? null,
-        ]);
-        $schedule->assignedUsers()->sync($assignedUserIds);
+        $duplicate = null;
+        DB::transaction(function () use (&$duplicate, $schedule, $monthFrom, $monthTo, $assignedUserIds, $data) {
+            $duplicate = $this->findDuplicateSchedule(
+                (int) $schedule->location_id,
+                $schedule->office_id ? (int) $schedule->office_id : null,
+                $monthFrom,
+                $monthTo,
+                (int) $schedule->id,
+            );
+
+            if ($duplicate) {
+                return;
+            }
+
+            $schedule->update([
+                'scheduled_date' => $monthFrom->toDateString(),
+                'schedule_month_from' => $monthFrom->toDateString(),
+                'schedule_month_to' => $monthTo->toDateString(),
+                'assigned_user_id' => $assignedUserIds[0] ?? null,
+                'title' => $data['title'],
+                'notes' => $data['notes'] ?? null,
+            ]);
+            $schedule->assignedUsers()->sync($assignedUserIds);
+        });
+
+        if ($duplicate) {
+            [$duplicateFrom, $duplicateTo] = $this->scheduleWindow($duplicate);
+            $duplicateTarget = $duplicate->load(['location', 'office']);
+            $duplicateRange = $duplicateFrom && $duplicateTo
+                ? $this->formatMonthRange($duplicateFrom, $duplicateTo)
+                : 'the selected month range';
+            $message = 'Duplicate PM Plan detected for '
+                . $this->scheduleTargetLabel($duplicateTarget)
+                . " ({$duplicateRange}). The existing schedule was kept.";
+
+            return back()->withInput()->withErrors(['schedule_month_from' => $message]);
+        }
 
         ActivityLog::record('updated', 'Edited preventive maintenance schedule for ' . $this->scheduleTargetLabel($schedule->load(['location', 'office'])), $schedule, ActivityLog::makePayload([
             'schedule_month_from' => $monthFrom->format('Y-m'),
@@ -908,6 +951,78 @@ class PreventiveMaintenancePlanController extends Controller
         $end = Carbon::createFromFormat('Y-m', $to ?: $from)->startOfMonth();
 
         return [$start, $end];
+    }
+
+    /**
+     * Return the effective month window for a schedule, including legacy
+     * records that only have scheduled_date populated.
+     *
+     * @return array{0:?Carbon,1:?Carbon}
+     */
+    private function scheduleWindow(MaintenancePlanSchedule $schedule): array
+    {
+        $fromValue = $schedule->schedule_month_from ?: $schedule->scheduled_date;
+        $toValue = $schedule->schedule_month_to ?: $schedule->scheduled_date ?: $fromValue;
+
+        if (! $fromValue || ! $toValue) {
+            return [null, null];
+        }
+
+        try {
+            $from = ($fromValue instanceof Carbon ? $fromValue->copy() : Carbon::parse($fromValue))->startOfMonth();
+            $to = ($toValue instanceof Carbon ? $toValue->copy() : Carbon::parse($toValue))->startOfMonth();
+        } catch (\Throwable) {
+            return [null, null];
+        }
+
+        if ($to->lt($from)) {
+            [$from, $to] = [$to, $from];
+        }
+
+        return [$from, $to];
+    }
+
+    /**
+     * A location-wide plan (null office_id) covers every office in that
+     * location, so it conflicts with both another location-wide plan and an
+     * office-specific plan. Office-specific plans conflict when they target
+     * the same office.
+     */
+    private function scheduleTargetsOverlap(?int $existingOfficeId, ?int $requestedOfficeId): bool
+    {
+        return $existingOfficeId === null
+            || $requestedOfficeId === null
+            || (int) $existingOfficeId === (int) $requestedOfficeId;
+    }
+
+    private function scheduleWindowsOverlap(Carbon $existingFrom, Carbon $existingTo, Carbon $requestedFrom, Carbon $requestedTo): bool
+    {
+        return $existingFrom->lte($requestedTo) && $existingTo->gte($requestedFrom);
+    }
+
+    private function findDuplicateSchedule(
+        int $locationId,
+        ?int $officeId,
+        Carbon $monthFrom,
+        Carbon $monthTo,
+        ?int $ignoreId = null,
+    ): ?MaintenancePlanSchedule {
+        $query = MaintenancePlanSchedule::withTrashed()
+            ->where('location_id', $locationId)
+            ->lockForUpdate();
+
+        if ($ignoreId !== null) {
+            $query->where('id', '<>', $ignoreId);
+        }
+
+        return $query->get()->first(function (MaintenancePlanSchedule $existing) use ($officeId, $monthFrom, $monthTo) {
+            [$existingFrom, $existingTo] = $this->scheduleWindow($existing);
+
+            return $existingFrom
+                && $existingTo
+                && $this->scheduleTargetsOverlap($existing->office_id, $officeId)
+                && $this->scheduleWindowsOverlap($existingFrom, $existingTo, $monthFrom, $monthTo);
+        });
     }
 
     private function monthStartOrNull(?string $month): ?Carbon

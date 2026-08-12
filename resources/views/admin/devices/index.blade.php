@@ -559,6 +559,16 @@
     {{-- Filters --}}
     <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <form x-ref="equipmentFilterForm" method="GET" class="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <input
+                name="q"
+                data-pmams-search
+                value="{{ $q ?? '' }}"
+                x-on:input="submitEquipmentFilters()"
+                x-on:keydown.enter.prevent="$refs.equipmentFilterForm.requestSubmit()"
+                placeholder="Search property #, serial #..."
+                autocomplete="off"
+                class="order-first min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
+            >
             <div class="w-full lg:w-44">
                 <select
                     name="type"
@@ -586,7 +596,7 @@
                         <option value="" @selected(empty($collegeId))>All Locations</option>
                         @foreach($colleges as $college)
                             <option value="{{ $college->id }}" @selected(($collegeId ?? '') == $college->id)>
-                                {{ $college->code }}
+                                {{ $college->code ? $college->code . ' - ' . $college->name : $college->name }}
                             </option>
                         @endforeach
                     </select>
@@ -639,16 +649,6 @@
                 </select>
             </div>
 
-            <input
-                name="q"
-                data-pmams-search
-                value="{{ $q ?? '' }}"
-                x-on:input="submitEquipmentFilters()"
-                x-on:keydown.enter.prevent="$refs.equipmentFilterForm.requestSubmit()"
-                placeholder="Search property #, serial #..."
-                autocomplete="off"
-                class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
-            >
             <div class="flex gap-2">
                 <!--
                 <button

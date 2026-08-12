@@ -350,7 +350,15 @@
             'end_users' => ['labels' => ($endUsersByLocation ?? collect())->keys()->values()->all(), 'values' => ($endUsersByLocation ?? collect())->values()->all()],
             'maintenance' => ['labels' => ($maintenanceSemiannually ?? collect())->keys()->values()->all(), 'values' => ($maintenanceSemiannually ?? collect())->values()->all()],
             'transfers' => ['labels' => ($transferSemiannually ?? collect())->keys()->values()->all(), 'values' => ($transferSemiannually ?? collect())->values()->all()],
-            'maintenance_plan_status' => ['labels' => ($maintenancePlanStatuses ?? collect())->keys()->values()->all(), 'values' => ($maintenancePlanStatuses ?? collect())->values()->all()]
+            'maintenance_plan_status' => ['labels' => ($maintenancePlanStatuses ?? collect())->keys()->values()->all(), 'values' => ($maintenancePlanStatuses ?? collect())->values()->all()],
+            'maintenance_attention' => [
+                'labels' => ($maintenanceAttentionSnapshots ?? collect())->map(fn ($snapshot) => $snapshot->snapshot_month->format('M Y'))->values()->all(),
+                'critical' => ($maintenanceAttentionSnapshots ?? collect())->pluck('critical_count')->map(fn ($value) => (int) $value)->values()->all(),
+                'high' => ($maintenanceAttentionSnapshots ?? collect())->pluck('high_count')->map(fn ($value) => (int) $value)->values()->all(),
+                'medium' => ($maintenanceAttentionSnapshots ?? collect())->pluck('medium_count')->map(fn ($value) => (int) $value)->values()->all(),
+                'low' => ($maintenanceAttentionSnapshots ?? collect())->pluck('low_count')->map(fn ($value) => (int) $value)->values()->all(),
+                'ai' => ($maintenanceAttentionSnapshots ?? collect())->pluck('ai_recommended_count')->map(fn ($value) => (int) $value)->values()->all(),
+            ],
         ]) }}"
     >
 
@@ -370,6 +378,20 @@
                     <canvas id="maintenancePlanStatusChart"></canvas>
                 </div>
             </div>
+        </div>
+
+        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 class="text-base font-semibold text-gray-900">Maintenance Attention Trend</h2>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Monthly persisted recommendation snapshots by priority.</p>
+            @if(($maintenanceAttentionSnapshots ?? collect())->isEmpty())
+                <div class="flex h-[250px] items-center justify-center rounded-lg border border-dashed border-gray-200 text-center text-sm text-gray-500">
+                    No snapshots yet. The scheduler records the first point at 12:15 AM daily.
+                </div>
+            @else
+                <div style="position:relative; height:250px;">
+                    <canvas id="maintenanceAttentionChart"></canvas>
+                </div>
+            @endif
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

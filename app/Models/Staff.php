@@ -11,11 +11,12 @@ class Staff extends Model
     protected $table = 'staff';
 
     protected $fillable = [
-        'office_id', 'first_name', 'last_name', 'position', 'email', 'phone', 'is_active'
+        'office_id', 'first_name', 'last_name', 'position', 'email', 'phone', 'is_active', 'is_office_head'
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_office_head' => 'boolean',
     ];
 
     public function office(): BelongsTo
@@ -31,5 +32,10 @@ class Staff extends Model
     public function activeAssignments(): HasMany
     {
         return $this->assignments()->whereNull('returned_at');
+    }
+
+    public function getDisplayNameAttribute(): string
+    {
+        return trim($this->first_name . ' ' . $this->last_name);
     }
 }

@@ -96,6 +96,10 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
         Route::get('/maintenance-attention', [MaintenanceAttentionController::class, 'index'])
             ->name('admin.maintenance-attention.index');
+        Route::get('/maintenance-attention/pdf', [MaintenanceAttentionController::class, 'exportPdf'])
+            ->name('admin.maintenance-attention.pdf');
+        Route::get('/maintenance-attention/excel', [MaintenanceAttentionController::class, 'exportExcel'])
+            ->name('admin.maintenance-attention.excel');
         Route::post('/maintenance-attention/mode', [MaintenanceAttentionController::class, 'updateMode'])
             ->name('admin.maintenance-attention.mode');
         Route::view('/org-browser', 'admin.org-browser')->name('admin.org-browser');

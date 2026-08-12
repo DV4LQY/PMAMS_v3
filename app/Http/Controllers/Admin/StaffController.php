@@ -42,6 +42,34 @@ class StaffController extends Controller
         return ['nullable', 'regex:' . self::PH_MOBILE_REGEX];
     }
 
+    private function officeHeadRules(): array
+    {
+        return ['sometimes', 'boolean'];
+    }
+
+    private function officeHeadValue(array $data): ?bool
+    {
+        // An inactive person cannot remain the office representative. NULL is
+        // used instead of false so the database unique index permits all other
+        // staff in the same office to remain unassigned.
+        return !empty($data['is_office_head']) && !empty($data['is_active']) ? true : null;
+    }
+
+    private function makeOfficeHead(Office $office, Staff $staff, ?bool $isOfficeHead): void
+    {
+        if ($isOfficeHead !== true) {
+            $staff->updateQuietly(['is_office_head' => null]);
+            return;
+        }
+
+        Staff::query()
+            ->where('office_id', $office->id)
+            ->whereKeyNot($staff->getKey())
+            ->update(['is_office_head' => null]);
+
+        $staff->updateQuietly(['is_office_head' => true]);
+    }
+
     private function fieldMessages(): array
     {
         return [
@@ -63,6 +91,8 @@ class StaffController extends Controller
             'office' => optional($staff->office)->name,
             'college' => optional(optional($staff->office)->college)->name,
             'active' => $staff->is_active,
+            'office_head' => $staff->is_office_head,
+            'office_head_title' => $staff->office?->responsibleTitle(),
         ];
 
         if (!empty($staff->email)) {
@@ -92,6 +122,8 @@ class StaffController extends Controller
             'office' => optional($staff->office)->name,
             'college' => optional(optional($staff->office)->college)->name,
             'active' => $staff->is_active,
+            'office_head' => $staff->is_office_head,
+            'office_head_title' => $staff->office?->responsibleTitle(),
             'email' => $staff->email,
             'phone' => $staff->phone,
         ];
@@ -103,7 +135,7 @@ class StaffController extends Controller
             ->orderBy('last_name')->orderBy('first_name')
             ->paginate(15);
 
-        $office->load('college');
+        $office->load(['location', 'college']);
 
         $openAddStaff = $request->boolean('open_add');
 
@@ -198,6 +230,7 @@ class StaffController extends Controller
                     'email' => $row['email'] ?? null,
                     'phone' => $row['phone'] ?? null,
                     'is_active' => (bool) ($row['is_active'] ?? false),
+                    'is_office_head' => null,
                 ]);
 
                 $staffName = trim($staff->first_name . ' ' . $staff->last_name);
@@ -228,6 +261,7 @@ class StaffController extends Controller
             'email' => $this->emailRules(),
             'phone' => $this->phoneRules(),
             'is_active' => ['sometimes', 'boolean'],
+            'is_office_head' => $this->officeHeadRules(),
         ], [
             'first_name.regex' => $this->fieldMessages()['first_name'],
             'last_name.regex' => $this->fieldMessages()['last_name'],
@@ -283,7 +317,10 @@ class StaffController extends Controller
             'email' => $data['email'] ?? null,
             'phone' => $data['phone'] ?? null,
             'is_active' => (bool) ($data['is_active'] ?? false),
+            'is_office_head' => null,
         ]);
+
+        $this->makeOfficeHead($office, $staff, $this->officeHeadValue($data));
 
         $staffName = trim($staff->first_name . ' ' . $staff->last_name);
 
@@ -316,7 +353,7 @@ class StaffController extends Controller
     public function edit(Office $office, Staff $staff)
     {
         abort_unless($staff->office_id === $office->id, 404);
-        $office->load('college');
+        $office->load(['location', 'college']);
 
         return view('admin.staff.edit', compact('office', 'staff'));
     }
@@ -332,6 +369,7 @@ class StaffController extends Controller
             'email' => $this->emailRules(),
             'phone' => $this->phoneRules(),
             'is_active' => ['sometimes', 'boolean'],
+            'is_office_head' => $this->officeHeadRules(),
         ], [
             'first_name.regex' => $this->fieldMessages()['first_name'],
             'last_name.regex' => $this->fieldMessages()['last_name'],
@@ -389,6 +427,7 @@ class StaffController extends Controller
             'email' => $staff->email,
             'phone' => $staff->phone,
             'active' => $staff->is_active,
+            'office_head' => $staff->is_office_head,
         ];
 
         $staff->update([
@@ -398,7 +437,12 @@ class StaffController extends Controller
             'email' => $data['email'] ?? null,
             'phone' => $data['phone'] ?? null,
             'is_active' => (bool) ($data['is_active'] ?? false),
+            // Clear the current flag before assigning it below. This also
+            // makes an unchecked edit immediately remove the designation.
+            'is_office_head' => null,
         ]);
+
+        $this->makeOfficeHead($office, $staff, $this->officeHeadValue($data));
 
         $staffName = trim($staff->first_name . ' ' . $staff->last_name);
 
@@ -418,6 +462,7 @@ class StaffController extends Controller
                         'email' => $staff->email,
                         'phone' => $staff->phone,
                         'active' => $staff->is_active,
+                        'office_head' => $staff->is_office_head,
                     ]
                 )
             )

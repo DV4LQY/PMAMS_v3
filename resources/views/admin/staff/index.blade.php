@@ -54,6 +54,7 @@
 
         $addBag = $errors->getBag('add');
         $editBag = $errors->getBag('edit');
+        $officeHeadTitle = $office->responsibleTitle();
 
         [$addSinglePosition, $addSinglePositionOther] = $resolvePosition(old('position'));
         [$editPosition, $editPositionOther] = $resolvePosition(old('position'));
@@ -72,7 +73,7 @@
                 'positionOther' => $rowPositionOther,
                 'email' => $oldStaffRows[$i]['email'] ?? '',
                 'phone' => $oldStaffRows[$i]['phone'] ?? '',
-                'is_active' => $oldStaffRows ? isset($oldStaffRows[$i]['is_active']) : true,
+                    'is_active' => $oldStaffRows ? isset($oldStaffRows[$i]['is_active']) : true,
                 'firstNameError' => $addBag->first("staff.$i.first_name"),
                 'lastNameError' => $addBag->first("staff.$i.last_name"),
                 'positionError' => $addBag->first("staff.$i.position"),
@@ -82,6 +83,7 @@
         }
     @endphp
     <script>
+        window.__pmamsStaffManagerPageScriptLoaded = true;
         function registerStaffManager() {
             if (!window.Alpine) return;
 
@@ -114,6 +116,7 @@
                     email: @js(old('email', '')),
                     phone: @js(old('phone', '')),
                     is_active: {{ old('first_name') !== null ? (old('is_active') ? 'true' : 'false') : 'true' }},
+                    is_office_head: {{ old('first_name') !== null ? (old('is_office_head') ? 'true' : 'false') : 'false' }},
                     firstNameError: @js($addBag->first('first_name')),
                     lastNameError: @js($addBag->first('last_name')),
                     positionError: @js($addBag->first('position')),
@@ -132,6 +135,7 @@
                     email: @js(old('email', '')),
                     phone: @js(old('phone', '')),
                     is_active: {{ old('editing_id') !== null ? (old('is_active') ? 'true' : 'false') : 'true' }},
+                    is_office_head: {{ old('editing_id') !== null ? (old('is_office_head') ? 'true' : 'false') : 'false' }},
                     firstNameError: @js($editBag->first('first_name')),
                     lastNameError: @js($editBag->first('last_name')),
                     positionError: @js($editBag->first('position')),
@@ -145,6 +149,7 @@
                     return {
                         first_name: '', last_name: '', position: '', positionOther: '', email: '', phone: '',
                         is_active: true,
+                        is_office_head: false,
                         firstNameError: '', lastNameError: '', positionError: '', emailError: '', phoneError: ''
                     };
                 },
@@ -191,6 +196,7 @@
                         email: staff.email ?? '',
                         phone: staff.phone ?? '',
                         is_active: !!staff.is_active,
+                        is_office_head: !!staff.is_office_head,
                         firstNameError: '',
                         lastNameError: '',
                         positionError: '',
@@ -284,6 +290,9 @@
 
                             <div class="mt-1 text-sm text-gray-500">
                                 {{ $s->position ?: 'No position set' }}
+                                @if($s->is_office_head && $s->is_active)
+                                    <span class="ml-1 inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{{ $officeHeadTitle }}</span>
+                                @endif
                             </div>
                         </div>
 
@@ -313,15 +322,32 @@
                     </div>
 
                     <div class="mt-4 flex flex-wrap gap-2">
-                        <a href="{{ route('admin.staff.devices.index', $s) }}"
-                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-green-600 hover:bg-green-700">
-                            Equipment
-                        </a>
+                        <x-action-icon
+                            tag="a"
+                            href="{{ route('admin.staff.devices.index', $s) }}"
+                            icon="monitor"
+                            variant="green"
+                            label="View equipment"
+                            class="h-10 w-10"
+                        />
 
                         @if(auth()->user()?->canAction('staff', 'edit') || auth()->user()?->canAction('staff', 'delete'))
                              @if(auth()->user()?->canAction('staff', 'edit'))
-                             <button type="button"
-                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-gray-900 hover:bg-black" @click="openEdit({
+                             <x-action-icon
+                                type="button"
+                                icon="edit"
+                                variant="slate"
+                                label="Edit staff"
+                                class="h-10 w-10"
+                                data-staff-edit-id="{{ $s->id }}"
+                                data-staff-edit-first-name="{{ $s->first_name }}"
+                                data-staff-edit-last-name="{{ $s->last_name }}"
+                                data-staff-edit-position="{{ $s->position ?? '' }}"
+                                data-staff-edit-email="{{ $s->email ?? '' }}"
+                                data-staff-edit-phone="{{ $s->phone ?? '' }}"
+                                data-staff-edit-active="{{ $s->is_active ? '1' : '0' }}"
+                                data-staff-edit-office-head="{{ $s->is_office_head ? '1' : '0' }}"
+                                @click="openEdit({
                                             id: {{ $s->id }},
                                             first_name: @js($s->first_name),
                                             last_name: @js($s->last_name),
@@ -329,17 +355,20 @@
                                             email: @js($s->email ?? ''),
                                             phone: @js($s->phone ?? ''),
                                             is_active: {{ $s->is_active ? 'true' : 'false' }}
-                                        })">
-                                Edit
-                             </button>
+                                            ,is_office_head: {{ $s->is_office_head ? 'true' : 'false' }}
+                                        })"
+                             />
                              @endif
 
                              @if(auth()->user()?->canAction('staff', 'delete'))
-                             <button type="button"
-                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700"
-                                @click="openDelete({{ $s->id }})">
-                                Delete
-                             </button>
+                             <x-action-icon
+                                type="button"
+                                icon="trash"
+                                variant="red"
+                                label="Delete staff"
+                                class="h-10 w-10"
+                                @click="openDelete({{ $s->id }})"
+                             />
                              @endif
                         @endif
                     </div>
@@ -376,7 +405,12 @@
                                     </a>
                                 </td>
 
-                                <td class="px-4 py-3 text-gray-700">{{ $s->position ?: '-' }}</td>
+                                <td class="px-4 py-3 text-gray-700">
+                                    {{ $s->position ?: '-' }}
+                                    @if($s->is_office_head && $s->is_active)
+                                        <span class="ml-1 inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{{ $officeHeadTitle }}</span>
+                                    @endif
+                                </td>
                                 <td class="px-4 py-3 text-gray-700">{{ $s->email ?: '-' }}</td>
                                 <td class="px-4 py-3 text-gray-700">{{ $s->phone ?: '-' }}</td>
 
@@ -396,15 +430,29 @@
 
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     <div class="flex items-center gap-2">
-                                        <a href="{{ route('admin.staff.devices.index', $s) }}"
-                                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-green-600 hover:bg-green-700">
-                                            Equipment
-                                        </a>
+                                        <x-action-icon
+                                            tag="a"
+                                            href="{{ route('admin.staff.devices.index', $s) }}"
+                                            icon="monitor"
+                                            variant="green"
+                                            label="View equipment"
+                                        />
 
                                         @if(auth()->user()?->canAction('staff', 'edit') || auth()->user()?->canAction('staff', 'delete'))
                                             @if(auth()->user()?->canAction('staff', 'edit'))
-                                            <button type="button"
-                                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-gray-900 hover:bg-black"
+                                            <x-action-icon
+                                                type="button"
+                                                icon="edit"
+                                                variant="slate"
+                                                label="Edit staff"
+                                                data-staff-edit-id="{{ $s->id }}"
+                                                data-staff-edit-first-name="{{ $s->first_name }}"
+                                                data-staff-edit-last-name="{{ $s->last_name }}"
+                                                data-staff-edit-position="{{ $s->position ?? '' }}"
+                                                data-staff-edit-email="{{ $s->email ?? '' }}"
+                                                data-staff-edit-phone="{{ $s->phone ?? '' }}"
+                                                data-staff-edit-active="{{ $s->is_active ? '1' : '0' }}"
+                                                data-staff-edit-office-head="{{ $s->is_office_head ? '1' : '0' }}"
                                                 @click="openEdit({
                                                             id: {{ $s->id }},
                                                             first_name: @js($s->first_name),
@@ -413,17 +461,19 @@
                                                             email: @js($s->email ?? ''),
                                                             phone: @js($s->phone ?? ''),
                                                             is_active: {{ $s->is_active ? 'true' : 'false' }}
-                                                        })">
-                                                Edit
-                                            </button>
+                                                            ,is_office_head: {{ $s->is_office_head ? 'true' : 'false' }}
+                                                        })"
+                                            />
                                             @endif
 
                                             @if(auth()->user()?->canAction('staff', 'delete'))
-                                            <button type="button"
-                                                class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700"
-                                                @click="openDelete({{ $s->id }})">
-                                                Delete
-                                            </button>
+                                            <x-action-icon
+                                                type="button"
+                                                icon="trash"
+                                                variant="red"
+                                                label="Delete staff"
+                                                @click="openDelete({{ $s->id }})"
+                                            />
                                             @endif
                                         @endif
                                     </div>
@@ -641,6 +691,11 @@
                                 <input type="checkbox" name="is_active" value="1" x-model="addSingle.is_active">
                                 Active
                             </label>
+
+                            <label class="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+                                <input type="checkbox" name="is_office_head" value="1" x-model="addSingle.is_office_head" class="mt-0.5">
+                                <span>Assign as <strong>{{ $officeHeadTitle }}</strong> for this office.<br><span class="text-xs text-indigo-700">Only one active {{ strtolower($officeHeadTitle) }} can be assigned per office.</span></span>
+                            </label>
                         </div>
                     </template>
                 </div>
@@ -725,6 +780,11 @@
                 <label class="flex items-center gap-2 text-sm">
                     <input type="checkbox" name="is_active" value="1" x-model="editStaff.is_active">
                     Active
+                </label>
+
+                <label class="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+                    <input type="checkbox" name="is_office_head" value="1" x-model="editStaff.is_office_head" class="mt-0.5">
+                    <span>Assign as <strong>{{ $officeHeadTitle }}</strong> for this office.<br><span class="text-xs text-indigo-700">Saving this assignment replaces the current designated person for this office.</span></span>
                 </label>
 
                 <div class="flex gap-2 pt-2">

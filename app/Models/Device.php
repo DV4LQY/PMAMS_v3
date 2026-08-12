@@ -108,24 +108,42 @@ class Device extends Model
             })
             ->when($typeId, fn (Builder $query) => $query->where('device_type_id', $typeId))
             ->when($locationId, function (Builder $query) use ($locationId) {
-                $query->whereHas('currentAssignment', function (Builder $assignment) use ($locationId) {
-                    $assignment->where(function (Builder $match) use ($locationId) {
-                        $match->where('location_id', $locationId)
-                            ->orWhereHas('office', function (Builder $office) use ($locationId) {
-                                $office->where('location_id', $locationId);
-                            })
-                            ->orWhereHas('staff.office', function (Builder $office) use ($locationId) {
-                                $office->where('location_id', $locationId);
+                $query->where(function (Builder $match) use ($locationId) {
+                    // An active assignment is authoritative. For legacy or
+                    // unissued equipment with no active assignment, use the
+                    // registered deployment references as the fallback.
+                    $match->whereHas('currentAssignment', function (Builder $assignment) use ($locationId) {
+                        $assignment->where(function (Builder $assignmentLocation) use ($locationId) {
+                            $assignmentLocation->where('location_id', $locationId)
+                                ->orWhereHas('office', function (Builder $office) use ($locationId) {
+                                    $office->where('location_id', $locationId);
+                                })
+                                ->orWhereHas('staff.office', function (Builder $office) use ($locationId) {
+                                    $office->where('location_id', $locationId);
+                                });
+                        });
+                    })->orWhere(function (Builder $deployment) use ($locationId) {
+                        $deployment->whereDoesntHave('currentAssignment')
+                            ->where(function (Builder $deploymentLocation) use ($locationId) {
+                                $deploymentLocation->where('location_deployed_id', $locationId)
+                                    ->orWhereHas('deployedOffice', function (Builder $office) use ($locationId) {
+                                        $office->where('location_id', $locationId);
+                                    });
                             });
                     });
                 });
             })
             ->when($officeId, function (Builder $query) use ($officeId) {
-                $query->whereHas('currentAssignment', function (Builder $assignment) use ($officeId) {
-                    $assignment->where('office_id', $officeId)
-                        ->orWhereHas('staff', function (Builder $staff) use ($officeId) {
-                            $staff->where('office_id', $officeId);
-                        });
+                $query->where(function (Builder $match) use ($officeId) {
+                    $match->whereHas('currentAssignment', function (Builder $assignment) use ($officeId) {
+                        $assignment->where('office_id', $officeId)
+                            ->orWhereHas('staff', function (Builder $staff) use ($officeId) {
+                                $staff->where('office_id', $officeId);
+                            });
+                    })->orWhere(function (Builder $deployment) use ($officeId) {
+                        $deployment->whereDoesntHave('currentAssignment')
+                            ->where('office_deployed_id', $officeId);
+                    });
                 });
             })
             ->when($status, fn (Builder $query) => $query->where('status', $status))

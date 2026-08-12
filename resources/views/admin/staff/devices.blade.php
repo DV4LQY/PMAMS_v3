@@ -351,24 +351,27 @@
                             <td class="px-5 py-4 whitespace-nowrap">
                                 <div class="flex items-center gap-2">
                                     @if($device)
-                                        <a
+                                        <x-action-icon
+                                            tag="a"
                                             href="{{ route('admin.devices.show', $device) }}"
-                                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
-                                        >
-                                            View
-                                        </a>
+                                            icon="eye"
+                                            variant="green"
+                                            label="View equipment"
+                                            class="h-10 w-10"
+                                        />
                                     @endif
 
                                     <form method="POST" action="{{ route('admin.staff.devices.return', [$staff, $assignment]) }}">
                                         @csrf
 
-                                        <button
+                                        <x-action-icon
                                             type="submit"
-                                            class="staff-action-button inline-flex h-10 min-w-[5.75rem] items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold leading-5 text-white bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                                            icon="restore"
+                                            variant="red"
+                                            label="Return equipment"
+                                            class="h-10 w-10"
                                             onclick="return confirm('Return this equipment from {{ $staffName }}?')"
-                                        >
-                                            Return
-                                        </button>
+                                        />
                                     </form>
                                 </div>
                             </td>

@@ -23,6 +23,16 @@ class MaintenanceAttentionService
 
     public const MODES = ['rules', 'ai', 'hybrid'];
 
+    /**
+     * ICT equipment is considered old only after the five-year useful-life
+     * period has elapsed. Keep this threshold shared by the rules and the
+     * model-training labels so both modes make the same recommendation.
+     */
+    public const OLD_EQUIPMENT_AGE_YEARS = 6;
+
+    /** Version recorded in local model metadata when its labels are current. */
+    public const AI_RULES_VERSION = 'age-threshold-6';
+
     public function __construct(private readonly LocalMaintenanceModelService $localModel)
     {
     }
@@ -40,11 +50,20 @@ class MaintenanceAttentionService
                 'type',
                 'latestMaintenanceRecord',
                 'currentAssignment.staff.office.location',
+                'currentAssignment.staff.office.responsibleStaff',
                 'currentAssignment.office.location',
+                'currentAssignment.office.responsibleStaff',
                 'currentAssignment.location',
                 'deployedLocation',
                 'deployedOffice.location',
+                'deployedOffice.responsibleStaff',
             ])
+            // Maintenance attention covers computer workstations and the
+            // monitor/printer/UPS records that carry their own condition/status.
+            // Other peripherals remain outside this advisory report.
+            ->whereHas('type', function ($query) {
+                $query->whereIn('name', ['Desktop', 'Laptop', 'Printer', 'Monitor', 'UPS']);
+            })
             // Condemned equipment is already out of service and should not be
             // suggested for an upgrade or another maintenance cycle.
             ->where(function ($query) {
@@ -192,7 +211,7 @@ class MaintenanceAttentionService
                     || (int) ($features['is_not_in_use'] ?? 0) === 1
                     || (int) ($features['recent_issue_count'] ?? 0) > 0
                     || (int) ($features['maintenance_overdue_days'] ?? 0) > 365
-                    || (int) ($features['age_years'] ?? 0) >= 7;
+                    || (int) ($features['age_years'] ?? 0) >= self::OLD_EQUIPMENT_AGE_YEARS;
 
                 return $features + ['label' => $positive ? 1 : 0];
             })
@@ -220,6 +239,8 @@ class MaintenanceAttentionService
         $attentionFlags = [];
         $condition = $this->key($device->condition);
         $status = $this->key($device->status);
+        $typeName = $this->key($device->type?->name);
+        $isComputer = in_array($typeName, ['desktop', 'laptop'], true);
         $osVersion = strtolower(trim((string) $device->os_version));
         $memoryGb = $this->memoryGb($device);
         $storage = strtolower(trim((string) data_get($device->specs, 'storage', '')));
@@ -240,13 +261,13 @@ class MaintenanceAttentionService
         // Keep the upgrade advice deterministic and local: it is based only
         // on the recorded OS version and memory value, with no external AI
         // or online service involved.
-        if (in_array($osVersion, ['windows 10', 'windows 11'], true)
+        if ($isComputer && in_array($osVersion, ['windows 10', 'windows 11'], true)
             && $memoryGb !== null
             && $memoryGb <= 8) {
             $score += 20;
             $attentionFlags[] = 'ram_upgrade';
             $reasons[] = 'Upgrade RAM to at least 16 GB';
-        } elseif (in_array($osVersion, ['windows 7', 'windows 8'], true)
+        } elseif ($isComputer && in_array($osVersion, ['windows 7', 'windows 8'], true)
             && $memoryGb !== null
             && $memoryGb <= 4) {
             $score += 20;
@@ -257,20 +278,20 @@ class MaintenanceAttentionService
         // Mechanical hard drives are a predictable performance bottleneck
         // for desktop equipment. Recommend an SSD flash-storage upgrade only
         // when the inventory explicitly records an HDD.
-        if ($this->key($device->type?->name) === 'desktop'
+        if ($isComputer && $typeName === 'desktop'
             && preg_match('/\bhdd\b/i', $storage) === 1) {
             $score += 15;
             $attentionFlags[] = 'hdd_upgrade';
             $reasons[] = 'Upgrade HDD storage to SSD flash storage';
         }
 
-        if ($this->key($device->os_license) === 'cracked') {
+        if ($isComputer && $this->key($device->os_license) === 'cracked') {
             $score += 20;
             $attentionFlags[] = 'cracked_os';
             $reasons[] = 'Procure a Genuine OS license';
         }
 
-        if ($this->key($device->ms_office_license) === 'cracked') {
+        if ($isComputer && $this->key($device->ms_office_license) === 'cracked') {
             $score += 20;
             $attentionFlags[] = 'cracked_ms_office';
             $reasons[] = 'Procure a Genuine Microsoft Office suite';
@@ -301,22 +322,20 @@ class MaintenanceAttentionService
                 : Carbon::parse($device->date_acquired);
             $ageYears = max(0, $acquired->diffInYears(Carbon::now()));
 
-            if ($ageYears >= 7) {
+            if ($ageYears >= self::OLD_EQUIPMENT_AGE_YEARS) {
                 $score += 20;
                 $attentionFlags[] = 'old_equipment';
-                $reasons[] = 'Equipment is at least 7 years old';
-            } elseif ($ageYears >= 5) {
-                $score += 15;
-                $attentionFlags[] = 'old_equipment';
-                $reasons[] = 'Equipment is at least 5 years old';
-            } elseif ($ageYears >= 3) {
-                $score += 8;
-                $reasons[] = 'Equipment is at least 3 years old';
+                $reasons[] = 'Equipment is at least ' . self::OLD_EQUIPMENT_AGE_YEARS . ' years old';
             }
         }
 
         $lastMaintenance = $device->latestMaintenanceRecord?->maintenance_date
             ?? $device->last_maintenance_date;
+        $checklistRecord = $device->latestMaintenanceRecord;
+        $checklistCondition = $this->key($checklistRecord?->condition);
+        $displayCondition = $checklistCondition !== ''
+            ? $checklistCondition
+            : $condition;
         $lastMaintenance = $lastMaintenance
             ? ($lastMaintenance instanceof Carbon ? $lastMaintenance : Carbon::parse($lastMaintenance))
             : null;
@@ -358,6 +377,11 @@ class MaintenanceAttentionService
             'priority' => $score >= 75 ? 'Critical' : ($score >= 50 ? 'High' : ($score >= 25 ? 'Medium' : 'Low')),
             'reasons' => $reasons ?: ['No urgent signal; monitor during the next PM cycle'],
             'attention_flags' => array_values(array_unique($attentionFlags)),
+            'equipment_type' => $device->type?->name ?: '',
+            'condition' => $displayCondition,
+            'status' => $status,
+            'checklist_condition' => $checklistCondition,
+            'checklist_remarks' => trim((string) ($checklistRecord?->remarks ?? '')),
             'age_years' => $ageYears,
             'last_maintenance' => $lastMaintenance,
             // Used only as a deterministic tie-breaker; it is removed before
@@ -366,16 +390,24 @@ class MaintenanceAttentionService
             'location' => $locationDetails['label'],
             'location_name' => $locationDetails['name'],
             'office_name' => $locationDetails['office_name'],
+            'responsible_name' => $locationDetails['responsible_name'],
+            'responsible_title' => $locationDetails['responsible_title'],
             'ai_features' => [
-                'memory_gb' => $memoryGb ?? 0,
-                'memory_known' => $memoryGb === null ? 0 : 1,
-                'has_hdd' => preg_match('/\bhdd\b/i', $storage) === 1 ? 1 : 0,
-                'is_desktop' => $this->key($device->type?->name) === 'desktop' ? 1 : 0,
+                // Only Desktop/Laptop rows participate in hardware/license
+                // signals. Printer/Monitor/UPS recommendations are based on
+                // condition, status, age, and maintenance history instead.
+                'memory_gb' => $isComputer ? ($memoryGb ?? 0) : 0,
+                'memory_known' => $isComputer && $memoryGb !== null ? 1 : 0,
+                'has_hdd' => $isComputer && preg_match('/\bhdd\b/i', $storage) === 1 ? 1 : 0,
+                // Peripheral AI rows intentionally carry no computer-spec
+                // signals. Their prediction can use condition/status and the
+                // common maintenance history signals only.
+                'is_desktop' => $typeName === 'desktop' ? 1 : 0,
                 'is_unserviceable' => $condition === 'unserviceable' ? 1 : 0,
                 'is_repair' => $status === 'repair' ? 1 : 0,
                 'is_not_in_use' => $status === 'not_in_use' ? 1 : 0,
-                'os_cracked' => $this->key($device->os_license) === 'cracked' ? 1 : 0,
-                'ms_office_cracked' => $this->key($device->ms_office_license) === 'cracked' ? 1 : 0,
+                'os_cracked' => $isComputer && $this->key($device->os_license) === 'cracked' ? 1 : 0,
+                'ms_office_cracked' => $isComputer && $this->key($device->ms_office_license) === 'cracked' ? 1 : 0,
                 'recent_issue_count' => $issueRecords->count(),
                 'transfer_count' => $transferCount,
                 'age_years' => $ageYears,
@@ -420,21 +452,39 @@ class MaintenanceAttentionService
     private function locationDetails(Device $device): array
     {
         $assignment = $device->currentAssignment;
-        $office = $assignment?->office
-            ?? $assignment?->staff?->office
-            ?? $device->deployedOffice;
-        $location = $assignment?->location
-            ?? $office?->location
-            ?? $device->deployedLocation;
+        // Resolve the canonical pair from the active assignment first, then
+        // the registered deployment references. Imported/legacy records can
+        // have only one of the assignment foreign keys populated, so each
+        // relation is considered independently before falling back.
+        $assignmentOffice = $assignment?->office
+            ?: $assignment?->staff?->office;
+        $assignmentLocation = $assignment?->location
+            ?: $assignmentOffice?->location
+            ?: $assignment?->staff?->office?->location;
+        // Never combine an active assignment's location with a stale
+        // deployment office. Assignment data is authoritative while active;
+        // deployment references are only a fallback for unassigned devices.
+        $office = $assignmentOffice ?: ($assignment ? null : $device->deployedOffice);
+        $location = $assignmentLocation
+            ?: ($assignment
+                ? null
+                : ($office?->location
+                    ?: $device->deployedLocation
+                    ?: $device->deployedOffice?->location));
 
-        $locationName = $location?->name;
-        $officeName = $office?->name;
+        $locationName = $this->normalizeName($location?->name);
+        $officeName = $this->normalizeName($office?->name);
+        $responsible = $office?->responsibleStaff;
+        $responsibleName = $responsible?->display_name;
+        $responsibleTitle = $responsible ? $office->responsibleTitle() : null;
 
         if ($locationName && $officeName) {
             return [
                 'label' => $locationName . ' - ' . $officeName,
                 'name' => $locationName,
                 'office_name' => $officeName,
+                'responsible_name' => $responsibleName,
+                'responsible_title' => $responsibleTitle,
             ];
         }
 
@@ -444,7 +494,16 @@ class MaintenanceAttentionService
             'label' => $name ?: 'Location not assigned',
             'name' => $name ?: 'Location not assigned',
             'office_name' => $officeName ?: 'Office not assigned',
+            'responsible_name' => $responsibleName,
+            'responsible_title' => $responsibleTitle,
         ];
+    }
+
+    private function normalizeName(?string $value): string
+    {
+        $normalized = preg_replace('/\s+/u', ' ', trim((string) $value));
+
+        return is_string($normalized) ? $normalized : trim((string) $value);
     }
 
     private function key(?string $value): string

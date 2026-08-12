@@ -970,6 +970,22 @@ import './bootstrap';
                 plugins: { legend: { display: false } },
                 scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
             });
+
+            create('maintenanceAttentionChart', 'line', {
+                labels: data.maintenance_attention?.labels || [],
+                datasets: [
+                    { label: 'Critical', data: data.maintenance_attention?.critical || [], borderColor: '#dc2626', backgroundColor: '#dc2626', tension: 0.3, pointRadius: 3, fill: false },
+                    { label: 'High', data: data.maintenance_attention?.high || [], borderColor: '#ea580c', backgroundColor: '#ea580c', tension: 0.3, pointRadius: 3, fill: false },
+                    { label: 'Medium', data: data.maintenance_attention?.medium || [], borderColor: '#ca8a04', backgroundColor: '#ca8a04', tension: 0.3, pointRadius: 3, fill: false },
+                    { label: 'Low', data: data.maintenance_attention?.low || [], borderColor: '#2563eb', backgroundColor: '#2563eb', tension: 0.3, pointRadius: 3, fill: false },
+                    { label: 'Local AI recommended', data: data.maintenance_attention?.ai || [], borderColor: '#9333ea', backgroundColor: '#9333ea', borderDash: [6, 4], tension: 0.3, pointRadius: 3, fill: false },
+                ],
+            }, {
+                ...common,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { position: 'bottom', labels: { padding: 12, boxWidth: 12 } } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+            });
         }).catch(() => {
             // The dashboard remains usable if the optional chart CDN is offline.
         });

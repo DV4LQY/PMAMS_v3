@@ -79,9 +79,12 @@ class DeviceController extends Controller
         // Only locations with a code are usable in this filter dropdown —
         // a location with no code would render as a blank, unselectable-
         // looking option, so it's excluded here rather than in the view.
-        $locations = Location::whereNotNull('code')
-            ->where('code', '!=', '')
+        // Location codes are optional metadata. Keep every registered
+        // location filterable so deployed/imported equipment is counted even
+        // when its location has no code.
+        $locations = Location::query()
             ->orderBy('name')
+            ->orderBy('id')
             ->get();
 
         $colleges = $locations; // backward-compatible variable for existing device views
