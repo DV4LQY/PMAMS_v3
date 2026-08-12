@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\MaintenanceCleanupController;
 use App\Http\Controllers\Admin\DatabaseBackupController;
 use App\Http\Controllers\Admin\PreventiveMaintenancePlanController;
 use App\Http\Controllers\Admin\PreventiveMaintenanceQualityController;
+use App\Http\Controllers\SitemapController;
 
 
 /*
@@ -33,6 +34,10 @@ use App\Http\Controllers\Admin\PreventiveMaintenanceQualityController;
 Route::get('/', function () {
     return redirect()->route('login');
 });
+
+// Public sitemap for Google Search Console. Authenticated/admin data is
+// intentionally excluded by SitemapController.
+Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 
 /*
 |--------------------------------------------------------------------------
