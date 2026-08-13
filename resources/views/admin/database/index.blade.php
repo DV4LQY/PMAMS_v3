@@ -134,7 +134,7 @@
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <h2 id="automatic-backup-setup-title" class="font-semibold text-gray-900 dark:text-white">Automatic backup schedule setup</h2>
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Choose a weekly or monthly backup. Monthly backups run on days 1-28 so every month is guaranteed to run; weekly backups run on the selected weekday. Files are saved as <code>pmams-backup-YYYY-MM.sql</code> or <code>pmams-backup-weekly-YYYY-MM-DD.sql</code>.</p>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Choose a weekly or monthly backup. Monthly backups run on days 1-28 so every month is guaranteed to run; weekly backups run on the selected weekday. Each run is saved as a new timestamped SQL file, so existing backups are never overwritten.</p>
                         @if(false)
                         <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Choose the day and time for the monthly local backup. Days 1–28 are available so every month is guaranteed to run. The file name is <code>pmams-backup-YYYY-MM.sql</code>.</p>
                     </div>

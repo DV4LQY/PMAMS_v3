@@ -445,10 +445,26 @@ class MaintenanceAttentionController extends Controller
             ->orderBy('id')
             ->first();
 
+        // A report can cover a PM Plan assigned to more than one Admin. Use
+        // the assigned accounts from the matching schedule(s), not merely the
+        // currently signed-in account, so the printed Checked by line remains
+        // correct when another assigned Admin exports the report.
+        $assignedPlanUsers = collect($rows instanceof Collection ? $rows : [])
+            ->flatMap(fn (array $row) => $row['pm_plan_assigned_users'] ?? [])
+            ->filter(fn (array $user): bool => ! empty($user['id']) && ! empty($user['name']))
+            ->unique('id')
+            ->values();
+        $checkedByNames = $assignedPlanUsers->pluck('name')->implode(' | ');
+        $checkedByPosition = $assignedPlanUsers->count() === 1
+            ? (string) ($assignedPlanUsers->first()['position'] ?? 'Admin')
+            : ($assignedPlanUsers->isNotEmpty() ? 'Assigned PM Plan Admins' : (string) ($admin?->position ?: 'Admin'));
+
         return [
             'head' => $head,
             'head_title' => $headTitle,
             'admin' => $admin,
+            'checked_by_names' => $checkedByNames !== '' ? $checkedByNames : (string) ($admin?->name ?: ''),
+            'checked_by_position' => $checkedByPosition,
             'it_officer' => $itOfficer ?: $head,
         ];
     }
@@ -578,7 +594,7 @@ class MaintenanceAttentionController extends Controller
         }
 
         $schedules = MaintenancePlanSchedule::query()
-            ->with(['location', 'office', 'latestOverride'])
+            ->with(['location', 'office', 'latestOverride', 'assignedUsers:id,name,position'])
             ->orderByDesc('schedule_month_from')
             ->get();
         $today = CarbonImmutable::today();
@@ -643,6 +659,16 @@ class MaintenanceAttentionController extends Controller
                 ?: $matches->first();
 
             $row['pm_schedule'] = $schedule ? $this->pmScheduleLabel($schedule) : '';
+            $row['pm_plan_assigned_users'] = $schedule
+                ? $schedule->assignedUsers
+                    ->map(fn (User $user): array => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'position' => $user->position,
+                    ])
+                    ->values()
+                    ->all()
+                : [];
             $row['pm_schedule_windows'] = $matches
                 ->flatMap(fn (MaintenancePlanSchedule $candidate): array => $this->pmScheduleWindows($candidate))
                 ->values()

@@ -19,14 +19,23 @@ class DatabaseBackupMonthly extends Command
         try {
             $sql = $backupController->generateDumpForScheduler();
             $frequency = (string) SystemSetting::getValue(DatabaseBackupController::BACKUP_FREQUENCY_KEY, 'monthly');
-            $relativePath = $frequency === 'weekly'
-                ? 'backups/pmams-backup-weekly-' . now()->format('Y-m-d') . '.sql'
-                : 'backups/pmams-backup-' . now()->format('Y-m') . '.sql';
+            $disk = Storage::disk('local');
+            $disk->makeDirectory('backups');
 
-            Storage::disk('local')->makeDirectory('backups');
-            Storage::disk('local')->put($relativePath, $sql);
+            // Always include the full timestamp in scheduled backup names. This
+            // keeps every run as a separate historical file instead of replacing
+            // an existing monthly/weekly backup in the directory.
+            $prefix = $frequency === 'weekly' ? 'pmams-backup-weekly-' : 'pmams-backup-';
+            $relativePath = 'backups/' . $prefix . now()->format('Y-m-d-His-u') . '.sql';
+            $suffix = 1;
+            while ($disk->exists($relativePath)) {
+                $relativePath = 'backups/' . $prefix . now()->format('Y-m-d-His-u') . '-' . $suffix . '.sql';
+                $suffix++;
+            }
 
-            $this->info(ucfirst($frequency) . ' backup saved to ' . Storage::disk('local')->path($relativePath));
+            $disk->put($relativePath, $sql);
+
+            $this->info(ucfirst($frequency) . ' backup saved to ' . $disk->path($relativePath));
 
             return self::SUCCESS;
         } catch (Throwable $exception) {

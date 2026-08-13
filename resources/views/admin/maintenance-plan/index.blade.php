@@ -56,12 +56,23 @@
                 <div>
                     @php($selectedAssignedUserIds = collect(old('assigned_user_ids', old('assigned_user_id') ? [old('assigned_user_id')] : []))->map(fn ($id) => (int) $id)->all())
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin <span class="font-normal text-gray-500">(select one or more)</span></label>
-                    <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                        @foreach($admins as $admin)
-                            <option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $selectedAssignedUserIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>
-                        @endforeach
-                    </select>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Admin and Super Admin accounts are assignable. Hold Ctrl (Windows) or Command (Mac) to select multiple users.</p>
+                    <div class="overflow-hidden rounded-xl border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800">
+                        <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            <span>Tick one or more accounts</span>
+                            <span>{{ $admins->count() }} available</span>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto p-2">
+                            @forelse($admins as $admin)
+                                <label class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-gray-700">
+                                    <input type="checkbox" name="assigned_user_ids[]" value="{{ $admin->id }}" @checked(in_array((int) $admin->id, $selectedAssignedUserIds, true)) class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 dark:border-gray-500 dark:bg-gray-700">
+                                    <span>{{ $admin->name }} <span class="text-xs text-gray-500 dark:text-gray-400">({{ $admin->roleLabel() }})</span></span>
+                                </label>
+                            @empty
+                                <p class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No Admin or Super Admin accounts are available.</p>
+                            @endforelse
+                        </div>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Admin and Super Admin accounts are assignable. Leave every box unchecked to allow all eligible accounts.</p>
                 </div>
                 <div class="lg:col-span-2">
                     <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-200">Offices <span class="font-normal text-gray-500">(optional)</span></label>
@@ -276,10 +287,23 @@
                                                     </div>
                                                     <p class="text-xs text-gray-500 dark:text-gray-400">The edited range cannot overlap another PM Plan for the same location and office. Recycled plans are included in the duplicate check.</p>
                                                     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin</label>
-                                                    <select name="assigned_user_ids[]" multiple size="4" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                                                        @foreach($admins as $admin)<option value="{{ $admin->id }}" @selected(in_array((int) $admin->id, $scheduleAssignedIds, true))>{{ $admin->name }} ({{ $admin->roleLabel() }})</option>@endforeach
-                                                    </select>
-                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Ctrl/Command-click to select multiple. Clear all to allow every Admin or Super Admin.</p>
+                                                    <div class="overflow-hidden rounded-lg border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800">
+                                                        <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                                            <span>Tick one or more accounts</span>
+                                                            <span>{{ $admins->count() }} available</span>
+                                                        </div>
+                                                        <div class="max-h-40 overflow-y-auto p-2">
+                                                            @forelse($admins as $admin)
+                                                                <label class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-gray-700">
+                                                                    <input type="checkbox" name="assigned_user_ids[]" value="{{ $admin->id }}" @checked(in_array((int) $admin->id, $scheduleAssignedIds, true)) class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 dark:border-gray-500 dark:bg-gray-700">
+                                                                    <span>{{ $admin->name }} <span class="text-xs text-gray-500 dark:text-gray-400">({{ $admin->roleLabel() }})</span></span>
+                                                                </label>
+                                                            @empty
+                                                                <p class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No Admin or Super Admin accounts are available.</p>
+                                                            @endforelse
+                                                        </div>
+                                                    </div>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Leave every box unchecked to allow all eligible Admin or Super Admin accounts.</p>
                                                     <input type="text" name="title" value="{{ $schedule->title }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" placeholder="Schedule title">
                                                     <textarea name="notes" rows="3" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $schedule->notes }}</textarea>
                                                     <div class="flex justify-end gap-2 pt-2">
