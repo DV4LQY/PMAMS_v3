@@ -1303,7 +1303,7 @@
         </main>
 
         <footer class="px-4 py-3 text-center text-xs text-gray-500 dark:text-gray-400 print:hidden" aria-label="Application footer">
-            PMAMS Version 3.5.6 &copy; 2026. All rights reserved.
+            PMAMS Version 3.5.7 &copy; 2026. All rights reserved.
         </footer>
 
     </div>

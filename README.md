@@ -1,6 +1,32 @@
-# PMAMS 3.0
+# PMAMS
 
 PMAMS (Preventive Maintenance and Asset Monitoring System) is a Laravel-based ICT equipment management system. It helps an organization register equipment, track conditions and locations, issue assets to staff, maintain equipment history, and generate operational reports.
+
+## Screenshots
+
+The screenshots below are stored in the repository so they render correctly on GitHub. They cover the dashboard/workflow overview, inventory filters, preventive-maintenance plans, reports, and mobile navigation.
+
+### Dashboard and workflow overview
+
+![PMAMS dashboard and workflow overview](manual_assets/contact-sheet.png)
+
+### Equipment inventory and filters
+
+![PMAMS equipment inventory filters](manual_assets/equipment-filters.png)
+
+### Preventive maintenance plan
+
+![PMAMS preventive maintenance plan](manual_assets/pm-plan-card.png)
+
+### Maintenance attention report
+
+![PMAMS maintenance attention report](manual_assets/maintenance-attention-report.png)
+
+### Mobile navigation
+
+![PMAMS mobile navigation](manual_assets/mobile-menu.png)
+
+> To replace a screenshot, keep the new image in `manual_assets/` and update the relative Markdown link above. Do not use local `C:\...` paths; GitHub cannot render them.
 
 ## Features
 
@@ -207,6 +233,13 @@ android-app/         Android WebView client with ICTU branding
 ## Android app
 
 The `android-app` folder contains a PMAMS Android WebView client that uses the ICTU logo and supports the existing web workflows, camera input, QR scanning, and file downloads. See [`android-app/README.md`](android-app/README.md) for emulator, physical-device, and APK build instructions.
+
+## GitHub publishing checklist
+
+- Commit `README.md` together with the referenced files in `manual_assets/` so the screenshots render on GitHub.
+- Never commit `.env`, production credentials, uploaded photos, generated backups, or private model files.
+- Configure the production `.env` on the server, run `composer install --no-dev --optimize-autoloader`, build the Vite assets, and cache configuration/routes/views.
+- Point the web server document root to the project’s `public/` directory and enable HTTPS before opening the application to users.
 
 ## License
 

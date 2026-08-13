@@ -11,6 +11,8 @@ TODO.md
 .env.production
 .phpactor.json
 .phpunit.result.cache
+/manual_assets
+/docs
 /.fleet
 /.idea
 /.nova

@@ -798,7 +798,7 @@
             </a>
 
             <footer class="login-footer">
-                PMAMS Version 3.5.6 &copy; 2026. All rights reserved.
+                PMAMS Version 3.5.7 &copy; 2026. All rights reserved.
             </footer>
         </div>
     </div><!-- /right-panel -->
