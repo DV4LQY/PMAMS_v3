@@ -12,6 +12,7 @@ TODO.md
 .phpactor.json
 .phpunit.result.cache
 /manual_assets
+/tmp
 /docs
 /.fleet
 /.idea

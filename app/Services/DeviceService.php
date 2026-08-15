@@ -65,7 +65,7 @@ class DeviceService
             }
 
             $data['specs'] = collect($data['specs'] ?? [])
-                ->except(['os', 'memory', 'storage', 'form_factor'])
+                ->except(['os', 'memory', 'processor', 'storage', 'form_factor'])
                 ->toArray();
 
             if (empty($data['specs'])) {

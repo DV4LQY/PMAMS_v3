@@ -12,8 +12,10 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class DatabaseBackupController extends Controller
@@ -124,7 +126,7 @@ class DatabaseBackupController extends Controller
 
     public function restore(Request $request)
     {
-        abort_unless($request->user()?->isSuperAdmin() || $request->user()?->canMenu('database'), 403);
+        $this->requireSuperAdminRestore($request);
         $this->ensureSupportedDriver();
 
         $request->validate([
@@ -142,6 +144,70 @@ class DatabaseBackupController extends Controller
             return back()->withErrors(['backup' => 'The selected SQL backup is empty or could not be read.']);
         }
 
+        return $this->restoreFile($uploadPath, (string) $file->getClientOriginalName());
+    }
+
+    /**
+     * Restore one of the timestamped backups already stored by the scheduler.
+     * Only a basename in the local backups directory is accepted; this keeps
+     * the action from becoming an arbitrary-file read/execute endpoint.
+     */
+    public function restoreLocal(Request $request)
+    {
+        $this->requireSuperAdminRestore($request);
+        $this->ensureSupportedDriver();
+
+        $data = $request->validate([
+            'filename' => ['required', 'string', 'max:255', 'regex:/\A[a-zA-Z0-9][a-zA-Z0-9._-]*\.sql\z/i'],
+        ]);
+
+        $filename = (string) $data['filename'];
+        if ($filename !== basename($filename) || str_contains($filename, '/') || str_contains($filename, '\\')) {
+            return back()->withErrors(['backup' => 'The selected backup filename is invalid.']);
+        }
+
+        $relativePath = 'backups/' . $filename;
+        $disk = Storage::disk('local');
+        if (! $disk->exists($relativePath)) {
+            return back()->withErrors(['backup' => 'The selected local backup no longer exists. Refresh the page and try again.']);
+        }
+
+        $backupPath = $disk->path($relativePath);
+        if (! is_file($backupPath) || ! is_readable($backupPath) || (int) @filesize($backupPath) === 0) {
+            return back()->withErrors(['backup' => 'The selected local backup is empty or could not be read.']);
+        }
+
+        if ((int) @filesize($backupPath) > 102400 * 1024) {
+            return back()->withErrors(['backup' => 'The selected local backup exceeds the 100 MB restore limit.']);
+        }
+
+        return $this->restoreFile($backupPath, $filename);
+    }
+
+    /**
+     * Database restore replaces live tables and is intentionally a
+     * Super Admin-only operation. Require the current account password on
+     * every restore request, including restores of scheduler-created files.
+     */
+    private function requireSuperAdminRestore(Request $request): void
+    {
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $request->validate([
+            'restore_password' => ['required', 'string'],
+        ], [
+            'restore_password.required' => 'Enter the Super Admin password to restore a backup.',
+        ]);
+
+        if (! Hash::check((string) $request->input('restore_password'), (string) $request->user()->getAuthPassword())) {
+            throw ValidationException::withMessages([
+                'restore_password' => 'The Super Admin password is incorrect.',
+            ]);
+        }
+    }
+
+    private function restoreFile(string $restorePath, string $displayFilename)
+    {
         $maintenanceStarted = false;
         $safetyBackup = null;
         $executed = 0;
@@ -160,9 +226,9 @@ class DatabaseBackupController extends Controller
             Storage::disk('local')->makeDirectory('backups');
             Storage::disk('local')->put($safetyBackup, $this->buildDump());
 
-            // Process the upload as a stream so a large SQL file is not copied
+            // Process the backup as a stream so a large SQL file is not copied
             // into a second in-memory string or statement array.
-            $executed = $this->executeRestoreFile($uploadPath);
+            $executed = $this->executeRestoreFile($restorePath);
 
             // A backup may come from an older deployment. Run migrations after
             // import so required columns (for example deleted_at) are restored.
@@ -173,7 +239,7 @@ class DatabaseBackupController extends Controller
             try {
                 ActivityLog::record('restored', 'Restored a database backup SQL file.', null, [
                     'statements' => $executed,
-                    'filename' => $file->getClientOriginalName(),
+                    'filename' => $displayFilename,
                     'safety_backup' => $safetyBackup,
                 ]);
             } catch (Throwable $loggingException) {

@@ -686,6 +686,7 @@ class DeviceController extends Controller
             'ms_office_version' => $device->ms_office_version,
             'ms_office_license' => $device->ms_office_license,
             'memory' => data_get($device->specs, 'memory'),
+            'processor' => data_get($device->specs, 'processor'),
             'storage' => data_get($device->specs, 'storage'),
             'form_factor' => data_get($device->specs, 'form_factor'),
             'unit_price' => $device->unit_price,
@@ -978,6 +979,7 @@ class DeviceController extends Controller
             'ms_office_license' => $device->ms_office_license,
 
             'memory' => data_get($device->specs, 'memory'),
+            'processor' => data_get($device->specs, 'processor'),
             'storage' => data_get($device->specs, 'storage'),
             'form_factor' => data_get($device->specs, 'form_factor'),
 
@@ -1019,6 +1021,7 @@ class DeviceController extends Controller
             'ms_office_version' => $device->ms_office_version,
             'ms_office_license' => $device->ms_office_license,
             'memory' => data_get($device->specs, 'memory'),
+            'processor' => data_get($device->specs, 'processor'),
             'storage' => data_get($device->specs, 'storage'),
             'form_factor' => data_get($device->specs, 'form_factor'),
             'unit_price' => $device->unit_price,
@@ -1058,6 +1061,7 @@ class DeviceController extends Controller
                         'ms_office_license' => $device->ms_office_license,
 
                         'memory' => data_get($device->specs, 'memory'),
+                        'processor' => data_get($device->specs, 'processor'),
                         'storage' => data_get($device->specs, 'storage'),
                         'form_factor' => data_get($device->specs, 'form_factor'),
 
@@ -1203,6 +1207,7 @@ class DeviceController extends Controller
                 'ms_office_version' => $device->ms_office_version,
                 'ms_office_license' => $device->ms_office_license,
                 'memory' => data_get($device->specs, 'memory'),
+                'processor' => data_get($device->specs, 'processor'),
                 'storage' => data_get($device->specs, 'storage'),
             ];
 
@@ -1936,6 +1941,7 @@ class DeviceController extends Controller
         foreach ([
             'memory' => 255,
             'storage' => 255,
+            'processor' => 255,
             'form_factor' => 255,
             'maintenance_remarks' => 1000,
             'notes' => 2000,
@@ -2243,7 +2249,7 @@ class DeviceController extends Controller
         }
 
         $specs = is_array($device->specs) ? $device->specs : [];
-        foreach (['memory', 'storage', 'form_factor'] as $specField) {
+        foreach (['memory', 'processor', 'storage', 'form_factor'] as $specField) {
             if (array_key_exists($specField, $row) && filled($row[$specField])) {
                 $specs[$specField] = $row[$specField];
             }
@@ -2884,6 +2890,7 @@ class DeviceController extends Controller
             'ms_office_license' => 100,
             'memory' => 255,
             'storage' => 255,
+            'processor' => 255,
             'form_factor' => 255,
             'maintenance_remarks' => 1000,
             'notes' => 2000,
@@ -2944,7 +2951,7 @@ class DeviceController extends Controller
             'computer_name', 'network_device_type', 'location_deployed', 'mac_address', 'unit_price', 'date_acquired', 'condition',
             'part_of_property_number',
             'status', 'os_version', 'os_license', 'ms_office_version', 'ms_office_license',
-            'memory', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks',
+            'memory', 'processor', 'storage', 'form_factor', 'last_maintenance_date', 'maintenance_remarks',
             'notes', 'staff_email', 'staff_name', 'first_name', 'last_name', 'office',
             'position', 'phone', 'location', 'location_code', 'issued_at', 'issuance_remarks',
         ];
@@ -3018,6 +3025,7 @@ class DeviceController extends Controller
             'ms_office_version',
             'ms_office_license',
             'memory',
+            'processor',
             'storage',
             'form_factor',
             'last_maintenance_date',
@@ -3267,6 +3275,7 @@ class DeviceController extends Controller
             'specs' => ['nullable', 'array'],
             'specs.os' => ['nullable', 'string', 'max:100'],
             'specs.memory' => ['nullable', 'string', 'max:50'],
+            'specs.processor' => ['nullable', 'string', 'max:50'],
             'specs.storage' => ['nullable', 'string', 'max:50'],
             'specs.form_factor' => ['nullable', 'string', 'max:50'],
 
@@ -3338,6 +3347,7 @@ class DeviceController extends Controller
             'ms_office_license' => $device->ms_office_license,
 
             'memory' => data_get($device->specs, 'memory'),
+            'processor' => data_get($device->specs, 'processor'),
             'storage' => data_get($device->specs, 'storage'),
             'form_factor' => data_get($device->specs, 'form_factor'),
 
@@ -3372,6 +3382,7 @@ class DeviceController extends Controller
             'ms_office_version' => $device->ms_office_version,
             'ms_office_license' => $device->ms_office_license,
             'memory' => data_get($device->specs, 'memory'),
+            'processor' => data_get($device->specs, 'processor'),
             'storage' => data_get($device->specs, 'storage'),
             'form_factor' => data_get($device->specs, 'form_factor'),
             'unit_price' => $device->unit_price,
@@ -3410,6 +3421,7 @@ class DeviceController extends Controller
                         'ms_office_license' => $device->ms_office_license,
 
                         'memory' => data_get($device->specs, 'memory'),
+                        'processor' => data_get($device->specs, 'processor'),
                         'storage' => data_get($device->specs, 'storage'),
                         'form_factor' => data_get($device->specs, 'form_factor'),
 
@@ -3722,6 +3734,7 @@ class DeviceController extends Controller
                 ->except([
                     'os',
                     'memory',
+                    'processor',
                     'storage',
                     'form_factor',
                     'computer_name',

@@ -65,6 +65,7 @@
             ms_office_license: @json(old('ms_office_license', $device->ms_office_license)),
             specs: {
                 memory: @json(data_get($device->specs, 'memory', '')),
+                processor: @json(data_get($device->specs, 'processor', '')),
                 storage: @json(data_get($device->specs, 'storage', '')),
                 form_factor: @json(data_get($device->specs, 'form_factor', '')),
                 computer_name: @json(data_get($device->specs, 'computer_name', ''))
@@ -191,6 +192,7 @@
                 setValue('office_deployed_id', device.office_deployed_id);
                 setValue('mac_address', device.mac_address);
                 setValue('specs[memory]', specs.memory);
+                setValue('specs[processor]', specs.processor);
                 setValue('specs[storage]', specs.storage);
                 form.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '', bubbles: true }));
                 setValue('specs[form_factor]', specs.form_factor);
@@ -750,6 +752,13 @@
                     </div>
 
                     <div>
+                        <div class="text-sm text-gray-500">Processor</div>
+                        <div class="font-medium text-gray-900">
+                            {{ data_get($device->specs, 'processor', '-') ?: '-' }}
+                        </div>
+                    </div>
+
+                    <div>
                         <div class="text-sm text-gray-500">Storage</div>
                         <div class="font-medium text-gray-900">
                             {{ data_get($device->specs, 'storage', '-') ?: '-' }}
@@ -1148,6 +1157,18 @@
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 maxlength="50"
                                 placeholder="Example: 8GB RAM"
+                                :disabled="!isComputerType()"
+                            >
+                        </div>
+
+                        <div x-show="isComputerType()" x-cloak>
+                            <label class="text-sm font-medium dark:text-gray-300">Processor</label>
+                            <input
+                                name="specs[processor]"
+                                value="{{ old('specs.processor', data_get($device->specs, 'processor')) }}"
+                                maxlength="255"
+                                placeholder="Example: Intel Core i5-12400"
+                                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 :disabled="!isComputerType()"
                             >
                         </div>

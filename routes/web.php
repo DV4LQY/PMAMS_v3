@@ -164,6 +164,8 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
                 ->name('admin.database.download');
             Route::post('/database/restore', [DatabaseBackupController::class, 'restore'])
                 ->name('admin.database.restore');
+            Route::post('/database/restore-local', [DatabaseBackupController::class, 'restoreLocal'])
+                ->name('admin.database.restoreLocal');
         });
         Route::get('/issuance', fn (\Illuminate\Http\Request $request) => redirect()->route('admin.reports.issuance', $request->query()))
             ->name('admin.issuance.index');

@@ -111,6 +111,16 @@
                class="mt-1 w-full border rounded px-3 py-2">
     </div>
 
+    {{-- Processor (Computer only) --}}
+    <div id="processor_wrapper" style="{{ $isComputer ? '' : 'display:none;' }}">
+        <label class="text-sm font-medium">Processor</label>
+        <input name="specs[processor]" value="{{ $existingSpecs['processor'] ?? '' }}"
+               maxlength="255"
+               placeholder="Example: Intel Core i5-12400"
+               class="mt-1 w-full border rounded px-3 py-2">
+        @error('specs.processor') <div class="text-sm text-red-600 mt-1">{{ $message }}</div> @enderror
+    </div>
+
     {{-- Storage (Computer only) --}}
     <div id="storage_wrapper" style="{{ $isComputer ? '' : 'display:none;' }}">
         <label class="text-sm font-medium">Storage</label>
@@ -200,6 +210,7 @@
     var computerFields = [
         document.getElementById('mac_address_wrapper'),
         document.getElementById('memory_wrapper'),
+        document.getElementById('processor_wrapper'),
         document.getElementById('storage_wrapper'),
         document.getElementById('form_factor_wrapper'),
         document.getElementById('os_version_wrapper'),

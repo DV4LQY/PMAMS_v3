@@ -170,6 +170,16 @@
                 @error('specs.memory')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
+            {{-- Processor (Computer only) --}}
+            <div id="processor_wrapper" style="display:none;">
+                <label class="text-sm font-medium">Processor</label>
+                <input name="specs[processor]" id="processor_input" value="{{ old('specs.processor') }}"
+                       maxlength="255"
+                       placeholder="Example: Intel Core i5-12400"
+                       class="mt-1 w-full border rounded px-3 py-2" disabled>
+                @error('specs.processor')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+            </div>
+
             {{-- Storage (Computer only) --}}
             <div id="storage_wrapper" style="display:none;">
                 <label class="text-sm font-medium">Storage</label>
@@ -325,6 +335,8 @@
         var computerNameInput = document.getElementById('computer_name_input');
         var memoryWrap = document.getElementById('memory_wrapper');
         var memorySelect = document.getElementById('memory_select');
+        var processorWrap = document.getElementById('processor_wrapper');
+        var processorInput = document.getElementById('processor_input');
         var storageWrap = document.getElementById('storage_wrapper');
         var storageTypeSelect = document.getElementById('storage_type_select');
         var storageCapacitySelect = document.getElementById('storage_capacity_select');
@@ -405,6 +417,8 @@
                 computerNameInput.disabled = false;
                 show(memoryWrap);
                 memorySelect.disabled = false;
+                show(processorWrap);
+                processorInput.disabled = false;
                 show(storageWrap);
                 storageTypeSelect.disabled = false;
                 storageCapacitySelect.disabled = !storageTypeSelect.value;
@@ -415,6 +429,9 @@
                 computerNameInput.value = '';
                 hide(memoryWrap);
                 memorySelect.disabled = true;
+                hide(processorWrap);
+                processorInput.disabled = true;
+                processorInput.value = '';
                 hide(storageWrap);
                 storageTypeSelect.disabled = true;
                 storageCapacitySelect.disabled = true;

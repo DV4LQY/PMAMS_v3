@@ -57,11 +57,12 @@
                     </div>
                     <h2 class="mt-4 text-base font-semibold text-gray-900 dark:text-white">Restore a SQL backup</h2>
                     <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Upload a <code>.sql</code> or <code>.txt</code> MySQL/MariaDB dump. Large INSERT statements are split automatically, and foreign-key checks are paused while the statements are processed.</p>
+                    <p class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">Restore is restricted to Super Admin accounts and requires the current password.</p>
                     <form method="POST" action="{{ route('admin.database.restore') }}" enctype="multipart/form-data" data-no-spa="true" class="mt-5 space-y-3" onsubmit="return confirm('Restore this SQL backup? Existing tables may be replaced and this cannot be undone. Create a backup first.');">
                         @csrf
                         <label for="database-backup" class="sr-only">SQL backup file</label>
                         <input id="database-backup" name="backup" type="file" accept=".sql,.txt,text/plain,application/sql" required class="block min-h-11 w-full cursor-pointer rounded-xl border border-gray-300 bg-gray-50 text-sm text-gray-700 file:mr-4 file:min-h-11 file:border-0 file:bg-gray-200 file:px-4 file:font-semibold dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 dark:file:bg-gray-700 dark:file:text-gray-100">
-                        <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                        <button type="button" data-restore-trigger class="inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
                             Restore Database
                         </button>
                     </form>
@@ -87,7 +88,7 @@
 
             <div class="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800/70 dark:bg-blue-900/20 dark:text-blue-200" role="note">
                 <p class="font-semibold">Automatic local backup</p>
-                <p class="mt-1">The scheduler runs <code>database:backup-monthly</code> on the configured weekly or monthly day and time and saves a portable file under <code>storage/app/private/backups</code>. On Windows/XAMPP, keep <code>php artisan schedule:work</code> running or register <code>php artisan schedule:run</code> in Windows Task Scheduler.</p>
+                <p class="mt-1">The scheduler runs <code>database:backup-monthly</code> on the configured weekly or monthly day and time and saves each portable SQL file under <code>storage/app/private/backups</code>. Existing files are never overwritten. On Windows/XAMPP, keep <code>php artisan schedule:work</code> running or register <code>php artisan schedule:run</code> in Windows Task Scheduler.</p>
             </div>
 
             <section class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40" aria-labelledby="backup-coverage-title">
@@ -112,16 +113,26 @@
                 </details>
                 @if(!empty($backupFiles))
                     <div class="mt-4 overflow-x-auto">
+                        <p class="mb-2 text-xs font-medium text-amber-700 dark:text-amber-300">Restore actions request the current Super Admin password in a confirmation dialog.</p>
                         <table class="min-w-full text-left text-xs text-gray-600 dark:text-gray-300">
                             <thead class="border-b border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200">
-                                <tr><th class="px-2 py-2 font-semibold">Local file</th><th class="px-2 py-2 font-semibold">Size</th><th class="px-2 py-2 font-semibold">Last updated</th></tr>
+                                <tr><th class="px-2 py-2 font-semibold">Local file</th><th class="px-2 py-2 font-semibold">Size</th><th class="px-2 py-2 font-semibold">Last updated</th><th class="px-2 py-2 text-right font-semibold">Actions</th></tr>
                             </thead>
                             <tbody>
-                                @foreach($backupFiles as $backupFile)
+                                @foreach($backupFiles as $backupIndex => $backupFile)
                                     <tr class="border-b border-gray-100 last:border-0 dark:border-gray-800">
                                         <td class="px-2 py-2 font-medium">{{ $backupFile['name'] }}</td>
                                         <td class="px-2 py-2">{{ number_format(max(1, (int) ceil($backupFile['size'] / 1024))) }} KB</td>
                                         <td class="px-2 py-2">{{ date('M j, Y g:i A', (int) $backupFile['modified_at']) }}</td>
+                                        <td class="px-2 py-2 text-right">
+                                            <form method="POST" action="{{ route('admin.database.restoreLocal') }}" data-no-spa="true" onsubmit="return confirm('Restore {{ addslashes($backupFile['name']) }}? Existing database tables may be replaced. A safety backup will be created first.');">
+                                                @csrf
+                                                <input type="hidden" name="filename" value="{{ $backupFile['name'] }}">
+                                                <button type="button" data-restore-trigger class="inline-flex min-h-9 items-center justify-center rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900" title="Restore this local SQL backup (Super Admin password required)">
+                                                    Restore
+                                                </button>
+                                            </form>
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -132,25 +143,22 @@
 
             <section class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40" aria-labelledby="automatic-backup-setup-title">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
+                    <div class="min-w-0">
                         <h2 id="automatic-backup-setup-title" class="font-semibold text-gray-900 dark:text-white">Automatic backup schedule setup</h2>
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Choose a weekly or monthly backup. Monthly backups run on days 1-28 so every month is guaranteed to run; weekly backups run on the selected weekday. Each run is saved as a new timestamped SQL file, so existing backups are never overwritten.</p>
-                        @if(false)
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Choose the day and time for the monthly local backup. Days 1–28 are available so every month is guaranteed to run. The file name is <code>pmams-backup-YYYY-MM.sql</code>.</p>
+                        <p class="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-300">Choose a weekly or monthly backup. Monthly backups run on days 1–28 so every month is guaranteed to run; weekly backups run on the selected weekday. Each run is saved as a new timestamped SQL file, so existing backups are never overwritten.</p>
                     </div>
-                        @endif
-                    <span class="inline-flex w-fit items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800 dark:bg-green-900/40 dark:text-green-300">Configured</span>
+                    <span class="inline-flex w-fit shrink-0 items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800 dark:bg-green-900/40 dark:text-green-300">Schedule saved</span>
                 </div>
-                <form method="POST" action="{{ route('admin.database.schedule') }}" data-no-spa="true" class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+                <form method="POST" action="{{ route('admin.database.schedule') }}" data-no-spa="true" class="mt-5 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
                     @csrf
-                    <div>
+                    <div class="min-w-0">
                         <label for="backup-frequency" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Frequency</label>
                         <select id="backup-frequency" name="backup_frequency" onchange="window.syncDatabaseBackupFrequency && window.syncDatabaseBackupFrequency(this.value)" required class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                             <option value="monthly" @selected(($backupFrequency ?? 'monthly') === 'monthly')>Monthly</option>
                             <option value="weekly" @selected(($backupFrequency ?? 'monthly') === 'weekly')>Weekly</option>
                         </select>
                     </div>
-                    <div id="backup-day-wrapper" @if(($backupFrequency ?? 'monthly') !== 'monthly') hidden @endif>
+                    <div id="backup-day-wrapper" class="min-w-0" @if(($backupFrequency ?? 'monthly') !== 'monthly') hidden @endif>
                         <label for="backup-day" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Day of month</label>
                         <select id="backup-day" name="backup_day" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                             @for($day = 1; $day <= 28; $day++)
@@ -158,7 +166,7 @@
                             @endfor
                         </select>
                     </div>
-                    <div id="backup-weekday-wrapper" @if(($backupFrequency ?? 'monthly') !== 'weekly') hidden @endif>
+                    <div id="backup-weekday-wrapper" class="min-w-0" @if(($backupFrequency ?? 'monthly') !== 'weekly') hidden @endif>
                         <label for="backup-weekday" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Day of week</label>
                         <select id="backup-weekday" name="backup_weekday" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                             <option value="1" @selected((int) ($backupWeekday ?? 1) === 1)>Monday</option>
@@ -170,11 +178,11 @@
                             <option value="0" @selected((int) ($backupWeekday ?? 1) === 0)>Sunday</option>
                         </select>
                     </div>
-                    <div>
+                    <div class="min-w-0">
                         <label for="backup-time" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Time</label>
                         <input id="backup-time" name="backup_time" type="time" value="{{ $backupTime ?? '02:00' }}" required class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                     </div>
-                    <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save schedule</button>
+                    <button type="submit" class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Save schedule</button>
                 </form>
                 <div class="mt-3 grid gap-3 text-sm text-gray-700 dark:text-gray-300 md:grid-cols-2">
                     <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
@@ -189,6 +197,30 @@
             </section>
         </section>
     </div>
+
+    <div id="restore-password-modal" class="fixed inset-0 z-[100] items-center justify-center bg-gray-950/60 p-4 backdrop-blur-sm" style="display:none" role="presentation">
+        <div class="absolute inset-0" data-restore-cancel></div>
+        <section class="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800" role="dialog" aria-modal="true" aria-labelledby="restore-password-title" aria-describedby="restore-password-description">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 id="restore-password-title" class="text-lg font-semibold text-gray-900 dark:text-white">Confirm database restore</h2>
+                    <p id="restore-password-description" class="mt-1 text-sm text-gray-600 dark:text-gray-300">Enter the current Super Admin password to continue. A safety backup is created before the restore starts.</p>
+                </div>
+                <button type="button" data-restore-cancel class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white" aria-label="Close restore confirmation">&times;</button>
+            </div>
+            <form id="restore-password-form" class="mt-5 space-y-4">
+                <div>
+                    <label for="restore-password-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Super Admin password</label>
+                    <input id="restore-password-input" type="password" autocomplete="current-password" required class="mt-1 block min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500" placeholder="Enter your current password">
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" data-restore-cancel class="inline-flex min-h-10 items-center justify-center rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
+                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500">Continue restore</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
     <script>
         window.syncDatabaseBackupFrequency = function (frequency) {
             const month = document.getElementById('backup-day-wrapper');
@@ -200,6 +232,63 @@
         document.addEventListener('DOMContentLoaded', function () {
             const select = document.getElementById('backup-frequency');
             if (select) window.syncDatabaseBackupFrequency(select.value);
+
+            const modal = document.getElementById('restore-password-modal');
+            const modalForm = document.getElementById('restore-password-form');
+            const passwordInput = document.getElementById('restore-password-input');
+            let restoreForm = null;
+
+            if (modal && modalForm && passwordInput) {
+                const closeRestoreModal = function () {
+                    modal.style.display = 'none';
+                    passwordInput.value = '';
+                    restoreForm = null;
+                    document.body.classList.remove('overflow-hidden');
+                };
+
+                const openRestoreModal = function (form) {
+                    restoreForm = form;
+                    modal.style.display = 'flex';
+                    document.body.classList.add('overflow-hidden');
+                    window.setTimeout(function () { passwordInput.focus(); }, 0);
+                };
+
+                document.querySelectorAll('[data-restore-trigger]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        const form = button.closest('form');
+                        if (form) openRestoreModal(form);
+                    });
+                });
+
+                modal.querySelectorAll('[data-restore-cancel]').forEach(function (button) {
+                    button.addEventListener('click', closeRestoreModal);
+                });
+
+                modalForm.addEventListener('submit', function (event) {
+                    event.preventDefault();
+                    if (!restoreForm || !passwordInput.value) return;
+
+                    let hiddenPassword = restoreForm.querySelector('input[name="restore_password"]');
+                    if (!hiddenPassword) {
+                        hiddenPassword = document.createElement('input');
+                        hiddenPassword.type = 'hidden';
+                        hiddenPassword.name = 'restore_password';
+                        restoreForm.appendChild(hiddenPassword);
+                    }
+                    hiddenPassword.value = passwordInput.value;
+                    const formToSubmit = restoreForm;
+                    closeRestoreModal();
+                    if (typeof formToSubmit.requestSubmit === 'function') {
+                        formToSubmit.requestSubmit();
+                    } else {
+                        formToSubmit.submit();
+                    }
+                });
+
+                document.addEventListener('keydown', function (event) {
+                    if (event.key === 'Escape' && modal.style.display !== 'none') closeRestoreModal();
+                });
+            }
         });
     </script>
 @endsection

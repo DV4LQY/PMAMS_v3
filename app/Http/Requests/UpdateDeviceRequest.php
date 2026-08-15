@@ -83,6 +83,7 @@ class UpdateDeviceRequest extends FormRequest
             */
             'specs'             => ['nullable', 'array'],
             'specs.memory'      => ['nullable', 'string', 'max:255'],
+            'specs.processor'   => ['nullable', 'string', 'max:255'],
             'specs.storage'     => ['nullable', 'string', 'max:255'],
             'specs.form_factor' => ['nullable', 'string', 'max:255'],
 
@@ -173,6 +174,7 @@ class UpdateDeviceRequest extends FormRequest
             'equipment_photo.max' => 'The equipment photo must not be larger than 10 MB.',
 
             'specs.memory.max'      => 'The memory field must not exceed 255 characters.',
+            'specs.processor.max'   => 'The processor field must not exceed 255 characters.',
             'specs.storage.max'     => 'The storage field must not exceed 255 characters.',
             'specs.form_factor.max' => 'The form factor field must not exceed 255 characters.',
 

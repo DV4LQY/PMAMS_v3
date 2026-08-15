@@ -38,6 +38,16 @@ return [
             'report' => false,
         ],
 
+        // Optional external disk for scheduled SQL backups.
+        'pmams_backups' => [
+            'driver' => 'local',
+            // An empty environment value should behave like “disabled”, not
+            // trigger an attempted write to an empty path.
+            'root' => env('PMAMS_BACKUP_PATH') ?: storage_path('app/private/backups'),
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

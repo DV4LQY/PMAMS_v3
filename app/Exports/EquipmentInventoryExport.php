@@ -52,6 +52,7 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
             'Location Deployed',
             'MAC Address',
             'Memory',
+            'Processor',
             'Storage',
             'Form Factor',
             'OS Version',
@@ -98,6 +99,7 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
                     : $device->location_deployed),
             $device->mac_address,
             data_get($device->specs, 'memory'),
+            data_get($device->specs, 'processor'),
             data_get($device->specs, 'storage'),
             data_get($device->specs, 'form_factor'),
             $device->os_version,
@@ -144,9 +146,9 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
                 $highestRow = $sheet->getHighestRow();
 
                 $sheet->freezePane('A2');
-                $sheet->setAutoFilter("A1:AC{$highestRow}");
-                $sheet->getStyle("A1:AC{$highestRow}")->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
-                $sheet->getStyle("A2:AC{$highestRow}")->getAlignment()->setWrapText(true);
+                $sheet->setAutoFilter("A1:AD{$highestRow}");
+                $sheet->getStyle("A1:AD{$highestRow}")->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
+                $sheet->getStyle("A2:AD{$highestRow}")->getAlignment()->setWrapText(true);
 
                 foreach (['A', 'B', 'D', 'E', 'H', 'I', 'J'] as $column) {
                     for ($row = 2; $row <= $highestRow; $row++) {

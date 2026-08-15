@@ -87,6 +87,7 @@
             specs: {
                 computer_name: '',
                 memory: '',
+                processor: '',
                 storage: '',
                 form_factor: ''
             }
@@ -341,6 +342,7 @@
             setValue('office_deployed_id', device.office_deployed_id);
             setValue('mac_address', device.mac_address);
             setValue('specs[memory]', specs.memory);
+            setValue('specs[processor]', specs.processor);
             setValue('specs[storage]', specs.storage);
             form.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '', bubbles: true }));
             setValue('specs[form_factor]', specs.form_factor);
@@ -362,6 +364,7 @@
             device.specs = device.specs ?? {};
             device.specs.computer_name = device.specs.computer_name ?? '';
             device.specs.memory = device.specs.memory ?? '';
+            device.specs.processor = device.specs.processor ?? '';
             device.specs.storage = device.specs.storage ?? '';
             device.specs.form_factor = device.specs.form_factor ?? '';
 
@@ -874,6 +877,7 @@
                                 computer_name: @js(data_get($d->specs, 'computer_name', '')),
                                 os: @js(data_get($d->specs, 'os', '')),
                                 memory: @js(data_get($d->specs, 'memory', '')),
+                                processor: @js(data_get($d->specs, 'processor', '')),
                                 storage: @js(data_get($d->specs, 'storage', '')),
                                 form_factor: @js(data_get($d->specs, 'form_factor', ''))
                             }
@@ -1031,6 +1035,7 @@
                                                 computer_name: @js(data_get($d->specs, 'computer_name', '')),
                                                 os: @js(data_get($d->specs, 'os', '')),
                                                 memory: @js(data_get($d->specs, 'memory', '')),
+                                                processor: @js(data_get($d->specs, 'processor', '')),
                                                 storage: @js(data_get($d->specs, 'storage', '')),
                                                 form_factor: @js(data_get($d->specs, 'form_factor', ''))
                                             }
@@ -1310,6 +1315,18 @@
                         <option value="64GB">64GB</option>
                         <option x-show="editDevice.specs.memory && !['2GB','4GB','8GB','16GB','32GB','64GB'].includes(editDevice.specs.memory)" :value="editDevice.specs.memory" x-text="editDevice.specs.memory"></option>
                     </select>
+                </div>
+
+                <div x-show="isComputerType(editDevice.device_type_id)" x-cloak>
+                    <label class="text-sm font-medium dark:text-gray-300">Processor</label>
+                    <input
+                        name="specs[processor]"
+                        x-model="editDevice.specs.processor"
+                        maxlength="255"
+                        placeholder="Example: Intel Core i5-12400"
+                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        :disabled="!isComputerType(editDevice.device_type_id)"
+                    >
                 </div>
 
                 <div x-show="isComputerType(editDevice.device_type_id)" x-cloak x-data="{
