@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use Illuminate\Validation\ValidationException;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\DeviceAssignment;
 use App\Models\Office;
 use App\Models\Staff;
 use Illuminate\Http\Request;
@@ -476,19 +477,26 @@ class StaffController extends Controller
     {
         abort_unless($staff->office_id === $office->id, 404);
 
+        if (DeviceAssignment::query()
+            ->where('staff_id', $staff->id)
+            ->whereNull('returned_at')
+            ->exists()) {
+            return back()->with('error', 'Staff cannot be moved to the recycle bin while active equipment is assigned. Return or reissue the equipment first.');
+        }
+
         $summary = $this->buildDeleteSummary($staff);
 
         $staffName = trim($staff->first_name . ' ' . $staff->last_name);
 
         ActivityLog::record(
             'deleted',
-            "Deleted staff \"{$staffName}\"",
+            "Moved staff \"{$staffName}\" to the recycle bin",
             $staff,
             ActivityLog::makePayload($summary)
         );
 
         $staff->delete();
 
-        return back()->with('success', 'Staff deleted.');
+        return back()->with('success', 'Staff moved to the recycle bin.');
     }
 }

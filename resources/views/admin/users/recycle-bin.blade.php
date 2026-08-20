@@ -10,18 +10,20 @@
         $deletedDeviceCount = $deletedDevices->total();
         $deletedMaintenancePlanCount = $deletedMaintenancePlans->total();
         $deletedLocationCount = $deletedLocations->total();
-        $hasDeletedRecords = ($deletedUserCount + $deletedDeviceCount + $deletedMaintenancePlanCount + $deletedLocationCount) > 0;
+        $deletedOfficeCount = $deletedOffices->total();
+        $deletedStaffCount = $deletedStaff->total();
+        $hasDeletedRecords = ($deletedUserCount + $deletedDeviceCount + $deletedMaintenancePlanCount + $deletedLocationCount + $deletedOfficeCount + $deletedStaffCount) > 0;
     @endphp
     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Restore deleted users, equipment, locations, and PM Plans. Checklist history is managed in Checklist Cleanup. Permanent deletion is available only to Super Admins.
+                Restore deleted users, equipment, locations, offices, staff, and PM Plans. Checklist history is managed in Checklist Cleanup. Permanent deletion is available only to Super Admins.
             </p>
         </div>
 
         <div class="flex flex-wrap gap-2">
             @if($hasDeletedRecords)
-            <form method="POST" action="{{ route('admin.recycle-bin.restoreAll') }}" onsubmit="return confirm('Restore all deleted users, equipment, locations, and PM Plans from the recycle bin?')">
+            <form method="POST" action="{{ route('admin.recycle-bin.restoreAll') }}" onsubmit="return confirm('Restore all deleted users, equipment, locations, offices, staff, and PM Plans from the recycle bin?')">
                 @csrf
                 @method('PATCH')
                 <button type="submit" class="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
@@ -45,7 +47,7 @@
     @if($hasDeletedRecords)
         <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200" role="status">
             <p class="font-semibold">Deleted records are still present in the database.</p>
-            <p class="mt-1">{{ number_format($deletedUserCount) }} user(s), {{ number_format($deletedDeviceCount) }} equipment record(s), {{ number_format($deletedLocationCount) }} location(s), and {{ number_format($deletedMaintenancePlanCount) }} PM Plan(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to manage them.</p>
+            <p class="mt-1">{{ number_format($deletedUserCount) }} user(s), {{ number_format($deletedDeviceCount) }} equipment record(s), {{ number_format($deletedLocationCount) }} location(s), {{ number_format($deletedOfficeCount) }} office(s), {{ number_format($deletedStaffCount) }} staff member(s), and {{ number_format($deletedMaintenancePlanCount) }} PM Plan(s) are in the recycle bin. Use the row buttons, selected buttons, or <strong>Permanently Delete All</strong> to manage them.</p>
         </div>
     @endif
 
@@ -232,6 +234,118 @@
     @endif
     {{ $deletedMaintenancePlans->links() }}
 
+    <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted Offices</h2>
+    @if($deletedOffices->total() > 0)
+    <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <input id="delete-all-offices" type="checkbox" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" onchange="toggleRecycleBinSelection('offices', this.checked)" aria-label="Select all deleted offices matching the current filters">
+            Select all deleted offices matching the current filters
+        </label>
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($deletedOffices->total()) }} matching</span>
+    </div>
+    @endif
+    <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Select</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Office</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Location</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Staff</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    @forelse($deletedOffices as $office)
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="offices" value="{{ $office->id }}" class="h-4 w-4" onchange="syncRecycleBinSelectAll('offices')"></td>
+                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $office->name }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office->location?->name ?? 'Deleted location' }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office->staff_count }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $office->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <form method="POST" action="{{ route('admin.offices.restore', $office->id) }}">
+                                        @csrf @method('PATCH')
+                                        <x-action-icon type="submit" icon="restore" variant="green" label="Restore office" />
+                                    </form>
+                                    <x-action-icon type="button" icon="trash" variant="red" label="Permanently delete office" onclick="permanentDeleteSingle('offices', {{ $office->id }})" />
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted offices found.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @if($deletedOffices->total() > 0)
+    <div id="recycle-actions-offices" class="hidden flex flex-wrap items-center gap-3">
+        <button type="button" onclick="restoreSelectedRecycleBin('offices')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Offices</button>
+        <button type="button" onclick="permanentDeleteSelected('offices')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Offices</button>
+    </div>
+    @endif
+    {{ $deletedOffices->links() }}
+
+    <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted Staff</h2>
+    @if($deletedStaff->total() > 0)
+    <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <input id="delete-all-staff" type="checkbox" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700" onchange="toggleRecycleBinSelection('staff', this.checked)" aria-label="Select all deleted staff matching the current filters">
+            Select all deleted staff matching the current filters
+        </label>
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ number_format($deletedStaff->total()) }} matching</span>
+    </div>
+    @endif
+    <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 text-left dark:bg-gray-900/40">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Select</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Name</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Position</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Office / Location</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    @forelse($deletedStaff as $staff)
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <td class="px-4 py-3"><input type="checkbox" data-bin-checkbox="staff" value="{{ $staff->id }}" class="h-4 w-4" onchange="syncRecycleBinSelectAll('staff')"></td>
+                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ $staff->display_name }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $staff->position ?: '—' }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $staff->office?->name ?? 'Deleted office' }}{{ $staff->office?->location?->name ? ' / ' . $staff->office->location->name : '' }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $staff->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <form method="POST" action="{{ route('admin.staff.restore', $staff->id) }}">
+                                        @csrf @method('PATCH')
+                                        <x-action-icon type="submit" icon="restore" variant="green" label="Restore staff member" />
+                                    </form>
+                                    <x-action-icon type="button" icon="trash" variant="red" label="Permanently delete staff member" onclick="permanentDeleteSingle('staff', {{ $staff->id }})" />
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted staff found.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @if($deletedStaff->total() > 0)
+    <div id="recycle-actions-staff" class="hidden flex flex-wrap items-center gap-3">
+        <button type="button" onclick="restoreSelectedRecycleBin('staff')" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">Restore Selected Staff</button>
+        <button type="button" onclick="permanentDeleteSelected('staff')" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Permanently Delete Selected Staff</button>
+    </div>
+    @endif
+    {{ $deletedStaff->links() }}
+
     <h2 class="pt-3 text-lg font-semibold text-gray-900 dark:text-white">Deleted Locations</h2>
     @if($deletedLocations->total() > 0)
     <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -334,10 +448,12 @@ function openRecycleBinRemarks(action) {
         devices: 'equipment',
         maintenance_plans: 'PM Plan',
         locations: 'location',
+        offices: 'office',
+        staff: 'staff member',
     };
     const label = labels[action.type] || 'record';
     if (message) message.textContent = action.empty
-        ? 'This will permanently delete every user, equipment, location, and PM Plan record in the recycle bin.'
+        ? 'This will permanently delete every deleted user, equipment, location, office, staff member, and PM Plan record in the recycle bin.'
         : action.selectAll
             ? `This will permanently delete every deleted ${label} record in the recycle bin.`
         : 'This action permanently deletes the selected recycle-bin records and cannot be undone.';
@@ -376,6 +492,8 @@ function restoreSelectedRecycleBin(type) {
         devices: 'equipment',
         maintenance_plans: 'PM Plan',
         locations: 'location',
+        offices: 'office',
+        staff: 'staff member',
     };
     const label = labels[type] || 'record';
     if (!confirm(`Restore ${boxes.length} selected ${label} record(s) from the recycle bin?`)) return;

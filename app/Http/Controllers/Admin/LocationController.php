@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\DeviceAssignment;
 use App\Models\Location;
 use App\Models\MaintenancePlanSchedule;
+use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -265,7 +266,9 @@ class LocationController extends Controller
 
     public function destroy(Location $location)
     {
-        $hasOffices = $location->offices()->exists();
+        // Include trashed offices: a parent location must not be removed while
+        // a recoverable child still points to it.
+        $hasOffices = Office::withTrashed()->where('location_id', $location->id)->exists();
         $hasMaintenancePlans = MaintenancePlanSchedule::query()
             ->where('location_id', $location->id)
             ->exists();
@@ -329,7 +332,7 @@ class LocationController extends Controller
         $blocked = [];
         DB::transaction(function () use ($locations, &$moved, &$blocked): void {
             foreach ($locations as $location) {
-                $hasOffices = $location->offices()->exists();
+                $hasOffices = Office::withTrashed()->where('location_id', $location->id)->exists();
                 $hasMaintenancePlans = MaintenancePlanSchedule::query()
                     ->where('location_id', $location->id)
                     ->exists();
@@ -412,7 +415,7 @@ class LocationController extends Controller
     public function forceDestroy(int $location): \Illuminate\Http\RedirectResponse
     {
         $deletedLocation = Location::onlyTrashed()->findOrFail($location);
-        $hasOffices = $deletedLocation->offices()->exists();
+        $hasOffices = Office::withTrashed()->where('location_id', $deletedLocation->id)->exists();
         $hasMaintenancePlans = MaintenancePlanSchedule::withTrashed()
             ->where('location_id', $deletedLocation->id)
             ->exists();

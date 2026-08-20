@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\DeviceAssignment;
 use App\Models\Location;
+use App\Models\MaintenancePlanSchedule;
 use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -213,19 +215,46 @@ class OfficeController extends Controller
     {
         abort_unless($office->location_id === $location->id, 404);
 
+        $activeStaff = $office->staff()->count();
+        $activeAssignments = DeviceAssignment::query()
+            ->whereNull('returned_at')
+            ->where(function ($query) use ($office) {
+                $query->where('office_id', $office->id)
+                    ->orWhereHas('staff', fn ($staff) => $staff->where('office_id', $office->id));
+            })
+            ->exists();
+        $activePlans = MaintenancePlanSchedule::query()
+            ->where('office_id', $office->id)
+            ->exists();
+
+        if ($activeStaff > 0 || $activeAssignments || $activePlans) {
+            $reasons = [];
+            if ($activeStaff > 0) {
+                $reasons[] = "{$activeStaff} active staff member(s)";
+            }
+            if ($activeAssignments) {
+                $reasons[] = 'active equipment assignments';
+            }
+            if ($activePlans) {
+                $reasons[] = 'an active PM Plan';
+            }
+
+            return back()->with('error', 'Office cannot be moved to the recycle bin while it has ' . implode(', ', $reasons) . '. Move or return dependent records first.');
+        }
+
         $name = $office->name;
         $summary = $this->buildDeleteSummary($office);
 
         ActivityLog::record(
             'deleted',
-            "Deleted office \"{$name}\" from \"{$location->name}\"",
+            "Moved office \"{$name}\" to the recycle bin from \"{$location->name}\"",
             $office,
             ActivityLog::makePayload($summary)
         );
 
         $office->delete();
 
-        return back()->with('success', 'Office deleted.');
+        return back()->with('success', 'Office moved to the recycle bin.');
     }
 
     public function bulkDestroy(Request $request, Location $location)
@@ -251,6 +280,25 @@ class OfficeController extends Controller
             ->orderBy('name')
             ->get();
 
+        $blocked = [];
+        foreach ($offices as $office) {
+            $hasActiveAssignments = DeviceAssignment::query()
+                ->whereNull('returned_at')
+                ->where(function ($query) use ($office) {
+                    $query->where('office_id', $office->id)
+                        ->orWhereHas('staff', fn ($staff) => $staff->where('office_id', $office->id));
+                })
+                ->exists();
+
+            if ($office->staff()->exists() || $hasActiveAssignments || MaintenancePlanSchedule::query()->where('office_id', $office->id)->exists()) {
+                $blocked[] = $office->name;
+            }
+        }
+
+        if ($blocked !== []) {
+            return back()->with('error', 'No offices were deleted. These offices still have active staff, equipment assignments, or PM Plans: ' . implode(', ', $blocked) . '.');
+        }
+
         $items = $offices->map(fn (Office $office) => [
             'summary' => $this->buildDeleteSummary($office),
         ])->values()->all();
@@ -264,7 +312,7 @@ class OfficeController extends Controller
         $count = count($items);
         ActivityLog::record(
             'deleted',
-            "Deleted {$count} office(s) from \"{$location->name}\" (Bulk Delete)",
+            "Moved {$count} office(s) to the recycle bin from \"{$location->name}\" (Bulk Delete)",
             null,
             ActivityLog::makePayload([
                 'bulk' => true,
@@ -273,6 +321,6 @@ class OfficeController extends Controller
             ])
         );
 
-        return back()->with('success', "{$count} office(s) deleted.");
+        return back()->with('success', "{$count} office(s) moved to the recycle bin.");
     }
 }

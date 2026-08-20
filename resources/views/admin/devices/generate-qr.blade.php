@@ -74,10 +74,6 @@
         <button onclick="window.print()">Print</button>
     </div>
 
-    <p style="font-size: 10px; color: #475569; margin: 0 0 6px;">
-        QR links resolve on the PMAMS environment where they are scanned.
-    </p>
-
     <div class="qr-container">
         @foreach($devices as $device)
             <div class="qr-card">

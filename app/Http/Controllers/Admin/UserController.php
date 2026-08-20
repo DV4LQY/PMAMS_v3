@@ -10,6 +10,8 @@ use App\Models\DeviceMaintenancePhoto;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\MaintenancePlanSchedule;
 use App\Models\Location;
+use App\Models\Office;
+use App\Models\Staff;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -187,13 +189,28 @@ class UserController extends Controller
             ->withQueryString();
 
         $deletedLocations = Location::onlyTrashed()
-            ->withCount('offices')
+            ->withCount(['offices' => fn ($query) => $query->withTrashed()])
             ->orderByDesc('deleted_at')
             ->orderByDesc('id')
             ->paginate(15, ['*'], 'locations_page')
             ->withQueryString();
 
-        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedDevices', 'deletedMaintenancePlans', 'deletedLocations'));
+        $deletedOffices = Office::onlyTrashed()
+            ->with(['location' => fn ($query) => $query->withTrashed()])
+            ->withCount(['staff' => fn ($query) => $query->withTrashed()])
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('id')
+            ->paginate(15, ['*'], 'offices_page')
+            ->withQueryString();
+
+        $deletedStaff = Staff::onlyTrashed()
+            ->with(['office' => fn ($query) => $query->withTrashed()->with(['location' => fn ($location) => $location->withTrashed()])])
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('id')
+            ->paginate(15, ['*'], 'staff_page')
+            ->withQueryString();
+
+        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedDevices', 'deletedMaintenancePlans', 'deletedLocations', 'deletedOffices', 'deletedStaff'));
     }
 
     public function permanentDelete(Request $request)
@@ -201,7 +218,7 @@ class UserController extends Controller
         abort_unless($request->user()?->isSuperAdmin(), 403);
 
         $data = $request->validate([
-            'type' => ['required', Rule::in(['users', 'devices', 'maintenance_plans', 'locations', 'all'])],
+            'type' => ['required', Rule::in(['users', 'devices', 'maintenance_plans', 'locations', 'offices', 'staff', 'all'])],
             'ids' => ['nullable', 'array'],
             'ids.*' => ['integer', 'distinct'],
             'select_all' => ['nullable', 'boolean'],
@@ -222,7 +239,7 @@ class UserController extends Controller
             return back()->withErrors(['ids' => 'Select at least one recycle-bin record or choose the empty-bin action.']);
         }
 
-        $types = $type === 'all' ? ['users', 'devices', 'maintenance_plans', 'locations'] : [$type];
+        $types = $type === 'all' ? ['users', 'devices', 'maintenance_plans', 'locations', 'offices', 'staff'] : [$type];
         $deletedCounts = [];
 
         DB::transaction(function () use ($types, $selectAll, $ids, $data, &$deletedCounts) {
@@ -232,6 +249,8 @@ class UserController extends Controller
                     'devices' => $this->permanentlyDeleteDevices($selectAll, $ids),
                     'maintenance_plans' => $this->permanentlyDeleteMaintenancePlans($selectAll, $ids),
                     'locations' => $this->permanentlyDeleteLocations($selectAll, $ids),
+                    'offices' => $this->permanentlyDeleteOffices($selectAll, $ids),
+                    'staff' => $this->permanentlyDeleteStaff($selectAll, $ids),
                 };
             }
         });
@@ -352,11 +371,63 @@ class UserController extends Controller
                 })
                 ->exists();
 
-            if ($location->offices()->exists() || $hasAssignments || MaintenancePlanSchedule::withTrashed()->where('location_id', $location->id)->exists()) {
+            if ($location->offices()->withTrashed()->exists() || $hasAssignments || MaintenancePlanSchedule::withTrashed()->where('location_id', $location->id)->exists()) {
                 continue;
             }
 
             $location->forceDelete();
+            $deletedCount++;
+        }
+
+        return $deletedCount;
+    }
+
+    private function permanentlyDeleteOffices(bool $selectAll, $ids): int
+    {
+        $query = Office::onlyTrashed();
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $offices = $query->get();
+        $deletedCount = 0;
+        foreach ($offices as $office) {
+            $staffIds = Staff::withTrashed()->where('office_id', $office->id)->pluck('id');
+            $hasAssignments = DeviceAssignment::query()
+                ->where(function ($assignment) use ($office, $staffIds) {
+                    $assignment->where('office_id', $office->id);
+                    if ($staffIds->isNotEmpty()) {
+                        $assignment->orWhereIn('staff_id', $staffIds);
+                    }
+                })
+                ->exists();
+
+            if ($staffIds->isNotEmpty() || $hasAssignments || MaintenancePlanSchedule::withTrashed()->where('office_id', $office->id)->exists()) {
+                continue;
+            }
+
+            $office->forceDelete();
+            $deletedCount++;
+        }
+
+        return $deletedCount;
+    }
+
+    private function permanentlyDeleteStaff(bool $selectAll, $ids): int
+    {
+        $query = Staff::onlyTrashed();
+        if (! $selectAll) {
+            $query->whereIn('id', $ids);
+        }
+
+        $staff = $query->get();
+        $deletedCount = 0;
+        foreach ($staff as $record) {
+            if (DeviceAssignment::where('staff_id', $record->id)->exists()) {
+                continue;
+            }
+
+            $record->forceDelete();
             $deletedCount++;
         }
 
@@ -578,7 +649,7 @@ class UserController extends Controller
         abort_unless($request->user()?->isSuperAdmin(), 403);
 
         $data = $request->validate([
-            'type' => ['required', Rule::in(['users', 'devices', 'maintenance_plans', 'locations'])],
+            'type' => ['required', Rule::in(['users', 'devices', 'maintenance_plans', 'locations', 'offices', 'staff'])],
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer', 'distinct'],
         ]);
@@ -590,6 +661,8 @@ class UserController extends Controller
             'devices' => $this->restoreSelectedDevices($ids),
             'maintenance_plans' => $this->restoreSelectedMaintenancePlans($ids),
             'locations' => $this->restoreSelectedLocations($ids),
+            'offices' => $this->restoreSelectedOffices($ids),
+            'staff' => $this->restoreSelectedStaff($ids),
         });
 
         $labels = [
@@ -597,6 +670,8 @@ class UserController extends Controller
             'devices' => 'equipment',
             'maintenance_plans' => 'PM Plan',
             'locations' => 'location',
+            'offices' => 'office',
+            'staff' => 'staff member',
         ];
         $label = $labels[$type];
 
@@ -659,6 +734,66 @@ class UserController extends Controller
         return $records->count();
     }
 
+    private function restoreSelectedOffices($ids): int
+    {
+        $records = Office::onlyTrashed()->whereIn('id', $ids)->get();
+        foreach ($records as $record) {
+            $location = Location::withTrashed()->find($record->location_id);
+            if ($location?->trashed()) {
+                $location->restore();
+            }
+            $record->restore();
+        }
+
+        return $records->count();
+    }
+
+    private function restoreSelectedStaff($ids): int
+    {
+        $records = Staff::onlyTrashed()->whereIn('id', $ids)->get();
+        foreach ($records as $record) {
+            $office = Office::withTrashed()->find($record->office_id);
+            if ($office?->trashed()) {
+                $location = Location::withTrashed()->find($office->location_id);
+                if ($location?->trashed()) {
+                    $location->restore();
+                }
+                $office->restore();
+            }
+            $record->restore();
+        }
+
+        return $records->count();
+    }
+
+    public function restoreOffice(int $office)
+    {
+        abort_unless(auth()->user()?->isSuperAdmin(), 403);
+        $record = Office::onlyTrashed()->findOrFail($office);
+        $this->restoreSelectedOffices(collect([$record->id]));
+
+        ActivityLog::record('restored', "Restored office \"{$record->name}\" from the recycle bin.", $record, ActivityLog::makePayload([
+            'office' => $record->name,
+            'location_id' => $record->location_id,
+        ]));
+
+        return back()->with('success', 'Office restored.');
+    }
+
+    public function restoreStaff(int $staff)
+    {
+        abort_unless(auth()->user()?->isSuperAdmin(), 403);
+        $record = Staff::onlyTrashed()->findOrFail($staff);
+        $this->restoreSelectedStaff(collect([$record->id]));
+
+        ActivityLog::record('restored', "Restored staff member \"{$record->display_name}\" from the recycle bin.", $record, ActivityLog::makePayload([
+            'staff' => $record->display_name,
+            'office_id' => $record->office_id,
+        ]));
+
+        return back()->with('success', 'Staff member restored.');
+    }
+
     /** Restore every record currently held in the recycle bin. */
     public function restoreAll(Request $request)
     {
@@ -668,8 +803,10 @@ class UserController extends Controller
         $restoredDevices = 0;
         $restoredMaintenancePlans = 0;
         $restoredLocations = 0;
+        $restoredOffices = 0;
+        $restoredStaff = 0;
 
-        DB::transaction(function () use (&$restoredUsers, &$restoredDevices, &$restoredMaintenancePlans, &$restoredLocations): void {
+        DB::transaction(function () use (&$restoredUsers, &$restoredDevices, &$restoredMaintenancePlans, &$restoredLocations, &$restoredOffices, &$restoredStaff): void {
             $deletedUsers = User::onlyTrashed()->get();
             foreach ($deletedUsers as $deletedUser) {
                 $deletedUser->restore();
@@ -694,19 +831,33 @@ class UserController extends Controller
             }
             $restoredLocations = $deletedLocations->count();
 
+            $deletedOffices = Office::onlyTrashed()->get();
+            foreach ($deletedOffices as $deletedOffice) {
+                $deletedOffice->restore();
+            }
+            $restoredOffices = $deletedOffices->count();
+
+            $deletedStaff = Staff::onlyTrashed()->get();
+            foreach ($deletedStaff as $deletedStaffMember) {
+                $deletedStaffMember->restore();
+            }
+            $restoredStaff = $deletedStaff->count();
+
         });
 
-        $total = $restoredUsers + $restoredDevices + $restoredMaintenancePlans + $restoredLocations;
+        $total = $restoredUsers + $restoredDevices + $restoredMaintenancePlans + $restoredLocations + $restoredOffices + $restoredStaff;
         if ($total > 0) {
             ActivityLog::record(
                 'restored',
-                'Restored all user, equipment, location, and PM Plan records from the recycle bin.',
+                'Restored all user, equipment, location, office, staff, and PM Plan records from the recycle bin.',
                 null,
                 ActivityLog::makePayload([
                     'users_restored' => $restoredUsers,
                     'equipment_restored' => $restoredDevices,
                     'maintenance_plans_restored' => $restoredMaintenancePlans,
                     'locations_restored' => $restoredLocations,
+                    'offices_restored' => $restoredOffices,
+                    'staff_restored' => $restoredStaff,
                 ])
             );
         }

@@ -436,6 +436,13 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
         Route::delete('admin/locations/{location}/force-delete', [LocationController::class, 'forceDestroy'])
             ->name('admin.locations.forceDestroy');
 
+        // Offices and staff use the same recoverable recycle-bin flow as
+        // locations. Restoring a child also restores its trashed parent.
+        Route::patch('admin/offices/{office}/restore', [UserController::class, 'restoreOffice'])
+            ->name('admin.offices.restore');
+        Route::patch('admin/staff/{staff}/restore', [UserController::class, 'restoreStaff'])
+            ->name('admin.staff.restore');
+
         Route::post('admin/recycle-bin/permanent-delete', [UserController::class, 'permanentDelete'])
             ->name('admin.recycle-bin.permanentDelete');
     });
