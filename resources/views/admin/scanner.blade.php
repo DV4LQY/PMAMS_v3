@@ -13,7 +13,7 @@
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <p class="text-sm text-gray-600 dark:text-gray-300">
-                    Use your device camera to scan an equipment QR code. A valid code opens the corresponding equipment page automatically.
+                    Use your device camera to scan a QR code. Valid HTTP/HTTPS links open automatically after detection.
                 </p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">The scanner uses the rear camera when available.</p>
             </div>
@@ -38,7 +38,13 @@
             </div>
             <div>
                 <div class="text-gray-500 dark:text-gray-400">Scanned Value</div>
-                <div id="scan-result" class="break-all font-medium text-gray-900 dark:text-white">-</div>
+                <button id="scan-result"
+                        type="button"
+                        class="block max-w-full break-all rounded-lg border border-transparent bg-transparent p-0 text-left font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 transition hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:no-underline disabled:opacity-60 dark:text-blue-300 dark:decoration-blue-700 dark:hover:text-blue-200"
+                        aria-live="polite"
+                        aria-label="Scanned value. No safe HTTP/HTTPS link is ready to open."
+                        title="No safe HTTP/HTTPS link is ready to open"
+                        disabled>-</button>
             </div>
         </div>
         <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">Tip: point the camera steadily at the QR code and wait for it to focus.</p>

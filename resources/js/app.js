@@ -1110,7 +1110,24 @@ import './bootstrap';
             setText(statusEl, text);
             setText(modalStatusEl, text);
         };
-        const setResult = (text) => setText(resultEl, text || '-');
+        let pendingUrl = null;
+
+        const setResult = (text, url = null, canOpen = false) => {
+            if (!resultEl) return;
+
+            const value = text || '-';
+            setText(resultEl, value);
+            pendingUrl = canOpen && url ? url : null;
+            resultEl.disabled = !pendingUrl;
+            resultEl.dataset.url = pendingUrl ? pendingUrl.href : '';
+            resultEl.title = pendingUrl
+                ? 'Open scanned HTTP/HTTPS link'
+                : 'No safe HTTP/HTTPS link is ready to open';
+            resultEl.setAttribute(
+                'aria-label',
+                pendingUrl ? `Open scanned value ${value}` : `Scanned value ${value}. No safe HTTP/HTTPS link is ready to open.`
+            );
+        };
 
         const openModal = () => {
             modal.classList.remove('hidden');
@@ -1129,18 +1146,36 @@ import './bootstrap';
             stopBtn.disabled = !isRunning;
         };
 
-        const redirectFromQr = (decodedText) => {
-            try {
-                const url = new URL(decodedText, window.location.origin);
-                const isLocal = url.origin === window.location.origin ||
-                    (['localhost', '127.0.0.1', '::1'].includes(url.hostname) &&
-                        ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname));
+        const parseQrValue = (decodedText) => {
+            const raw = String(decodedText || '').trim();
+            if (!raw) return { kind: 'invalid', url: null };
 
-                if (!isLocal) {
-                    setStatus('Blocked external QR URL');
-                    return;
+            // Do not turn arbitrary QR text (for example a property number) into a path.
+            // Only HTTP(S) links are navigable; javascript:, data:, file:, and other
+            // schemes remain blocked even when they point to an external host.
+            if (/^[a-z][a-z\d+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) {
+                return { kind: 'blocked', url: null };
+            }
+
+            const looksLikeUrl = /^https?:\/\//i.test(raw) || raw.startsWith('/') || /^\.{1,2}\//.test(raw);
+            if (!looksLikeUrl) return { kind: 'text', url: null };
+
+            try {
+                const url = new URL(raw, window.location.origin);
+                if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+                    return { kind: 'blocked', url };
                 }
 
+                return { kind: 'allowed', url };
+            } catch (error) {
+                return { kind: 'invalid', url: null };
+            }
+        };
+
+        const navigateFromQr = (url) => {
+            if (!url) return;
+
+            if (url.origin === window.location.origin) {
                 const navigatePath = typeof window.adminLocalNavigatePath === 'function'
                     ? window.adminLocalNavigatePath(url)
                     : `${url.pathname}${url.search}${url.hash}`;
@@ -1150,23 +1185,37 @@ import './bootstrap';
                     return;
                 }
 
-                window.location.href = navigatePath;
-            } catch (e) {
-                setStatus('Invalid QR content');
+                window.location.assign(navigatePath);
+                return;
             }
+
+            // A URL on another origin needs a full browser navigation instead of
+            // Livewire's same-origin router.
+            window.location.assign(url.href);
         };
 
         const handleScanSuccess = (decodedText) => {
             if (state.detectionHandled) return;
             state.detectionHandled = true;
             playDetectionBeep();
-            setStatus('QR code detected');
-            setResult(decodedText);
+            const parsed = parseQrValue(decodedText);
+            setResult(decodedText, parsed.url, parsed.kind === 'allowed');
+            if (parsed.kind === 'allowed') {
+                setStatus('QR code detected. Redirecting...');
+            } else if (parsed.kind === 'blocked') {
+                setStatus('Blocked unsafe QR URL. Only HTTP and HTTPS links are allowed.');
+            } else if (parsed.kind === 'text') {
+                setStatus('QR code detected, but it is not an HTTP/HTTPS link.');
+            } else {
+                setStatus('Invalid QR content.');
+            }
 
             stopScanner().finally(() => {
                 updateButtons(false);
                 closeModal();
-                redirectFromQr(decodedText);
+                if (parsed.kind === 'allowed') {
+                    navigateFromQr(parsed.url);
+                }
             });
         };
 
@@ -1176,7 +1225,7 @@ import './bootstrap';
             state.detectionHandled = false;
             unlockAudio();
             setStatus('Loading scanner...');
-            setResult('-');
+            setResult('-', null, false);
 
             loadQrLibrary().then(() => {
                 state.scanner = new window.Html5Qrcode(reader.id);
@@ -1210,6 +1259,16 @@ import './bootstrap';
                 updateButtons(false);
             });
         };
+
+        resultEl?.addEventListener('click', () => {
+            const parsed = parseQrValue(resultEl.textContent || '');
+            if (parsed.kind !== 'allowed' || !pendingUrl) {
+                setStatus('This scanned value cannot be opened. Only HTTP and HTTPS links are allowed.');
+                return;
+            }
+
+            navigateFromQr(pendingUrl);
+        });
 
         startBtn.addEventListener('click', () => {
             openModal();

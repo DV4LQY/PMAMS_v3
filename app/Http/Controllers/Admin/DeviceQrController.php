@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Device;
+use App\Support\DeviceQrPayload;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class DeviceQrController extends Controller
@@ -16,8 +17,7 @@ class DeviceQrController extends Controller
         $devices = Device::orderBy('property_number')->get();
 
         $qrCodes = $devices->mapWithKeys(function ($device) {
-            $qrPayload = route('admin.devices.show', $device)
-                . '?property_number=' . urlencode($device->property_number ?? '');
+            $qrPayload = DeviceQrPayload::for($device);
 
             return [
                 $device->id => QrCode::size(180)->generate($qrPayload),

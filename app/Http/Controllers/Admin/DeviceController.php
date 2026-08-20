@@ -20,6 +20,7 @@ use App\Models\DeviceType;
 use App\Models\Office;
 use App\Models\Staff;
 use App\Models\SystemSetting;
+use App\Support\DeviceQrPayload;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\Rule;
@@ -3606,7 +3607,7 @@ class DeviceController extends Controller
             ->get();
 
         $qrCodes = $devices->mapWithKeys(function ($device) {
-            $qrPayload = route('admin.devices.show', $device) . '?property_number=' . urlencode($device->property_number);
+            $qrPayload = DeviceQrPayload::for($device);
 
             return [
                 $device->id => QrCode::size(180)->generate($qrPayload),
