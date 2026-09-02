@@ -126,7 +126,7 @@ class LocalMaintenanceModelService
 
         if (! $process->isSuccessful()) {
             $error = trim($process->getErrorOutput()) ?: trim($process->getOutput());
-            throw new \RuntimeException($error ?: 'The local maintenance model process failed.');
+            throw new \RuntimeException($this->modelProcessError($error));
         }
 
         $decoded = json_decode(trim($process->getOutput()), true, 512, JSON_THROW_ON_ERROR);
@@ -137,6 +137,29 @@ class LocalMaintenanceModelService
         return $mode === 'predict'
             ? array_map('floatval', (array) ($decoded['predictions'] ?? []))
             : $decoded;
+    }
+
+    /**
+     * Python writes intentional failures as JSON to stderr. Preserve only the
+     * user-safe error text instead of surfacing a raw traceback in Laravel.
+     */
+    private function modelProcessError(string $error): string
+    {
+        if ($error === '') {
+            return 'The local maintenance model process failed.';
+        }
+
+        try {
+            $payload = json_decode($error, true, 512, JSON_THROW_ON_ERROR);
+
+            if (is_array($payload) && isset($payload['error']) && is_string($payload['error'])) {
+                return $payload['error'];
+            }
+        } catch (Throwable) {
+            // A startup failure can occur before Python writes structured JSON.
+        }
+
+        return $error;
     }
 
     private function resolvePython(string $configured): string

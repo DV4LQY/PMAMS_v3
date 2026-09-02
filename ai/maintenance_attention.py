@@ -71,7 +71,17 @@ def train(payload: dict[str, Any], model_path: str, metadata_path: str) -> int:
         from sklearn.ensemble import RandomForestClassifier
         from skl2onnx import convert_sklearn
         from skl2onnx.common.data_types import FloatTensorType
-    except ImportError as exc:
+    except (ImportError, OSError) as exc:
+        # On Windows, scikit-learn may indirectly import ``_overlapped``.
+        # A damaged Winsock catalog then raises OSError 10106 during import.
+        # Return structured JSON instead of a Python traceback so Laravel can
+        # keep the page usable and give the administrator an actionable fix.
+        if getattr(exc, "winerror", None) == 10106 or "WinError 10106" in str(exc):
+            return fail(
+                "Windows networking providers could not initialize the local AI runtime "
+                "(WinError 10106). Run `netsh winsock reset` in an Administrator "
+                "Command Prompt, restart Windows, then train the model again."
+            )
         return fail(
             "Python AI dependencies are missing. Run `python -m pip install -r ai/requirements.txt`. "
             f"Details: {exc}"
@@ -164,7 +174,13 @@ def predict(payload: dict[str, Any], model_path: str, metadata_path: str) -> int
     try:
         import numpy as np
         import onnxruntime as ort
-    except ImportError as exc:
+    except (ImportError, OSError) as exc:
+        if getattr(exc, "winerror", None) == 10106 or "WinError 10106" in str(exc):
+            return fail(
+                "Windows networking providers could not initialize the local AI runtime "
+                "(WinError 10106). Run `netsh winsock reset` in an Administrator "
+                "Command Prompt and restart Windows. Laravel rules remain active."
+            )
         return fail(
             "Python AI dependencies are missing. Run `python -m pip install -r ai/requirements.txt`. "
             f"Details: {exc}"
@@ -201,6 +217,8 @@ def main() -> int:
         return predict(payload, args.model, args.metadata)
     except (ValueError, json.JSONDecodeError) as exc:
         return fail(str(exc))
+    except Exception as exc:  # noqa: BLE001 - never leak Python tracebacks into the web UI
+        return fail(f"Local AI operation failed: {exc}")
 
 
 if __name__ == "__main__":

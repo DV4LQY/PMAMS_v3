@@ -272,7 +272,7 @@
                                 </div>
                                  @if($canEditPmPlan)
                                     @php($scheduleAssignedIds = $schedule->assignedUsers->pluck('id')->merge([$schedule->assigned_user_id])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all())
-                                    <div id="pm-plan-edit-{{ $schedule->id }}" role="dialog" aria-modal="true" style="display:none" class="fixed inset-0 z-[80] overflow-y-auto bg-gray-950/70 p-4">
+                                    <div id="pm-plan-edit-{{ $schedule->id }}" role="dialog" aria-modal="true" style="display:none" class="fixed inset-0 z-[80] overflow-y-auto bg-gray-950/70 p-4" x-data="maintenancePlanEditForm(@js($locations->map(fn ($location) => ['id' => $location->id, 'code' => $location->code, 'name' => $location->name, 'offices' => $location->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values()])->values()), @js((string) $schedule->location_id), @js((string) ($schedule->office_id ?? ''))) ">
                                         <div class="flex min-h-full items-center justify-center">
                                             <div class="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800">
                                                 <div class="mb-4 flex items-start justify-between gap-4">
@@ -281,11 +281,32 @@
                                                 </div>
                                                 <form method="POST" action="{{ route('admin.maintenance-plan.update', $schedule) }}" data-spa-form="true" class="space-y-3">
                                                     @csrf @method('PUT')
+                                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                        <div>
+                                                            <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Location <span class="text-red-500">*</span></label>
+                                                            <select name="location_id" x-model="locationId" @change="syncOffice()" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                                <option value="">Select a registered location</option>
+                                                                @foreach($locations as $location)
+                                                                    <option value="{{ $location->id }}">{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
+                                                                @endforeach
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Office <span class="font-normal text-gray-500">(optional)</span></label>
+                                                            <select name="office_id" x-model="officeId" :disabled="!locationId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                                <option value="">All offices / location-wide</option>
+                                                                <template x-for="office in availableOffices" :key="office.id">
+                                                                    <option :value="String(office.id)" x-text="office.name"></option>
+                                                                </template>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">Choose a registered location and, optionally, one of its offices. Changing the target keeps this plan’s completion and override history attached to the schedule.</p>
                                                     <div class="grid grid-cols-2 gap-2">
                                                         <input type="month" name="schedule_month_from" value="{{ optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                         <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                     </div>
-                                                    <p class="text-xs text-gray-500 dark:text-gray-400">The edited range cannot overlap another PM Plan for the same location and office. Recycled plans are included in the duplicate check.</p>
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400">The edited range cannot overlap another PM Plan for the selected location and office. Recycled plans are included in the duplicate check.</p>
                                                     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin</label>
                                                     <div class="overflow-hidden rounded-lg border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800">
                                                         <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
@@ -435,6 +456,22 @@
             locationId: @js((string) old('location_id', '')),
             get availableOffices() {
                 return this.locations.find((location) => String(location.id) === String(this.locationId))?.offices || [];
+            },
+        };
+    }
+
+    function maintenancePlanEditForm(locations, initialLocationId, initialOfficeId) {
+        return {
+            locations: locations || [],
+            locationId: String(initialLocationId || ''),
+            officeId: String(initialOfficeId || ''),
+            get availableOffices() {
+                return this.locations.find((location) => String(location.id) === String(this.locationId))?.offices || [];
+            },
+            syncOffice() {
+                if (!this.availableOffices.some((office) => String(office.id) === String(this.officeId))) {
+                    this.officeId = '';
+                }
             },
         };
     }

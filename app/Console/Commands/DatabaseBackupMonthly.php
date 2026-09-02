@@ -39,6 +39,16 @@ class DatabaseBackupMonthly extends Command
 
             $this->info(ucfirst($frequency) . ' backup saved to ' . $disk->path($relativePath));
 
+            // Mark the scheduled slot only after the local backup has been
+            // written successfully. This makes delayed schedule workers safe
+            // to catch up without creating a file every minute.
+            $this->recordScheduledSlotIfDue(
+                $frequency,
+                (int) SystemSetting::getValue(DatabaseBackupController::BACKUP_DAY_KEY, 1),
+                (int) SystemSetting::getValue(DatabaseBackupController::BACKUP_WEEKDAY_KEY, 1),
+                (string) SystemSetting::getValue(DatabaseBackupController::BACKUP_TIME_KEY, '02:00'),
+            );
+
             // Keep the local copy as the primary backup. When a separate
             // PMAMS_BACKUP_PATH is configured (for example Z:\\PMAMS_Backup),
             // write the same dump there as a second, non-overwriting copy.
@@ -121,5 +131,33 @@ class DatabaseBackupMonthly extends Command
     private function normalisePath(string $path): string
     {
         return strtolower(rtrim(str_replace('/', '\\', $path), '\\'));
+    }
+
+    private function recordScheduledSlotIfDue(string $frequency, int $day, int $weekday, string $time): void
+    {
+        $current = now(config('app.timezone', 'UTC'));
+        $time = trim($time);
+        if (! preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time)) {
+            return;
+        }
+
+        [$hour, $minute] = array_map('intval', explode(':', $time, 2));
+        $scheduledMinutes = ($hour * 60) + $minute;
+        $currentMinutes = ((int) $current->format('H') * 60) + (int) $current->format('i');
+        $dateMatches = $frequency === 'weekly'
+            ? (int) $current->dayOfWeek === $weekday
+            : (int) $current->day === $day;
+
+        if (! $dateMatches || $currentMinutes < $scheduledMinutes) {
+            return;
+        }
+
+        $slot = $frequency === 'weekly'
+            ? 'weekly:' . $current->format('o-W') . ':' . $time
+            : 'monthly:' . $current->format('Y-m-d') . ':' . $time;
+
+        if ((string) SystemSetting::getValue(DatabaseBackupController::BACKUP_LAST_SLOT_KEY, '') !== $slot) {
+            SystemSetting::putValue(DatabaseBackupController::BACKUP_LAST_SLOT_KEY, $slot);
+        }
     }
 }

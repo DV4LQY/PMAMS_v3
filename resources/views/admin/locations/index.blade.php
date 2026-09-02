@@ -31,6 +31,7 @@ function registerLocationManager() {
         editOpen: {{ $editBag->any() ? 'true' : 'false' }},
         deleteOpen: false,
         issueOpen: false,
+        submitTimer: null,
         bulkEnabled: {{ old('names') !== null ? 'true' : 'false' }},
 
         addSingle: {
@@ -67,6 +68,22 @@ function registerLocationManager() {
         issueDeviceId: '',
         issueDeviceSelected: null,
         issueRemarks: '',
+
+        submitSearch() {
+            clearTimeout(this.submitTimer);
+            this.submitTimer = setTimeout(() => this.$refs.locationFilterForm.requestSubmit(), 450);
+        },
+
+        clearSearch() {
+            try {
+                window.sessionStorage.removeItem(`pmams.search:${window.location.pathname}:q`);
+            } catch (error) {
+                // Session storage may be unavailable in private/restricted browsers.
+            }
+
+            const url = new URL('{{ route('admin.locations.index') }}', window.location.origin);
+            window.location.assign(url.toString());
+        },
 
         openAdd() {
             this.addOpen = true;
@@ -256,6 +273,47 @@ document.addEventListener('livewire:navigated', () => {
         @endif
     </div>
 
+    <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <form
+            x-ref="locationFilterForm"
+            method="GET"
+            action="{{ route('admin.locations.index') }}"
+            role="search"
+            class="flex flex-col gap-3 sm:flex-row sm:items-end"
+        >
+            <div class="min-w-0 flex-1">
+                <label for="location-search" class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Search locations</label>
+                <input
+                    id="location-search"
+                    name="q"
+                    data-pmams-search
+                    x-ref="locationSearch"
+                    value="{{ $search }}"
+                    type="search"
+                    autocomplete="off"
+                    maxlength="150"
+                    placeholder="Search by location name or code"
+                    x-on:input="submitSearch()"
+                    x-on:keydown.enter.prevent="$refs.locationFilterForm.requestSubmit()"
+                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
+                >
+            </div>
+            @if($search !== '')
+                <button
+                    type="button"
+                    class="inline-flex items-center justify-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    @click="clearSearch()"
+                >
+                    Clear
+                </button>
+            @endif
+        </form>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Results update automatically as you type. Search matches location names, codes, and office names.
+            <span class="font-medium">{{ number_format($locations->total()) }} matching</span>
+        </p>
+    </div>
+
     @if((auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete'))
         <form id="location-bulk-delete-form"
               method="POST"
@@ -265,6 +323,7 @@ document.addEventListener('livewire:navigated', () => {
               onsubmit="return submitLocationBulkDelete(event)">
             @csrf
             <input type="hidden" name="select_all" id="location-delete-select-all" value="0">
+            <input type="hidden" name="q" value="{{ $search }}">
 
             <div class="flex items-center justify-between rounded-xl bg-transparent px-4 py-3 text-sm shadow-none">
                 <label class="inline-flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
@@ -310,6 +369,17 @@ document.addEventListener('livewire:navigated', () => {
                         >
                             {{ $c->name }}
                         </a>
+                        @if(!empty($locationOfficeMatches[$c->id] ?? []))
+                            <div class="mt-1 text-xs text-blue-700 dark:text-blue-300">
+                                Office match:
+                                @foreach($locationOfficeMatches[$c->id] as $officeMatch)
+                                    <a
+                                        href="{{ route('admin.staff.index', $officeMatch['id']) }}"
+                                        class="font-semibold hover:underline"
+                                    >{{ $officeMatch['name'] }}</a>{{ !$loop->last ? ', ' : '' }}
+                                @endforeach
+                            </div>
+                        @endif
                     </div>
 
                     <div class="text-sm">
@@ -391,7 +461,7 @@ document.addEventListener('livewire:navigated', () => {
             </div>
         @empty
             <div class="rounded-2xl border border-gray-200 bg-white p-6 text-center text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
-                No locations found.
+                {{ $search !== '' ? 'No locations match your search.' : 'No locations found.' }}
             </div>
         @endforelse
     </div>
@@ -430,6 +500,17 @@ document.addEventListener('livewire:navigated', () => {
                                 >
                                     {{ $c->name }}
                                 </a>
+                                @if(!empty($locationOfficeMatches[$c->id] ?? []))
+                                    <div class="mt-1 text-xs text-blue-700 dark:text-blue-300">
+                                        Office match:
+                                        @foreach($locationOfficeMatches[$c->id] as $officeMatch)
+                                            <a
+                                                href="{{ route('admin.staff.index', $officeMatch['id']) }}"
+                                                class="font-semibold hover:underline"
+                                            >{{ $officeMatch['name'] }}</a>{{ !$loop->last ? ', ' : '' }}
+                                        @endforeach
+                                    </div>
+                                @endif
                             </td>
 
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $c->code ?: '-' }}</td>
@@ -501,7 +582,7 @@ document.addEventListener('livewire:navigated', () => {
                     @empty
                         <tr>
                             <td colspan="{{ (auth()->user()->isAdmin() || auth()->user()->isCustodian()) && auth()->user()->canAction('locations', 'delete') ? 8 : 7 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                                No locations found.
+                                {{ $search !== '' ? 'No locations match your search.' : 'No locations found.' }}
                             </td>
                         </tr>
                     @endforelse

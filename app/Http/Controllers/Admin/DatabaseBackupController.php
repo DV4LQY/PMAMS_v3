@@ -25,6 +25,7 @@ class DatabaseBackupController extends Controller
     public const BACKUP_TIME_KEY = 'database_backup_time';
     public const BACKUP_FREQUENCY_KEY = 'database_backup_frequency';
     public const BACKUP_WEEKDAY_KEY = 'database_backup_weekday';
+    public const BACKUP_LAST_SLOT_KEY = 'database_backup_last_slot';
     // Keep each INSERT comfortably below XAMPP's default max_allowed_packet.
     private const MAX_INSERT_BYTES = 262144;
 
@@ -86,6 +87,9 @@ class DatabaseBackupController extends Controller
         SystemSetting::putValue(self::BACKUP_DAY_KEY, $backupDay);
         SystemSetting::putValue(self::BACKUP_WEEKDAY_KEY, $backupWeekday);
         SystemSetting::putValue(self::BACKUP_TIME_KEY, $data['backup_time']);
+        // A changed schedule must be allowed to run immediately, even when
+        // the previous schedule used the same calendar day.
+        SystemSetting::putValue(self::BACKUP_LAST_SLOT_KEY, '');
         ActivityLog::record('updated', 'Updated the automatic database backup schedule.', null, [
             'frequency' => $data['backup_frequency'],
             'day' => $backupDay,

@@ -219,6 +219,8 @@ class PreventiveMaintenancePlanController extends Controller
         abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
 
         $data = $request->validate([
+            'location_id' => ['required', 'integer', 'exists:locations,id'],
+            'office_id' => ['nullable', 'integer', 'exists:offices,id'],
             'schedule_month_from' => ['required', 'date_format:Y-m'],
             'schedule_month_to' => ['nullable', 'date_format:Y-m'],
             'assigned_user_id' => [
@@ -239,6 +241,26 @@ class PreventiveMaintenancePlanController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        $location = Location::query()->findOrFail((int) $data['location_id']);
+        $office = null;
+        if (filled($data['office_id'] ?? null)) {
+            $office = Office::query()
+                ->whereKey((int) $data['office_id'])
+                ->where('location_id', $location->id)
+                ->first();
+
+            if (! $office) {
+                return back()->withInput()->withErrors([
+                    'office_id' => 'Select an office belonging to the selected location.',
+                ]);
+            }
+        }
+
+        $schedule->load(['location', 'office']);
+        $previousTarget = $this->scheduleTargetLabel($schedule);
+        $previousLocationId = (int) $schedule->location_id;
+        $previousOfficeId = $schedule->office_id ? (int) $schedule->office_id : null;
+
         $assignedUserIds = $this->assignedUserIds($data);
         [$monthFrom, $monthTo] = $this->monthRange($data['schedule_month_from'], $data['schedule_month_to'] ?? null);
         if ($monthTo->lt($monthFrom)) {
@@ -246,10 +268,10 @@ class PreventiveMaintenancePlanController extends Controller
         }
 
         $duplicate = null;
-        DB::transaction(function () use (&$duplicate, $schedule, $monthFrom, $monthTo, $assignedUserIds, $data) {
+        DB::transaction(function () use (&$duplicate, $schedule, $monthFrom, $monthTo, $assignedUserIds, $data, $location, $office) {
             $duplicate = $this->findDuplicateSchedule(
-                (int) $schedule->location_id,
-                $schedule->office_id ? (int) $schedule->office_id : null,
+                (int) $location->id,
+                $office?->id ? (int) $office->id : null,
                 $monthFrom,
                 $monthTo,
                 (int) $schedule->id,
@@ -260,6 +282,8 @@ class PreventiveMaintenancePlanController extends Controller
             }
 
             $schedule->update([
+                'location_id' => $location->id,
+                'office_id' => $office?->id,
                 'scheduled_date' => $monthFrom->toDateString(),
                 'schedule_month_from' => $monthFrom->toDateString(),
                 'schedule_month_to' => $monthTo->toDateString(),
@@ -283,7 +307,17 @@ class PreventiveMaintenancePlanController extends Controller
             return back()->withInput()->withErrors(['schedule_month_from' => $message]);
         }
 
-        ActivityLog::record('updated', 'Edited preventive maintenance schedule for ' . $this->scheduleTargetLabel($schedule->load(['location', 'office'])), $schedule, ActivityLog::makePayload([
+        $schedule->load(['location', 'office']);
+        $newTarget = $this->scheduleTargetLabel($schedule);
+        $targetChanged = $previousLocationId !== (int) $location->id
+            || $previousOfficeId !== ($office?->id ? (int) $office->id : null);
+
+        ActivityLog::record('updated', 'Edited preventive maintenance schedule for ' . $newTarget, $schedule, ActivityLog::makePayload([
+            'previous_target' => $previousTarget,
+            'target' => $newTarget,
+            'location_id' => (int) $location->id,
+            'office_id' => $office?->id ? (int) $office->id : null,
+            'target_changed' => $targetChanged,
             'schedule_month_from' => $monthFrom->format('Y-m'),
             'schedule_month_to' => $monthTo->format('Y-m'),
             'assigned_user_ids' => $assignedUserIds,

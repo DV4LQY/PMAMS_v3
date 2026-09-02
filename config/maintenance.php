@@ -16,6 +16,7 @@ return [
         'auto_train' => env('MAINTENANCE_AI_AUTO_TRAIN', true),
         'train_day' => (int) env('MAINTENANCE_AI_TRAIN_DAY', 1),
         'train_time' => env('MAINTENANCE_AI_TRAIN_TIME', '03:30'),
+        'snapshot_time' => env('MAINTENANCE_ATTENTION_SNAPSHOT_TIME', '16:30'),
         'min_samples' => (int) env('MAINTENANCE_AI_MIN_SAMPLES', 20),
         'python' => env('MAINTENANCE_AI_PYTHON', 'python'),
         'script' => base_path('ai/maintenance_attention.py'),

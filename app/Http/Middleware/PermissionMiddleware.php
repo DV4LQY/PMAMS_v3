@@ -40,6 +40,7 @@ class PermissionMiddleware
             'admin.maintenance-attention.pdf',
             'admin.maintenance-attention.excel',
             'admin.maintenance-attention.mode',
+            'admin.maintenance-attention.train',
         ], true)) return ['reports', null, null];
         if ($route === 'admin.scanner') return ['scanner', null, null];
         if (in_array($route, ['admin.support', 'admin.contributors'], true)) return ['support', null, null];

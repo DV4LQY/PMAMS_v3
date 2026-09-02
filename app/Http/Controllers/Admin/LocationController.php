@@ -8,6 +8,7 @@ use App\Models\DeviceAssignment;
 use App\Models\Location;
 use App\Models\MaintenancePlanSchedule;
 use App\Models\Office;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -25,13 +26,55 @@ class LocationController extends Controller
         ];
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        // Keep the location search server-side so it covers every paginated
+        // result, including locations matched through one of their offices.
+        $search = trim($request->string('q')->toString());
+        if (mb_strlen($search) > 150) {
+            $search = mb_substr($search, 0, 150);
+        }
+
         $locations = Location::query()
             ->with(['offices:id,location_id,name'])
             ->withCount('offices')
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $like = "%{$search}%";
+
+                $query->where(function (Builder $locationQuery) use ($like): void {
+                    $locationQuery
+                        ->where('name', 'like', $like)
+                        ->orWhere('code', 'like', $like)
+                        ->orWhereHas('offices', function (Builder $officeQuery) use ($like): void {
+                            $officeQuery->where('name', 'like', $like);
+                        });
+                });
+            })
             ->orderBy('name')
-            ->paginate(15);
+            ->paginate(15)
+            ->withQueryString();
+
+        // Keep the parent location row (the page is a location directory),
+        // but expose which office caused an office-name search to match.
+        $locationOfficeMatches = [];
+        if ($search !== '') {
+            $needle = mb_strtolower($search);
+
+            foreach ($locations as $location) {
+                $matches = $location->offices
+                    ->filter(fn (Office $office): bool => str_contains(mb_strtolower((string) $office->name), $needle))
+                    ->map(fn (Office $office): array => [
+                        'id' => $office->id,
+                        'name' => $office->name,
+                    ])
+                    ->values()
+                    ->all();
+
+                if ($matches !== []) {
+                    $locationOfficeMatches[$location->id] = $matches;
+                }
+            }
+        }
 
         $locationIds = $locations->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
         $locationStats = [];
@@ -84,7 +127,7 @@ class LocationController extends Controller
             }
         }
 
-        return view('admin.locations.index', compact('locations', 'locationStats'));
+        return view('admin.locations.index', compact('locations', 'locationStats', 'search', 'locationOfficeMatches'));
     }
 
     public function create()
@@ -310,16 +353,28 @@ class LocationController extends Controller
             'location_ids' => ['nullable', 'array'],
             'location_ids.*' => ['integer', 'distinct'],
             'select_all' => ['nullable', 'boolean'],
+            'q' => ['nullable', 'string', 'max:150'],
         ]);
 
         $selectAll = (bool) ($data['select_all'] ?? false);
+        $search = trim((string) ($data['q'] ?? ''));
         $ids = collect($data['location_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values();
         if (! $selectAll && $ids->isEmpty()) {
             return back()->withErrors(['location_ids' => 'Select at least one location or choose delete all locations.']);
         }
 
         $query = Location::query()->with('offices:id,location_id,name');
-        if (! $selectAll) {
+        if ($selectAll && $search !== '') {
+            $like = "%{$search}%";
+            $query->where(function (Builder $locationQuery) use ($like): void {
+                $locationQuery
+                    ->where('name', 'like', $like)
+                    ->orWhere('code', 'like', $like)
+                    ->orWhereHas('offices', function (Builder $officeQuery) use ($like): void {
+                        $officeQuery->where('name', 'like', $like);
+                    });
+            });
+        } elseif (! $selectAll) {
             $query->whereIn('id', $ids);
         }
 

@@ -35,9 +35,11 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
-// Public sitemap for Google Search Console. Authenticated/admin data is
-// intentionally excluded by SitemapController.
+// Public sitemaps for Google Search Console. Authenticated/admin data is
+// intentionally excluded by SitemapController. `sitemap.xml` is the
+// conventional endpoint; `site_map.xml` is retained as a compatible alias.
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
+Route::get('/site_map.xml', SitemapController::class)->name('site_map');
 
 /*
 |--------------------------------------------------------------------------
@@ -107,6 +109,8 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
             ->name('admin.maintenance-attention.excel');
         Route::post('/maintenance-attention/mode', [MaintenanceAttentionController::class, 'updateMode'])
             ->name('admin.maintenance-attention.mode');
+        Route::post('/maintenance-attention/train', [MaintenanceAttentionController::class, 'trainModel'])
+            ->name('admin.maintenance-attention.train');
         Route::view('/org-browser', 'admin.org-browser')->name('admin.org-browser');
         Route::view('/scanner', 'admin.scanner')->name('admin.scanner');
         // Keep the legacy support URL working while exposing the renamed Contributors page.

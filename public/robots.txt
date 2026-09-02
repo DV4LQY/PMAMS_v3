@@ -1,4 +1,5 @@
 User-agent: *
+Allow: /
 Disallow: /admin/
 Disallow: /logout
 Sitemap: https://pmams.catsu.edu.ph/sitemap.xml
