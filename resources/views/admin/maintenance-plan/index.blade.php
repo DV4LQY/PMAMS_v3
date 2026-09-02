@@ -12,9 +12,13 @@
 @section('content')
 @php
     $pmPlanUser = auth()->user();
-    $canAddPmPlan = $pmPlanUser?->canAction('maintenance_plan', 'add') ?? false;
-    $canEditPmPlan = $pmPlanUser?->canAction('maintenance_plan', 'edit') ?? false;
-    $canDeletePmPlan = $pmPlanUser?->canAction('maintenance_plan', 'delete') ?? false;
+    // PM Plan CRUD is off by default for Admin/Unit Head, but a Super Admin
+    // can enable it in User Access Level. Super Admin always bypasses action
+    // settings; Custodian and delegated roles follow their saved profile.
+    $canAddPmPlan = (bool) ($pmPlanUser?->isSuperAdmin() || ($pmPlanUser?->canAction('maintenance_plan', 'add') ?? false));
+    $canEditPmPlan = (bool) ($pmPlanUser?->isSuperAdmin() || ($pmPlanUser?->canAction('maintenance_plan', 'edit') ?? false));
+    $canDeletePmPlan = (bool) ($pmPlanUser?->isSuperAdmin() || ($pmPlanUser?->canAction('maintenance_plan', 'delete') ?? false));
+    $canOverridePmPlan = (bool) ($pmPlanUser && ($pmPlanUser->isAdmin() || $pmPlanUser->isCustodian()));
     $pmPlanSelectedOfficeIds = collect(old('office_ids', []))
         ->map(fn ($id) => (string) $id)
         ->filter()
@@ -46,7 +50,7 @@
     <div class="flex flex-col gap-4 rounded-2xl sm:flex-row sm:items-center sm:justify-between">
         <div>
             <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-                The Super Admin and Custodian publishes the approved schedule. Assigned Admins and Super Admins can view their targets, propose a temporary reschedule with a reason, and record completion details after all office equipment has been checked.
+                The Super Admin and Custodian publish the approved schedule by default. A Super Admin can enable PM Plan Add/Edit/Delete for another role in User Access Level. Assigned Admins and Unit Heads can view their targets, propose a temporary reschedule with a reason, and record completion details after all office equipment has been checked.
             </p>
         </div>
         <a href="{{ route('admin.reports.maintenanceSchedule', request()->query()) }}" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-700">
@@ -348,7 +352,7 @@
                                         </form>
                                         @endif
                                     @endif
-                                    @if($canEditPmPlan)
+                                    @if($canOverridePmPlan)
                                     <button type="button" data-open-modal="pm-plan-override-{{ $schedule->id }}" title="Override schedule" aria-label="Override schedule" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:focus:ring-offset-gray-900">
                                             <x-action-icon-symbol icon="calendar" />
                                             <span class="sr-only">Override schedule</span>

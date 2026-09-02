@@ -647,7 +647,7 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function override(Request $request, MaintenancePlanSchedule $schedule)
     {
-        abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'override'), 403);
         $this->authorizeSchedule($schedule, $request->user());
 
         $data = $request->validate([
@@ -681,7 +681,7 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function resetOverride(Request $request, MaintenancePlanSchedule $schedule)
     {
-        abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'override_reset'), 403);
         $this->authorizeSchedule($schedule, $request->user());
 
         $overrides = $schedule->overrides()->orderByDesc('id')->get();
@@ -709,7 +709,7 @@ class PreventiveMaintenancePlanController extends Controller
 
     public function complete(Request $request, MaintenancePlanSchedule $schedule)
     {
-        abort_unless($this->canManagePublishedPlan($request->user(), 'edit'), 403);
+        abort_unless($this->canManagePublishedPlan($request->user(), 'complete'), 403);
         $this->authorizeSchedule($schedule, $request->user());
 
         $schedule->load(['latestOverride', 'completion', 'location', 'office']);
@@ -876,13 +876,46 @@ class PreventiveMaintenancePlanController extends Controller
     }
 
     /**
-     * Publishing and maintaining PM Plans follows the shared role profile.
-     * Super Admin is always unrestricted; assigned Admin/Unit Head accounts
-     * still pass the schedule-assignment check for operational actions.
+     * Keep approved-schedule CRUD separate from operational actions. Super
+     * Admin is unrestricted; other roles follow the saved PM Plan action
+     * profile. Assigned Admin/Unit Head accounts may submit an override or
+     * completion record even when CRUD remains disabled.
      */
     private function canManagePublishedPlan(?User $user, string $action = 'edit'): bool
     {
-        return $user && ($user->isSuperAdmin() || $user->canAction('maintenance_plan', $action));
+        if (! $user) {
+            return false;
+        }
+
+        // Super Admin is always unrestricted. Do not let a role-level
+        // Add/Edit/Delete profile setting remove PM Plan or bulk-delete
+        // access from the system owner.
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        // PM Plan CRUD is off by default for Admin/Unit Head, but a Super
+        // Admin may explicitly enable these actions in the role access editor.
+        // Respect the resulting role profile for every non-Super-Admin role.
+        if (in_array($action, ['add', 'edit', 'delete'], true)) {
+            return $user->canAction('maintenance_plan', $action);
+        }
+
+        // Admins and Unit Heads retain the operational override/completion
+        // workflow. authorizeSchedule() below limits them to assigned plans;
+        // Custodian remains able to operate across targets.
+        if (in_array($action, ['override', 'complete'], true)) {
+            return $user->isCustodian() || $user->isAdmin();
+        }
+
+        // Resetting an override restores the approved date for everyone, so
+        // keep this destructive/reversal operation with Super Admin. The
+        // normal Override button remains available to Admin/Unit Head.
+        if ($action === 'override_reset') {
+            return $user->isSuperAdmin();
+        }
+
+        return false;
     }
 
     /**

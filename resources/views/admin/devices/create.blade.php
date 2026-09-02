@@ -11,12 +11,6 @@
 
 @php
     $createStorage = trim((string) old('specs.storage', ''));
-    $createStorageType = preg_match('/\b(HDD|SSD)\s*$/i', $createStorage, $createStorageTypeMatch)
-        ? strtoupper($createStorageTypeMatch[1])
-        : '';
-    $createStorageCapacity = $createStorageType !== ''
-        ? trim((string) preg_replace('/\s*(HDD|SSD)\s*$/i', '', $createStorage))
-        : '';
 @endphp
 
 @section('content')
@@ -183,18 +177,10 @@
             {{-- Storage (Computer only) --}}
             <div id="storage_wrapper" style="display:none;">
                 <label class="text-sm font-medium">Storage</label>
-                <div class="mt-1 grid grid-cols-2 gap-2">
-                    <select id="storage_type_select" class="w-full border rounded px-3 py-2" disabled>
-                        <option value="">Select storage type</option>
-                        <option value="SSD" @selected($createStorageType === 'SSD')>SSD</option>
-                        <option value="HDD" @selected($createStorageType === 'HDD')>HDD</option>
-                    </select>
-                    <select id="storage_capacity_select" class="w-full border rounded px-3 py-2" data-initial-capacity="{{ $createStorageCapacity }}" style="display:none;" disabled>
-                        <option value="" selected>Select capacity</option>
-                    </select>
-                </div>
-                <input type="hidden" name="specs[storage]" id="storage_value_input" value="{{ $createStorage }}" data-raw-value="{{ $createStorage }}" disabled>
-                <p class="mt-1 text-xs text-gray-500">Select a drive type, then choose its capacity.</p>
+                <div id="storage_rows" class="mt-1 space-y-2"></div>
+                <button type="button" id="add_storage_button" class="mt-2 inline-flex items-center rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">+ Add storage</button>
+                <input type="hidden" name="specs[storage]" id="storage_value_input" value="{{ $createStorage }}" disabled>
+                <p class="mt-1 text-xs text-gray-500">Add another drive when needed. Saved values are combined, for example: 128GB SSD + 1TB HDD.</p>
                 @error('specs.storage')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
@@ -338,13 +324,16 @@
         var processorWrap = document.getElementById('processor_wrapper');
         var processorInput = document.getElementById('processor_input');
         var storageWrap = document.getElementById('storage_wrapper');
-        var storageTypeSelect = document.getElementById('storage_type_select');
-        var storageCapacitySelect = document.getElementById('storage_capacity_select');
+        var storageRows = document.getElementById('storage_rows');
+        var storageAddButton = document.getElementById('add_storage_button');
         var storageValueInput = document.getElementById('storage_value_input');
         var storageCapacities = {
             SSD: ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'],
             HDD: ['256GB', '500GB', '1TB', '2TB']
         };
+        var storageEntries = [];
+        var storageRaw = @json($createStorage);
+        var storageDirty = false;
 
         function isComputer(name) {
             name = String(name || '').trim().toLowerCase();
@@ -359,33 +348,123 @@
         function hide(el) { el.style.display = 'none'; }
 
         function syncStorageValue() {
-            if (!storageTypeSelect || !storageCapacitySelect || !storageValueInput) return;
-            var type = storageTypeSelect.value || '';
-            var capacity = storageCapacitySelect.value || '';
-            storageValueInput.value = type && capacity
-                ? capacity + ' ' + type
-                : (storageValueInput.dataset.rawValue || '');
+            if (!storageValueInput) return;
+            if (!storageDirty && storageRaw) {
+                storageValueInput.value = storageRaw;
+                return;
+            }
+            storageValueInput.value = storageEntries.map(function (entry) {
+                var capacity = String(entry.capacity || '').trim();
+                var type = String(entry.type || '').trim().toUpperCase();
+                return capacity && type ? capacity + ' ' + type : '';
+            }).filter(Boolean).join(' + ');
         }
 
-        function updateStorageCapacities(resetCapacity) {
-            if (!storageTypeSelect || !storageCapacitySelect) return;
-            var type = storageTypeSelect.value || '';
-            var previous = resetCapacity ? '' : (storageCapacitySelect.value || storageCapacitySelect.dataset.initialCapacity || '');
-            if (resetCapacity && storageValueInput) storageValueInput.dataset.rawValue = '';
-            storageCapacitySelect.replaceChildren();
-            var placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = 'Select capacity';
-            storageCapacitySelect.appendChild(placeholder);
-            (storageCapacities[type] || []).forEach(function (capacity) {
-                var option = document.createElement('option');
-                option.value = capacity;
-                option.textContent = capacity;
-                storageCapacitySelect.appendChild(option);
-            });
-            if (previous && (storageCapacities[type] || []).includes(previous)) {
-                storageCapacitySelect.value = previous;
+        function parseStorage(value) {
+            storageRaw = String(value || '').trim();
+            storageDirty = false;
+            var parsed = storageRaw ? storageRaw.split(/\s*\+\s*/).map(function (part) {
+                var match = String(part).trim().match(/^(.*?)\s*(SSD|HDD)\s*$/i);
+                return match && match[1].trim()
+                    ? { capacity: match[1].trim(), type: match[2].toUpperCase() }
+                    : null;
+            }).filter(Boolean) : [];
+            storageEntries = parsed.length ? parsed : [{ capacity: '', type: '' }];
+            renderStorageRows();
+        }
+
+        function markStorageDirty() {
+            storageRaw = '';
+            storageDirty = true;
+            syncStorageValue();
+        }
+
+        function changeStorageType(index) {
+            if (storageEntries[index]) storageEntries[index].capacity = '';
+            markStorageDirty();
+            renderStorageRows();
+        }
+
+        function addStorage() {
+            markStorageDirty();
+            storageEntries.push({ capacity: '', type: '' });
+            renderStorageRows();
+        }
+
+        function removeStorage(index) {
+            markStorageDirty();
+            if (storageEntries.length > 1) {
+                storageEntries.splice(index, 1);
+            } else {
+                storageEntries = [{ capacity: '', type: '' }];
             }
+            renderStorageRows();
+        }
+
+        function renderStorageRows() {
+            if (!storageRows) return;
+            storageRows.replaceChildren();
+            storageEntries.forEach(function (entry, index) {
+                var row = document.createElement('div');
+                row.className = 'grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]';
+
+                var storageTypeSelectEl = document.createElement('select');
+                storageTypeSelectEl.className = 'w-full border rounded px-3 py-2';
+                storageTypeSelectEl.setAttribute('aria-label', 'Storage type');
+                [['', 'Select storage type'], ['SSD', 'SSD'], ['HDD', 'HDD']].forEach(function (optionData) {
+                    var option = document.createElement('option');
+                    option.value = optionData[0];
+                    option.textContent = optionData[1];
+                    storageTypeSelectEl.appendChild(option);
+                });
+                storageTypeSelectEl.value = entry.type || '';
+                storageTypeSelectEl.addEventListener('change', function () {
+                    storageEntries[index].type = this.value;
+                    changeStorageType(index);
+                });
+
+                var capacitySelect = document.createElement('select');
+                capacitySelect.className = 'w-full border rounded px-3 py-2';
+                capacitySelect.setAttribute('aria-label', 'Storage capacity');
+                var placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = 'Select capacity';
+                capacitySelect.appendChild(placeholder);
+                (storageCapacities[entry.type] || []).forEach(function (capacity) {
+                    var option = document.createElement('option');
+                    option.value = capacity;
+                    option.textContent = capacity;
+                    capacitySelect.appendChild(option);
+                });
+                if (entry.capacity && !(storageCapacities[entry.type] || []).includes(entry.capacity)) {
+                    var custom = document.createElement('option');
+                    custom.value = entry.capacity;
+                    custom.textContent = entry.capacity;
+                    capacitySelect.appendChild(custom);
+                }
+                capacitySelect.value = entry.capacity || '';
+                capacitySelect.style.display = entry.type ? '' : 'none';
+                capacitySelect.disabled = !entry.type;
+                capacitySelect.addEventListener('change', function () {
+                    storageEntries[index].capacity = this.value;
+                    markStorageDirty();
+                });
+
+                var removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-red-300 text-lg text-red-600 hover:bg-red-50';
+                removeButton.setAttribute('aria-label', 'Remove storage');
+                removeButton.textContent = '\u2212';
+                removeButton.style.display = storageEntries.length > 1 ? '' : 'none';
+                removeButton.addEventListener('click', function () { removeStorage(index); });
+
+                row.appendChild(storageTypeSelectEl);
+                row.appendChild(capacitySelect);
+                row.appendChild(removeButton);
+                storageRows.appendChild(row);
+            });
+            var selectedType = typeSelect && typeSelect.options[typeSelect.selectedIndex];
+            if (storageAddButton) storageAddButton.disabled = !isComputer(selectedType ? selectedType.dataset.name : '');
             syncStorageValue();
         }
 
@@ -420,8 +499,8 @@
                 show(processorWrap);
                 processorInput.disabled = false;
                 show(storageWrap);
-                storageTypeSelect.disabled = false;
-                storageCapacitySelect.disabled = !storageTypeSelect.value;
+                if (storageAddButton) storageAddButton.disabled = false;
+                renderStorageRows();
                 storageValueInput.disabled = false;
             } else {
                 hide(computerNameWrap);
@@ -433,11 +512,12 @@
                 processorInput.disabled = true;
                 processorInput.value = '';
                 hide(storageWrap);
-                storageTypeSelect.disabled = true;
-                storageCapacitySelect.disabled = true;
+                if (storageAddButton) storageAddButton.disabled = true;
                 storageValueInput.disabled = true;
-                storageTypeSelect.value = '';
-                updateStorageCapacities(true);
+                storageEntries = [{ capacity: '', type: '' }];
+                storageRaw = '';
+                storageDirty = true;
+                renderStorageRows();
             }
 
             if (computer) {
@@ -457,12 +537,7 @@
 
         typeSelect.addEventListener('change', updateFields);
         conditionSelect.addEventListener('change', updateStatusField);
-            storageTypeSelect.addEventListener('change', function () {
-                updateStorageCapacities(true);
-                storageCapacitySelect.style.display = this.value ? '' : 'none';
-                storageCapacitySelect.disabled = !this.value;
-            });
-        storageCapacitySelect.addEventListener('change', syncStorageValue);
+        if (storageAddButton) storageAddButton.addEventListener('click', addStorage);
 
         osVersionSel.addEventListener('change', function () {
             if (this.value) { show(osLicenseWrap); } else { hide(osLicenseWrap); }
@@ -473,8 +548,7 @@
         });
 
         // Run on page load
-        updateStorageCapacities(false);
-        storageCapacitySelect.style.display = storageTypeSelect.value ? '' : 'none';
+        parseStorage(storageRaw);
         updateFields();
         updateStatusField();
     })();

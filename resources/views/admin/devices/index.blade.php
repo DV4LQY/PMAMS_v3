@@ -1330,42 +1330,77 @@
                 </div>
 
                 <div x-show="isComputerType(editDevice.device_type_id)" x-cloak x-data="{
-                        storageType: '',
-                        storageCapacity: '',
+                        storageEntries: [],
                         storageRaw: '',
+                        storageDirty: false,
                         capacities: { SSD: ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'], HDD: ['256GB', '500GB', '1TB', '2TB'] },
                         get storageValue() {
-                            if (this.storageType && this.storageCapacity) return `${this.storageCapacity} ${this.storageType}`;
-                            return this.storageRaw || '';
+                            if (!this.storageDirty && this.storageRaw) return this.storageRaw;
+                            return this.storageEntries
+                                .map((entry) => {
+                                    const capacity = String(entry.capacity || '').trim();
+                                    const type = String(entry.type || '').trim().toUpperCase();
+                                    return capacity && type ? `${capacity} ${type}` : '';
+                                })
+                                .filter(Boolean)
+                                .join(' + ');
                         },
                         parseStorage(value) {
                             const raw = String(value || '').trim();
-                            const match = raw.match(/\b(SSD|HDD)\s*$/i);
-                            this.storageType = match ? match[1].toUpperCase() : '';
-                            this.storageCapacity = match ? raw.replace(/\s*(SSD|HDD)\s*$/i, '').trim() : '';
                             this.storageRaw = raw;
+                            this.storageDirty = false;
+                            const entries = raw
+                                ? raw.split(/\s*\+\s*/).map((part) => {
+                                    const match = String(part).trim().match(/^(.*?)\s*(SSD|HDD)\s*$/i);
+                                    return match && match[1].trim()
+                                        ? { capacity: match[1].trim(), type: match[2].toUpperCase() }
+                                        : null;
+                                }).filter(Boolean)
+                                : [];
+                            this.storageEntries = entries.length ? entries : [{ capacity: '', type: '' }];
                         },
-                        syncStorageCapacity(clearRaw = false) {
-                            if (clearRaw) this.storageRaw = '';
-                            const available = this.capacities[this.storageType] || [];
-                            if (this.storageCapacity && !available.includes(this.storageCapacity)) this.storageCapacity = '';
+                        markStorageDirty() {
+                            this.storageRaw = '';
+                            this.storageDirty = true;
+                        },
+                        changeStorageType(index) {
+                            if (this.storageEntries[index]) this.storageEntries[index].capacity = '';
+                            this.markStorageDirty();
+                        },
+                        addStorage() {
+                            this.markStorageDirty();
+                            this.storageEntries.push({ capacity: '', type: '' });
+                        },
+                        removeStorage(index) {
+                            this.markStorageDirty();
+                            if (this.storageEntries.length > 1) {
+                                this.storageEntries.splice(index, 1);
+                            } else {
+                                this.storageEntries = [{ capacity: '', type: '' }];
+                            }
                         }
                     }" x-init="parseStorage(editDevice.specs.storage)" x-on:pmams-storage-sync.window="parseStorage($event.detail)">
                     <label class="text-sm font-medium dark:text-gray-300">Storage</label>
-                    <div class="mt-1 grid grid-cols-2 gap-2">
-                        <select x-model="storageType" @change="syncStorageCapacity(true)" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" :disabled="!isComputerType(editDevice.device_type_id)" aria-label="Storage type">
-                            <option value="">Select storage type</option>
-                            <option value="SSD">SSD</option>
-                            <option value="HDD">HDD</option>
-                        </select>
-                        <select x-model="storageCapacity" @change="syncStorageCapacity(true)" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" x-show="storageType" :disabled="!isComputerType(editDevice.device_type_id) || !storageType" aria-label="Storage capacity">
-                            <option value="" x-text="'Select capacity'" :selected="storageCapacity === ''">Select capacity</option>
-                            <template x-for="capacity in (capacities[storageType] || [])" :key="capacity"><option :value="capacity" x-text="capacity"></option></template>
-                            <option x-show="storageCapacity && !(capacities[storageType] || []).includes(storageCapacity)" :value="storageCapacity" x-text="storageCapacity"></option>
-                        </select>
+                    <div class="mt-1 space-y-2">
+                        <template x-for="(storage, index) in storageEntries" :key="'storage-entry-' + index">
+                            <div class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                <select x-model="storage.type" @change="changeStorageType(index)" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" :disabled="!isComputerType(editDevice.device_type_id)" aria-label="Storage type">
+                                    <option value="">Select storage type</option>
+                                    <option value="SSD">SSD</option>
+                                    <option value="HDD">HDD</option>
+                                </select>
+                                <select x-model="storage.capacity" @change="markStorageDirty()" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" x-show="storage.type" :disabled="!isComputerType(editDevice.device_type_id) || !storage.type" aria-label="Storage capacity">
+                                    <option value="">Select capacity</option>
+                                    <template x-for="capacity in (capacities[storage.type] || [])" :key="capacity"><option :value="capacity" x-text="capacity"></option></template>
+                                    <option x-show="storage.capacity && !(capacities[storage.type] || []).includes(storage.capacity)" :value="storage.capacity" x-text="storage.capacity"></option>
+                                </select>
+                                <button type="button" x-show="storageEntries.length > 1" @click="removeStorage(index)" class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-red-300 text-lg text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30" aria-label="Remove storage">&minus;</button>
+                            </div>
+                        </template>
                     </div>
+                    <button type="button" @click="addStorage()" :disabled="!isComputerType(editDevice.device_type_id)" class="mt-2 inline-flex items-center rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30">+ Add storage</button>
                     <input type="hidden" name="specs[storage]" :value="storageValue" :disabled="!isComputerType(editDevice.device_type_id)">
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Select a drive type, then choose its capacity.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Add another drive when needed. Saved values are combined, for example: 128GB SSD + 1TB HDD.</p>
                 </div>
 
                 <div x-show="isDesktopType(editDevice.device_type_id)" x-cloak>

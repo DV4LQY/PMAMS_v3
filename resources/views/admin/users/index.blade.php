@@ -339,7 +339,7 @@
             <div x-show="addSingle.role !== 'super_admin'" x-cloak class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
                 <div class="mb-3">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline permissions. Super Admin can enable or disable any menu and Add / Edit / Delete action; saving applies the profile to every account with that role.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline permissions. PM Plan Add/Edit/Delete are off by default for Admin and Unit Head, but a Super Admin can enable the checkboxes when delegation is needed; they retain the assigned-plan override workflow by default.</p>
                 </div>
                 <div class="mb-3 flex flex-wrap gap-4 text-xs text-gray-700 dark:text-gray-300">
                     <label class="inline-flex items-center gap-2">
@@ -362,14 +362,14 @@
 
                 <div class="mt-4 border-t border-gray-200 pt-3 dark:border-gray-700">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Add / Edit / Delete access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Every Add, Edit, and Delete checkbox is configurable by Super Admin.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Restricted actions are disabled and are enforced server-side.</p>
                     <div class="mt-2 space-y-2">
                         @foreach($permissionResources as $resource => $label)
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                                 <span class="w-40 font-medium text-gray-700 dark:text-gray-300">{{ $label }}</span>
                                 @foreach($permissionActions as $action => $actionLabel)
                                     <label class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="addSingle.permissions.actions.{{ $resource }}" x-on:change="addSingle.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="addSingle.permissions.actions.{{ $resource }}" x-on:change="addSingle.permissionsChanged = true" :disabled="!isActionAllowed(addSingle.role, '{{ $resource }}', '{{ $action }}')" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700">
                                         {{ $actionLabel }}
                                     </label>
                                 @endforeach
@@ -379,7 +379,7 @@
                 </div>
             </div>
             <div x-show="addSingle.role === 'super_admin'" x-cloak class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
-                Super Admin has unrestricted access to every menu and action.
+                Super Admin has unrestricted access to every menu and action, including PM Plan Add, Edit, Delete, and bulk delete. These permissions cannot be disabled.
             </div>
 
             <div>
@@ -584,7 +584,7 @@
             <div x-show="editUser.role !== 'super_admin'" x-cloak class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
                 <div class="mb-3">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Role-based menu access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline permissions. Super Admin can enable or disable any menu and Add / Edit / Delete action; saving applies the profile to every account with that role.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Changing the role loads its baseline permissions. PM Plan Add/Edit/Delete are off by default for Admin and Unit Head, but a Super Admin can enable the checkboxes when delegation is needed; they retain the assigned-plan override workflow by default.</p>
                 </div>
                 <div class="mb-3 flex flex-wrap gap-4 text-xs text-gray-700 dark:text-gray-300">
                     <label class="inline-flex items-center gap-2">
@@ -607,14 +607,14 @@
 
                 <div class="mt-4 border-t border-gray-200 pt-3 dark:border-gray-700">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">Add / Edit / Delete access</div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Every Add, Edit, and Delete checkbox is configurable by Super Admin.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Set the actions shared by this role. Restricted actions are disabled and are enforced server-side.</p>
                     <div class="mt-2 space-y-2">
                         @foreach($permissionResources as $resource => $label)
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                                 <span class="w-40 font-medium text-gray-700 dark:text-gray-300">{{ $label }}</span>
                                 @foreach($permissionActions as $action => $actionLabel)
                                     <label class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="editUser.permissions.actions.{{ $resource }}" x-on:change="editUser.permissionsChanged = true" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                                        <input type="checkbox" name="permissions[actions][{{ $resource }}][]" value="{{ $action }}" x-model="editUser.permissions.actions.{{ $resource }}" x-on:change="editUser.permissionsChanged = true" :disabled="!isActionAllowed(editUser.role, '{{ $resource }}', '{{ $action }}')" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700">
                                         {{ $actionLabel }}
                                     </label>
                                 @endforeach
@@ -624,7 +624,7 @@
                 </div>
             </div>
             <div x-show="editUser.role === 'super_admin'" x-cloak class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
-                Super Admin has unrestricted access to every menu and action.
+                Super Admin has unrestricted access to every menu and action, including PM Plan Add, Edit, Delete, and bulk delete. These permissions cannot be disabled.
             </div>
 
             <div>

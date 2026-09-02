@@ -47,6 +47,14 @@ class PermissionMiddleware
         if (str_starts_with($route, 'admin.logs.')) return ['activity_logs', null, null];
         if (str_starts_with($route, 'admin.database.')) return ['database', null, null];
         if (str_starts_with($route, 'admin.maintenance-cleanup.')) return ['maintenance_cleanup', 'checklist', $this->action($route)];
+        // PM Plan override and completion are operational actions retained by
+        // Admin/Unit Head accounts. The controller enforces their role and
+        // assignment scope, so do not map these routes to PM Plan CRUD edit.
+        if (in_array($route, [
+            'admin.maintenance-plan.override',
+            'admin.maintenance-plan.override.reset',
+            'admin.maintenance-plan.complete',
+        ], true)) return ['maintenance_plan', null, null];
         if (str_starts_with($route, 'admin.maintenance-plan.')) return ['maintenance_plan', 'maintenance_plan', $this->action($route)];
         if ($route === 'admin.maintenance-gallery.photo') return ['maintenance_gallery', null, null];
         if (str_starts_with($route, 'admin.maintenance-gallery.')) return ['maintenance_gallery', 'maintenance_gallery', $this->action($route)];

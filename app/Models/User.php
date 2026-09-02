@@ -20,14 +20,19 @@ class User extends Authenticatable
     | Four roles:
     |   - super_admin: unrestricted system owner with access to every module,
     |     including user and role management.
-    |   - admin: full access — manages colleges/offices/staff structure,
-    |     devices, reports, and can view the activity log. User-account
-    |     management is reserved for the Super Admin.
+    |   - admin: manages colleges/offices/staff structure, devices, reports,
+    |     and can view the activity log. On PM Plans, Admin accounts can view
+    |     assigned targets and submit operational overrides/completions, while
+    |     publishing, editing, and deleting the approved schedule is off by
+    |     default; a Super Admin may enable those actions for the role when
+    |     delegation is needed. User-account management is reserved for the
+    |     Super Admin.
     |   - custodian: a restricted "basic user" account. Can manage devices,
     |     issue/return them to staff, and manage the location/office/staff
-    |     directory. PM Plan publishing/editing/deletion follows the shared
-    |     Role-based menu access profile. Cannot create user accounts or view
-    |     logs — per the client's specified restrictions.
+    |     directory. PM Plan publishing/editing/deletion is enabled by default
+    |     for the Custodian and can be adjusted by the Super Admin. Cannot
+    |     create user accounts or view logs — per the client's specified
+    |     restrictions.
     |   - unit_head: a single designated signatory. Only one account may
     |     hold this role at a time (enforced in UserController). Their name
     |     is automatically pulled into generated PDF reports as the
@@ -109,10 +114,11 @@ class User extends Authenticatable
             self::ROLE_ADMIN, self::ROLE_UNIT_HEAD => [
                 'menus' => array_values(array_diff($allMenus, ['database', 'maintenance_cleanup'])),
                 'actions' => array_replace($allActions, [
-                    // Admins and Unit Heads may submit an override and record
-                    // completion. Publishing, changing, or deleting the
-                    // original PM Plan remains a Super Admin operation.
-                    'maintenance_plan' => ['edit'],
+                    // Admins and Unit Heads may still view assigned plans and
+                    // submit an override/complete action. PM Plan CRUD is off
+                    // by default for these roles and can be enabled by a
+                    // Super Admin through the role access editor.
+                    'maintenance_plan' => [],
                 ]),
             ],
             self::ROLE_CUSTODIAN => [
