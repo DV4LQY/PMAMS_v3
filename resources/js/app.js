@@ -217,12 +217,42 @@ import './bootstrap';
         markNavigationStart();
     }, true);
 
+    // Restore explicit page anchors after Livewire swaps the document. Native
+    // browser navigation handles the same hash on a full reload, while this
+    // listener keeps SPA filter/pagination requests at the requested section.
+    const restoreHashTarget = () => {
+        const rawHash = window.location.hash.slice(1);
+        if (!rawHash) return;
+
+        let id = rawHash;
+        try { id = decodeURIComponent(rawHash); } catch (error) { /* keep the raw id */ }
+
+        const target = document.getElementById(id);
+        if (!target) return;
+
+        const scroll = () => target.scrollIntoView({ behavior: 'auto', block: 'start' });
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(scroll);
+        } else {
+            window.setTimeout(scroll, 0);
+        }
+    };
+
     document.addEventListener('livewire:navigated', () => {
         const url = new URL(window.location.href);
-        if (!url.searchParams.has('_spa_refresh')) return;
-        url.searchParams.delete('_spa_refresh');
-        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+        if (url.searchParams.has('_spa_refresh')) {
+            url.searchParams.delete('_spa_refresh');
+            window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+        }
+        restoreHashTarget();
     });
+    window.addEventListener('hashchange', restoreHashTarget);
+    window.addEventListener('pageshow', restoreHashTarget);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', restoreHashTarget, { once: true });
+    } else {
+        restoreHashTarget();
+    }
 
     document.addEventListener('click', (event) => {
         if (!canNavigate() || event.defaultPrevented || event.button !== 0) return;
@@ -262,7 +292,8 @@ import './bootstrap';
         const params = new URLSearchParams(new FormData(form));
         const query = params.toString();
         const path = localNavigatePath(action).split('#')[0].split('?')[0];
-        window.Livewire.navigate(`${path}${query ? `?${query}` : ''}`);
+        const hash = action.hash || (form.dataset.preserveHash === 'true' ? window.location.hash : '');
+        window.Livewire.navigate(`${path}${query ? `?${query}` : ''}${hash}`);
     });
 })();
 

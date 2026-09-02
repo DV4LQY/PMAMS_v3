@@ -29,9 +29,55 @@ class PreventiveMaintenancePlanController extends Controller
         $monthFromStart = $this->monthStartOrNull($monthFrom);
         $monthToStart = $this->monthStartOrNull($monthTo);
 
+        // Keep the office selector dependent on the selected location, just
+        // like Equipment. A stale office query parameter must never filter a
+        // different location (or leave the page showing a misleading option).
+        $locations = Location::with(['offices:id,location_id,name'])
+            ->orderBy('name')
+            ->orderBy('id')
+            ->get();
+        $selectedLocation = $locationId
+            ? $locations->firstWhere('id', $locationId)
+            : null;
+        $showOfficeFilter = $selectedLocation !== null;
+        $offices = $showOfficeFilter
+            ? Office::query()
+                ->where('location_id', $locationId)
+                ->orderBy('name')
+                ->orderBy('id')
+                ->get(['id', 'location_id', 'name'])
+            : collect();
+
+        if (! $showOfficeFilter || ($officeId && ! $offices->contains('id', $officeId))) {
+            $officeId = null;
+        }
+
+        $admins = User::query()
+            ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'role']);
+        $canFilterAssignedAdmin = (bool) ($request->user()?->isSuperAdmin() || $request->user()?->isCustodian());
+        $selectedAssignedUserId = $canFilterAssignedAdmin
+            ? ($request->integer('assigned_user_id') ?: null)
+            : null;
+
+        // Ignore arbitrary or deleted/non-assignable user ids from a
+        // bookmarked URL. The dropdown only exposes active Admin/Super Admin
+        // accounts, so the query must follow the same rule.
+        if ($selectedAssignedUserId && ! $admins->contains('id', $selectedAssignedUserId)) {
+            $selectedAssignedUserId = null;
+        }
+
         $schedules = $this->visibleSchedules($request)
             ->when($locationId, fn ($query) => $query->where('location_id', $locationId))
             ->when($officeId, fn ($query) => $query->where('office_id', $officeId))
+            ->when($selectedAssignedUserId, function ($query, $assignedUserId) {
+                $query->where(function ($assigned) use ($assignedUserId) {
+                    $assigned
+                        ->where('assigned_user_id', $assignedUserId)
+                        ->orWhereHas('assignedUsers', fn ($users) => $users->whereKey($assignedUserId));
+                });
+            })
             ->when($monthFromStart, fn ($query) => $query->whereDate('schedule_month_to', '>=', $monthFromStart))
             ->when($monthToStart, fn ($query) => $query->whereDate('schedule_month_from', '<=', $monthToStart))
             ->with([
@@ -54,13 +100,14 @@ class PreventiveMaintenancePlanController extends Controller
 
         return view('admin.maintenance-plan.index', [
             'schedules' => $schedules,
-            'locations' => Location::with(['offices:id,location_id,name'])->orderBy('name')->get(),
-            'admins' => User::query()
-                ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
-                ->orderBy('name')
-                ->get(['id', 'name', 'email', 'role']),
+            'locations' => $locations,
+            'offices' => $offices,
+            'showOfficeFilter' => $showOfficeFilter,
+            'admins' => $admins,
+            'canFilterAssignedAdmin' => $canFilterAssignedAdmin,
             'selectedLocationId' => $locationId,
             'selectedOfficeId' => $officeId,
+            'selectedAssignedUserId' => $selectedAssignedUserId,
             'monthFrom' => $monthFrom,
             'monthTo' => $monthTo,
         ]);
@@ -74,6 +121,7 @@ class PreventiveMaintenancePlanController extends Controller
             'location_id' => ['required', 'integer', 'exists:locations,id'],
             'office_ids' => ['nullable', 'array'],
             'office_ids.*' => ['integer', 'distinct', 'exists:offices,id'],
+            'target_selections' => ['nullable', 'json'],
             'assigned_user_id' => [
                 'nullable',
                 'integer',
@@ -101,83 +149,136 @@ class PreventiveMaintenancePlanController extends Controller
             return back()->withInput()->withErrors(['schedule_month_to' => 'The ending month must be the same as or after the starting month.']);
         }
 
-        $location = Location::findOrFail($data['location_id']);
-        $officeIds = collect($data['office_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
-        $offices = Office::query()
-            ->where('location_id', $location->id)
-            ->whereIn('id', $officeIds)
-            ->orderBy('name')
-            ->get();
-
-        if ($officeIds->isNotEmpty() && $offices->count() !== $officeIds->count()) {
-            return back()->withInput()->withErrors(['office_ids' => 'Select only offices belonging to the chosen location.']);
+        $targetSelections = $this->normaliseTargetSelections($data);
+        if ($targetSelections === null || $targetSelections === []) {
+            return back()->withInput()->withErrors([
+                'target_selections' => 'Select at least one registered location before publishing the PM Plan.',
+            ]);
         }
 
-        $targets = $offices->isEmpty() ? collect([null]) : $offices;
+        $currentLocationId = (int) $data['location_id'];
+        if (! collect($targetSelections)->contains(fn (array $target) => (int) $target['location_id'] === $currentLocationId)) {
+            return back()->withInput()->withErrors([
+                'target_selections' => 'The selected location is missing from the PM Plan target list. Select it again before publishing.',
+            ]);
+        }
+
+        $targetLocationIds = collect($targetSelections)
+            ->pluck('location_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $targetLocations = Location::query()
+            ->whereIn('id', $targetLocationIds)
+            ->get()
+            ->keyBy('id');
+
+        if ($targetLocations->count() !== $targetLocationIds->count()) {
+            return back()->withInput()->withErrors([
+                'target_selections' => 'One or more selected locations are no longer registered. Refresh the page and select the locations again.',
+            ]);
+        }
+
+        $targetGroups = collect();
+        foreach ($targetSelections as $target) {
+            $location = $targetLocations->get((int) $target['location_id']);
+            $officeIds = collect($target['office_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+            $offices = Office::query()
+                ->where('location_id', $location->id)
+                ->whereIn('id', $officeIds)
+                ->orderBy('name')
+                ->get();
+
+            if ($officeIds->isNotEmpty() && $offices->count() !== $officeIds->count()) {
+                return back()->withInput()->withErrors([
+                    'target_selections' => "One or more selected offices do not belong to {$location->name}. Refresh the page and select the offices again.",
+                ]);
+            }
+
+            $targetGroups->push([
+                'location' => $location,
+                'offices' => $offices,
+            ]);
+        }
+
         $created = 0;
         $duplicates = 0;
         $duplicateTargets = [];
 
-        DB::transaction(function () use ($targets, $data, $assignedUserIds, $location, $monthFrom, $monthTo, &$created, &$duplicates, &$duplicateTargets, $request) {
+        DB::transaction(function () use ($targetGroups, $data, $assignedUserIds, $monthFrom, $monthTo, &$created, &$duplicates, &$duplicateTargets, $request) {
             // Range overlap cannot be enforced by a normal unique index. Lock
-            // all plans for this location while checking so concurrent
-            // publishes cannot create two plans for the same coverage window.
+            // all plans for every selected location while checking so
+            // concurrent publishes cannot create overlapping coverage.
             // Trashed plans remain candidates because restoring one later must
             // not create a second overlapping plan.
-            $existingSchedules = MaintenancePlanSchedule::withTrashed()
-                ->where('location_id', $location->id)
+            $locationIds = $targetGroups
+                ->map(fn (array $group) => (int) $group['location']->id)
+                ->unique()
+                ->values();
+            $existingSchedulesByLocation = MaintenancePlanSchedule::withTrashed()
+                ->whereIn('location_id', $locationIds->all())
                 ->lockForUpdate()
-                ->get();
+                ->get()
+                ->groupBy('location_id');
 
-            foreach ($targets as $office) {
-                $duplicate = $existingSchedules->first(function (MaintenancePlanSchedule $existing) use ($office, $monthFrom, $monthTo) {
-                    [$existingFrom, $existingTo] = $this->scheduleWindow($existing);
+            foreach ($targetGroups as $group) {
+                $location = $group['location'];
+                $offices = $group['offices'];
+                $targets = $offices->isEmpty() ? collect([null]) : $offices;
+                $existingSchedules = $existingSchedulesByLocation->get($location->id, collect());
 
-                    return $existingFrom
-                        && $existingTo
-                        && $this->scheduleTargetsOverlap($existing->office_id, $office?->id)
-                        && $this->scheduleWindowsOverlap($existingFrom, $existingTo, $monthFrom, $monthTo);
-                });
+                foreach ($targets as $office) {
+                    $duplicate = $existingSchedules->first(function (MaintenancePlanSchedule $existing) use ($office, $monthFrom, $monthTo) {
+                        [$existingFrom, $existingTo] = $this->scheduleWindow($existing);
 
-                if ($duplicate) {
-                    $duplicates++;
-                    $target = $location->name . ($office?->name ? ' / ' . $office->name : ' (all offices)');
-                    $duplicateTargets[] = $target;
-                    continue;
+                        return $existingFrom
+                            && $existingTo
+                            && $this->scheduleTargetsOverlap($existing->office_id, $office?->id)
+                            && $this->scheduleWindowsOverlap($existingFrom, $existingTo, $monthFrom, $monthTo);
+                    });
+
+                    if ($duplicate) {
+                        $duplicates++;
+                        $target = $location->name . ($office?->name ? ' / ' . $office->name : ' (all offices)');
+                        $duplicateTargets[] = $target;
+                        continue;
+                    }
+
+                    $schedule = MaintenancePlanSchedule::create([
+                        'location_id' => $location->id,
+                        'office_id' => $office?->id,
+                        // Keep the first assignment in the legacy column for
+                        // existing integrations; the pivot stores the full list.
+                        'assigned_user_id' => $assignedUserIds[0] ?? null,
+                        'created_by' => $request->user()->id,
+                        'scheduled_date' => $monthFrom->toDateString(),
+                        'schedule_month_from' => $monthFrom->toDateString(),
+                        'schedule_month_to' => $monthTo->toDateString(),
+                        'title' => $data['title'],
+                        'notes' => $data['notes'] ?? null,
+                    ]);
+                    $schedule->assignedUsers()->sync($assignedUserIds);
+
+                    ActivityLog::record(
+                        'created',
+                        'Created preventive maintenance schedule for ' . $this->scheduleTargetLabel($schedule->fresh(['location', 'office'])),
+                        $schedule,
+                        ActivityLog::makePayload([
+                            'location' => $location->name,
+                            'office' => $office?->name,
+                            'schedule_month_from' => $monthFrom->format('Y-m'),
+                            'schedule_month_to' => $monthTo->format('Y-m'),
+                            'assigned_user_ids' => $assignedUserIds,
+                            'title' => $data['title'],
+                        ])
+                    );
+                    $created++;
+                    // This also catches duplicate targets supplied in one request
+                    // if a client bypasses the distinct checkbox values.
+                    $existingSchedules->push($schedule);
                 }
 
-                $schedule = MaintenancePlanSchedule::create([
-                    'location_id' => $location->id,
-                    'office_id' => $office?->id,
-                    // Keep the first assignment in the legacy column for
-                    // existing integrations; the pivot stores the full list.
-                    'assigned_user_id' => $assignedUserIds[0] ?? null,
-                    'created_by' => $request->user()->id,
-                    'scheduled_date' => $monthFrom->toDateString(),
-                    'schedule_month_from' => $monthFrom->toDateString(),
-                    'schedule_month_to' => $monthTo->toDateString(),
-                    'title' => $data['title'],
-                    'notes' => $data['notes'] ?? null,
-                ]);
-                $schedule->assignedUsers()->sync($assignedUserIds);
-
-                ActivityLog::record(
-                    'created',
-                    'Created preventive maintenance schedule for ' . $this->scheduleTargetLabel($schedule->fresh(['location', 'office'])),
-                    $schedule,
-                    ActivityLog::makePayload([
-                        'location' => $location->name,
-                        'office' => $office?->name,
-                        'schedule_month_from' => $monthFrom->format('Y-m'),
-                        'schedule_month_to' => $monthTo->format('Y-m'),
-                        'assigned_user_ids' => $assignedUserIds,
-                        'title' => $data['title'],
-                    ])
-                );
-                $created++;
-                // This also catches duplicate targets supplied in one request
-                // if a client bypasses the distinct checkbox values.
-                $existingSchedules->push($schedule);
+                $existingSchedulesByLocation->put($location->id, $existingSchedules);
             }
         });
 
@@ -389,6 +490,13 @@ class PreventiveMaintenancePlanController extends Controller
             'select_all' => ['nullable', 'boolean'],
             'location_id' => ['nullable', 'integer', 'exists:locations,id'],
             'office_id' => ['nullable', 'integer', 'exists:offices,id'],
+            'assigned_user_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query
+                    ->whereIn('role', [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])
+                    ->whereNull('deleted_at')),
+            ],
             'month_from' => ['nullable', 'date_format:Y-m'],
             'month_to' => ['nullable', 'date_format:Y-m'],
         ]);
@@ -401,9 +509,20 @@ class PreventiveMaintenancePlanController extends Controller
 
         $monthFrom = $this->monthStartOrNull($data['month_from'] ?? null);
         $monthTo = $this->monthStartOrNull($data['month_to'] ?? null);
+        $canFilterAssignedAdmin = (bool) ($request->user()?->isSuperAdmin() || $request->user()?->isCustodian());
+        $assignedUserId = $canFilterAssignedAdmin
+            ? (($data['assigned_user_id'] ?? null) ?: null)
+            : null;
         $query = MaintenancePlanSchedule::query()
             ->when($data['location_id'] ?? null, fn ($builder, $id) => $builder->where('location_id', $id))
             ->when($data['office_id'] ?? null, fn ($builder, $id) => $builder->where('office_id', $id))
+            ->when($assignedUserId, function ($builder, $id) {
+                $builder->where(function ($assigned) use ($id) {
+                    $assigned
+                        ->where('assigned_user_id', $id)
+                        ->orWhereHas('assignedUsers', fn ($users) => $users->whereKey($id));
+                });
+            })
             ->when($monthFrom, fn ($builder) => $builder->whereDate('schedule_month_to', '>=', $monthFrom))
             ->when($monthTo, fn ($builder) => $builder->whereDate('schedule_month_from', '<=', $monthTo));
 
@@ -957,6 +1076,93 @@ class PreventiveMaintenancePlanController extends Controller
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Normalize the pre-publish target list. The UI can collect offices from
+     * more than one location before publishing; each location is persisted as
+     * one or more schedule rows by the store action. A missing target list is
+     * treated as the legacy single-location request for older clients.
+     *
+     * @param array<string, mixed> $data
+     * @return list<array{location_id:int, office_ids:list<int>}>|null
+     */
+    private function normaliseTargetSelections(array $data): ?array
+    {
+        $raw = $data['target_selections'] ?? null;
+        if (! is_string($raw) || trim($raw) === '') {
+            return [[
+                'location_id' => (int) $data['location_id'],
+                'office_ids' => collect($data['office_ids'] ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn (int $id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ]];
+        }
+
+        try {
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        // A blank target list falls back to the current legacy controls so a
+        // stale client cannot silently publish nothing.
+        if ($decoded === []) {
+            return filled($data['location_id'] ?? null)
+                ? [[
+                    'location_id' => (int) $data['location_id'],
+                    'office_ids' => collect($data['office_ids'] ?? [])
+                        ->map(fn ($id) => (int) $id)
+                        ->filter(fn (int $id) => $id > 0)
+                        ->unique()
+                        ->values()
+                        ->all(),
+                ]]
+                : [];
+        }
+
+        $targets = [];
+        foreach ($decoded as $target) {
+            if (! is_array($target)) {
+                return null;
+            }
+
+            $locationId = filter_var($target['location_id'] ?? null, FILTER_VALIDATE_INT);
+            $officeIds = $target['office_ids'] ?? [];
+            if ($locationId === false || (int) $locationId < 1 || ! is_array($officeIds)) {
+                return null;
+            }
+
+            $normalisedOfficeIds = [];
+            foreach ($officeIds as $officeId) {
+                $validatedOfficeId = filter_var($officeId, FILTER_VALIDATE_INT);
+                if ($validatedOfficeId === false || (int) $validatedOfficeId < 1) {
+                    return null;
+                }
+                $normalisedOfficeIds[] = (int) $validatedOfficeId;
+            }
+
+            $locationKey = (int) $locationId;
+            $targets[$locationKey] = array_values(array_unique(array_merge(
+                $targets[$locationKey] ?? [],
+                $normalisedOfficeIds,
+            )));
+        }
+
+        return collect($targets)
+            ->map(fn (array $officeIds, int $locationId) => [
+                'location_id' => $locationId,
+                'office_ids' => $officeIds,
+            ])
             ->values()
             ->all();
     }

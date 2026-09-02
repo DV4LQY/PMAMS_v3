@@ -15,6 +15,32 @@
     $canAddPmPlan = $pmPlanUser?->canAction('maintenance_plan', 'add') ?? false;
     $canEditPmPlan = $pmPlanUser?->canAction('maintenance_plan', 'edit') ?? false;
     $canDeletePmPlan = $pmPlanUser?->canAction('maintenance_plan', 'delete') ?? false;
+    $pmPlanSelectedOfficeIds = collect(old('office_ids', []))
+        ->map(fn ($id) => (string) $id)
+        ->filter()
+        ->unique()
+        ->values()
+        ->all();
+    $pmPlanTargetSelections = [];
+    $pmPlanRawTargetSelections = old('target_selections');
+    if (is_string($pmPlanRawTargetSelections) && trim($pmPlanRawTargetSelections) !== '') {
+        $pmPlanDecodedTargetSelections = json_decode($pmPlanRawTargetSelections, true);
+        if (is_array($pmPlanDecodedTargetSelections)) {
+            $pmPlanTargetSelections = collect($pmPlanDecodedTargetSelections)
+                ->filter(fn ($target) => is_array($target) && filled($target['location_id'] ?? null))
+                ->map(fn ($target) => [
+                    'location_id' => (string) $target['location_id'],
+                    'office_ids' => collect($target['office_ids'] ?? [])
+                        ->map(fn ($id) => (string) $id)
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all(),
+                ])
+                ->values()
+                ->all();
+        }
+    }
 @endphp
 <div class="space-y-6" x-data="maintenanceCompletionModal()">
     <div class="flex flex-col gap-4 rounded-2xl sm:flex-row sm:items-center sm:justify-between">
@@ -35,23 +61,57 @@
     @endif
 
     @if($canAddPmPlan)
-        <section class="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/20" x-data="maintenancePlanForm(@js($locations->map(fn ($location) => ['id' => $location->id, 'offices' => $location->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values()])->values()))">
+        <section class="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/20" x-data="maintenancePlanForm(@js($locations->map(fn ($location) => ['id' => $location->id, 'code' => $location->code, 'name' => $location->name, 'offices' => $location->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values()])->values()), @js($pmPlanSelectedOfficeIds), @js($pmPlanTargetSelections))">
             <div class="mb-4">
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Publish approved schedule</h2>
               
             </div>
 
+            <aside class="mb-5 rounded-xl border border-blue-200 bg-white/80 p-4 shadow-sm dark:border-blue-900/60 dark:bg-gray-900/40" aria-live="polite">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Pre-publish target preview</h3>
+                    <span class="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-900/50 dark:text-blue-200" x-text="locationId ? 'Ready to review' : 'Select a location'"></span>
+                </div>
+                <div class="mt-3 space-y-3">
+                    <p x-show="!selectedTargets.length" class="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm font-semibold text-gray-600 dark:border-gray-600 dark:text-gray-300">No location selected</p>
+                    <template x-for="target in selectedTargets" :key="'preview-target-' + target.locationId">
+                        <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="target.locationLabel"></span>
+                                    <span x-show="target.locationId === String(locationId)" class="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">Current selection</span>
+                                </div>
+                                <button type="button" @click="removeTarget(target.locationId)" class="text-xs font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 dark:text-red-300 dark:hover:text-red-200" :aria-label="'Remove ' + target.locationLabel + ' from the selection'">Remove location</button>
+                            </div>
+                            <div class="mt-2">
+                                <p x-show="!target.offices.length" class="text-xs font-semibold text-gray-700 dark:text-gray-200">All offices / location-wide</p>
+                                <ul x-show="target.offices.length" x-cloak class="flex flex-wrap gap-2">
+                                    <template x-for="office in target.offices" :key="'preview-office-' + target.locationId + '-' + office.id">
+                                        <li class="inline-flex items-center gap-1 rounded-full bg-blue-100 py-1 pl-3 pr-1 text-xs font-semibold text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                                            <span x-text="office.name"></span>
+                                            <button type="button" @click="removeOffice(office.id, target.locationId)" class="inline-flex h-5 w-5 items-center justify-center rounded-full text-blue-700 hover:bg-blue-200 hover:text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-200 dark:hover:bg-blue-800 dark:hover:text-white" :aria-label="'Remove ' + office.name">&times;</button>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">This preview retains every location and office target selected above. The schedule is not saved until you select <span class="font-semibold">Publish schedule</span>.</p>
+            </aside>
+
             <form method="POST" action="{{ route('admin.maintenance-plan.store') }}" data-spa-form="true" class="grid gap-4 lg:grid-cols-2">
                 @csrf
+                <input type="hidden" name="target_selections" :value="JSON.stringify(targetSelectionPayload)">
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Location <span class="text-red-500">*</span></label>
-                    <select name="location_id" x-model="locationId" required class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    <select name="location_id" x-model="locationId" @change="changeLocation($event.target.value)" required class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                         <option value="">Select a registered location</option>
                         @foreach($locations as $location)
                             <option value="{{ $location->id }}">{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
                         @endforeach
                     </select>
-                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one location and optionally select several offices. Leaving offices unchecked creates one location-wide schedule.</p>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one location and optionally select several offices. Leaving offices unchecked creates one location-wide schedule. Review the target preview above before publishing.</p>
                 </div>
                 <div>
                     @php($selectedAssignedUserIds = collect(old('assigned_user_ids', old('assigned_user_id') ? [old('assigned_user_id')] : []))->map(fn ($id) => (int) $id)->all())
@@ -79,7 +139,7 @@
                     <div class="grid gap-2 rounded-xl border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3 dark:border-gray-700 dark:bg-gray-800" x-show="locationId && availableOffices.length" x-cloak>
                         <template x-for="office in availableOffices" :key="office.id">
                             <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">
-                                <input type="checkbox" name="office_ids[]" :value="office.id" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <input type="checkbox" name="office_ids[]" :value="String(office.id)" x-model="selectedOfficeIds" @change="$nextTick(() => rememberCurrentSelection())" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                 <span x-text="office.name"></span>
                             </label>
                         </template>
@@ -109,33 +169,63 @@
         </section>
     @endif
 
-    <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <section id="published-schedules" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Published schedules</h2>
         
             </div>
-            <form method="GET" class="flex flex-wrap items-center gap-2">
-                <select name="location_id" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                    <option value="">All locations</option>
+            <form method="GET" action="{{ route('admin.maintenance-plan.index') }}#published-schedules" data-preserve-hash="true" class="flex flex-wrap items-center gap-2">
+                <select
+                    name="location_id"
+                    id="pm-plan-location-filter"
+                    aria-label="PM Plan location"
+                    onchange="const officeField = this.form.querySelector('[name=office_id]'); if (officeField) officeField.value = ''; this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+                    class="w-full truncate rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-56"
+                >
+                    <option value="" @selected(empty($selectedLocationId))>All locations</option>
                     @foreach($locations as $location)
-                        <option value="{{ $location->id }}" @selected($selectedLocationId === $location->id)>{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
+                        <option value="{{ $location->id }}" @selected(($selectedLocationId ?? '') == $location->id)>
+                            {{ $location->code ? $location->code . ' - ' . $location->name : $location->name }}
+                        </option>
                     @endforeach
                 </select>
-                <select name="office_id" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                    <option value="">All offices</option>
-                    @foreach($locations as $location)
-                        <optgroup label="{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}">
-                            @foreach($location->offices as $office)
-                                <option value="{{ $office->id }}" @selected($selectedOfficeId === $office->id)>{{ $office->name }}</option>
-                            @endforeach
-                        </optgroup>
-                    @endforeach
-                </select>
+                @if($showOfficeFilter)
+                    <select
+                        name="office_id"
+                        id="pm-plan-office-filter"
+                        aria-label="Office filter for selected location"
+                        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+                        class="w-full truncate rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-56"
+                    >
+                        <option value="" @selected(empty($selectedOfficeId))>All offices</option>
+                        @foreach($offices as $office)
+                            <option value="{{ $office->id }}" @selected(($selectedOfficeId ?? '') == $office->id)>
+                                {{ $office->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                @endif
+                @if($canFilterAssignedAdmin)
+                    <select
+                        name="assigned_user_id"
+                        id="pm-plan-assigned-admin-filter"
+                        aria-label="Filter PM Plans by assigned admin"
+                        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+                        class="w-full truncate rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-56"
+                    >
+                        <option value="" @selected(empty($selectedAssignedUserId))>All assigned admins</option>
+                        @foreach($admins as $admin)
+                            <option value="{{ $admin->id }}" @selected(($selectedAssignedUserId ?? '') == $admin->id)>
+                                {{ $admin->name }} ({{ $admin->roleLabel() }})
+                            </option>
+                        @endforeach
+                    </select>
+                @endif
                 <input type="month" name="month_from" value="{{ $monthFrom }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month from">
                 <input type="month" name="month_to" value="{{ $monthTo }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month to">
                 <button class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg bg-gray-700 px-3 text-sm font-semibold text-white hover:bg-gray-800">Filter</button>
-                <a href="{{ route('admin.maintenance-plan.index') }}" class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Reset</a>
+                <a href="{{ route('admin.maintenance-plan.index') }}#published-schedules" class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Reset</a>
             </form>
         </div>
 
@@ -153,6 +243,9 @@
                 <input type="hidden" name="select_all" id="pm-plan-delete-select-all" value="0">
                 <input type="hidden" name="location_id" value="{{ $selectedLocationId }}">
                 <input type="hidden" name="office_id" value="{{ $selectedOfficeId }}">
+                @if($canFilterAssignedAdmin)
+                    <input type="hidden" name="assigned_user_id" value="{{ $selectedAssignedUserId }}">
+                @endif
                 <input type="hidden" name="month_from" value="{{ $monthFrom }}">
                 <input type="hidden" name="month_to" value="{{ $monthTo }}">
                 <label class="inline-flex items-center gap-2 text-xs font-semibold text-red-800 dark:text-red-200">
@@ -284,7 +377,7 @@
                                                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                                         <div>
                                                             <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Location <span class="text-red-500">*</span></label>
-                                                            <select name="location_id" x-model="locationId" @change="syncOffice()" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                            <select name="location_id" x-model="locationId" @change="syncOffice($event.target.value)" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                                 <option value="">Select a registered location</option>
                                                                 @foreach($locations as $location)
                                                                     <option value="{{ $location->id }}">{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
@@ -293,12 +386,13 @@
                                                         </div>
                                                         <div>
                                                             <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Office <span class="font-normal text-gray-500">(optional)</span></label>
-                                                            <select name="office_id" x-model="officeId" :disabled="!locationId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                            <select name="office_id" x-model="officeId" @change="rememberOffice()" :disabled="!locationId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                                 <option value="">All offices / location-wide</option>
                                                                 <template x-for="office in availableOffices" :key="office.id">
                                                                     <option :value="String(office.id)" x-text="office.name"></option>
                                                                 </template>
                                                             </select>
+                                                            <p x-show="officeNotice" x-cloak x-text="officeNotice" class="mt-1 text-xs text-amber-700 dark:text-amber-300"></p>
                                                         </div>
                                                     </div>
                                                     <p class="text-xs text-gray-500 dark:text-gray-400">Choose a registered location and, optionally, one of its offices. Changing the target keeps this plan’s completion and override history attached to the schedule.</p>
@@ -381,7 +475,7 @@
             @endif
         </span>
         @if($schedules->hasPages())
-            {{ $schedules->onEachSide(1)->links() }}
+            {{ $schedules->fragment('published-schedules')->onEachSide(1)->links() }}
         @else
             <span class="text-gray-500 dark:text-gray-400">Page 1 of 1</span>
         @endif
@@ -450,12 +544,137 @@
 </div>
 
 <script>
-    function maintenancePlanForm(locations) {
+    function maintenancePlanForm(locations, initialOfficeIds, initialTargetSelections) {
+        const normaliseIds = (ids) => [...new Set((Array.isArray(ids) ? ids : [])
+            .map((id) => String(id))
+            .filter((id) => id !== ''))];
+        const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+        const targetMap = {};
+
+        (Array.isArray(initialTargetSelections) ? initialTargetSelections : []).forEach((target) => {
+            const locationId = String(target?.location_id || '');
+            if (locationId) {
+                targetMap[locationId] = normaliseIds([...(targetMap[locationId] || []), ...(target.office_ids || [])]);
+            }
+        });
+
         return {
-            locations,
+            locations: locations || [],
             locationId: @js((string) old('location_id', '')),
+            previousLocationId: @js((string) old('location_id', '')),
+            selectedOfficeIds: normaliseIds(initialOfficeIds),
+            selectedOfficeIdsByLocation: targetMap,
             get availableOffices() {
                 return this.locations.find((location) => String(location.id) === String(this.locationId))?.offices || [];
+            },
+            get selectionMap() {
+                const selections = Object.entries(this.selectedOfficeIdsByLocation).reduce((map, [locationId, officeIds]) => {
+                    map[String(locationId)] = normaliseIds(officeIds);
+                    return map;
+                }, {});
+
+                if (this.locationId) {
+                    selections[String(this.locationId)] = normaliseIds(this.selectedOfficeIds);
+                }
+
+                return selections;
+            },
+            get selectedTargets() {
+                return Object.entries(this.selectionMap)
+                    .map(([locationId, officeIds]) => {
+                        const location = this.locations.find((candidate) => String(candidate.id) === String(locationId));
+                        if (!location) return null;
+
+                        const selectedIds = new Set(normaliseIds(officeIds));
+                        const offices = (location.offices || []).filter((office) => selectedIds.has(String(office.id)));
+                        const code = String(location.code || '').trim();
+                        const name = String(location.name || '').trim();
+
+                        return {
+                            locationId: String(location.id),
+                            locationLabel: code ? `${code} - ${name}` : name,
+                            offices,
+                        };
+                    })
+                    .filter(Boolean);
+            },
+            get targetSelectionPayload() {
+                return this.selectedTargets.map((target) => ({
+                    location_id: Number(target.locationId),
+                    office_ids: target.offices.map((office) => Number(office.id)),
+                }));
+            },
+            init() {
+                Object.keys(this.selectedOfficeIdsByLocation).forEach((locationId) => {
+                    const location = this.locations.find((candidate) => String(candidate.id) === String(locationId));
+                    const availableIds = (location?.offices || []).map((office) => String(office.id));
+                    this.selectedOfficeIdsByLocation[locationId] = normaliseIds(this.selectedOfficeIdsByLocation[locationId])
+                        .filter((id) => availableIds.includes(id));
+                });
+
+                if (this.locationId) {
+                    const current = String(this.locationId);
+                    if (hasOwn(this.selectedOfficeIdsByLocation, current)) {
+                        const availableIds = this.availableOffices.map((office) => String(office.id));
+                        this.selectedOfficeIds = normaliseIds(this.selectedOfficeIdsByLocation[current])
+                            .filter((id) => availableIds.includes(id));
+                    } else {
+                        const availableIds = this.availableOffices.map((office) => String(office.id));
+                        this.selectedOfficeIds = normaliseIds(this.selectedOfficeIds)
+                            .filter((id) => availableIds.includes(id));
+                        this.selectedOfficeIdsByLocation[current] = [...this.selectedOfficeIds];
+                    }
+                }
+            },
+            rememberCurrentSelection() {
+                if (!this.locationId) return;
+
+                const availableIds = this.availableOffices.map((office) => String(office.id));
+                this.selectedOfficeIds = normaliseIds(this.selectedOfficeIds)
+                    .filter((id) => availableIds.includes(id));
+                this.selectedOfficeIdsByLocation[String(this.locationId)] = [...this.selectedOfficeIds];
+            },
+            changeLocation(nextLocationId) {
+                const previous = String(this.previousLocationId || this.locationId || '');
+                const next = String(nextLocationId || '');
+
+                if (previous) {
+                    this.selectedOfficeIdsByLocation[previous] = [...this.selectedOfficeIds];
+                }
+
+                this.locationId = next;
+                if (next && !hasOwn(this.selectedOfficeIdsByLocation, next)) {
+                    this.selectedOfficeIdsByLocation[next] = [];
+                }
+
+                const availableIds = this.availableOffices.map((office) => String(office.id));
+                const remembered = this.selectedOfficeIdsByLocation[next] || [];
+                this.selectedOfficeIds = normaliseIds(remembered).filter((id) => availableIds.includes(id));
+                this.previousLocationId = next;
+            },
+            removeOffice(officeId, targetLocationId = this.locationId) {
+                const locationId = String(targetLocationId || '');
+                const removedId = String(officeId);
+                if (!locationId || !hasOwn(this.selectedOfficeIdsByLocation, locationId)) return;
+
+                this.selectedOfficeIdsByLocation[locationId] = normaliseIds(this.selectedOfficeIdsByLocation[locationId])
+                    .filter((id) => id !== removedId);
+                if (locationId === String(this.locationId)) {
+                    this.selectedOfficeIds = [...this.selectedOfficeIdsByLocation[locationId]];
+                }
+            },
+            removeTarget(targetLocationId) {
+                const locationId = String(targetLocationId || '');
+                if (!locationId) return;
+
+                delete this.selectedOfficeIdsByLocation[locationId];
+                if (locationId !== String(this.locationId)) return;
+
+                const remaining = Object.keys(this.selectedOfficeIdsByLocation);
+                const next = remaining[remaining.length - 1] || '';
+                this.locationId = next;
+                this.previousLocationId = next;
+                this.selectedOfficeIds = next ? [...(this.selectedOfficeIdsByLocation[next] || [])] : [];
             },
         };
     }
@@ -465,13 +684,49 @@
             locations: locations || [],
             locationId: String(initialLocationId || ''),
             officeId: String(initialOfficeId || ''),
+            officeName: '',
+            officeNotice: '',
             get availableOffices() {
                 return this.locations.find((location) => String(location.id) === String(this.locationId))?.offices || [];
             },
-            syncOffice() {
-                if (!this.availableOffices.some((office) => String(office.id) === String(this.officeId))) {
-                    this.officeId = '';
+            init() {
+                this.rememberOffice();
+            },
+            rememberOffice() {
+                const selected = this.availableOffices.find((office) => String(office.id) === String(this.officeId));
+                this.officeName = selected?.name || '';
+                this.officeNotice = '';
+            },
+            syncOffice(nextLocationId) {
+                const previousOfficeName = this.officeName;
+                this.locationId = String(nextLocationId || '');
+
+                const selected = this.availableOffices.find((office) => String(office.id) === String(this.officeId));
+                if (selected) {
+                    this.officeName = selected.name;
+                    this.officeNotice = '';
+                    return;
                 }
+
+                // If the new location has an office with the same name, swap
+                // to that location's office record so the selection remains
+                // valid and is included when the schedule is saved.
+                const replacement = previousOfficeName
+                    ? this.availableOffices.find((office) => String(office.name).trim().toLowerCase() === String(previousOfficeName).trim().toLowerCase())
+                    : null;
+
+                if (replacement) {
+                    this.officeId = String(replacement.id);
+                    this.officeName = replacement.name;
+                    this.officeNotice = `Office "${previousOfficeName}" was retained for the selected location.`;
+                    return;
+                }
+
+                this.officeId = '';
+                this.officeName = '';
+                this.officeNotice = previousOfficeName
+                    ? `"${previousOfficeName}" is not registered in this location. Select an office or leave it location-wide.`
+                    : '';
             },
         };
     }
