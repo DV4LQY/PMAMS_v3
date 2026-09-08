@@ -131,6 +131,7 @@ class DeviceController extends Controller
                     'currentAssignment.office.location',
                     'currentAssignment.location',
                     'latestMaintenanceRecord',
+                    'parentProperty.latestMaintenanceRecord',
                 ])
                 ->filterInventory($filters);
 
@@ -459,7 +460,7 @@ class DeviceController extends Controller
         ]);
 
         $parent = Device::query()
-            ->with('type')
+            ->with(['type', 'latestMaintenanceRecord'])
             ->where('property_number', trim($data['parent_property_number']))
             ->whereNull('part_of_property_number')
             ->first();
@@ -547,6 +548,9 @@ class DeviceController extends Controller
         }
 
         $device->update(['part_of_property_number' => $parent->property_number]);
+        // A child linked after a checklist was saved should immediately show
+        // the parent's latest maintenance date in inventory and edit views.
+        $device->syncLastMaintenanceDateFromParent($parent);
 
         ActivityLog::record(
             'updated',
@@ -737,6 +741,7 @@ class DeviceController extends Controller
             'currentAssignment.office.location',
             'currentAssignment.location',
             'latestMaintenanceRecord',
+            'parentProperty.latestMaintenanceRecord',
         ]);
 
         $types = $this->allowedDeviceTypes();
@@ -911,7 +916,11 @@ class DeviceController extends Controller
 
     public function edit(Device $device)
     {
-        $device->load('type');
+        $device->load([
+            'type',
+            'latestMaintenanceRecord',
+            'parentProperty.latestMaintenanceRecord',
+        ]);
 
         $types = $this->allowedDeviceTypes();
 
@@ -995,6 +1004,10 @@ class DeviceController extends Controller
         ];
 
         $device->update($data);
+        if (filled($device->part_of_property_number)) {
+            $device->load('parentProperty.latestMaintenanceRecord');
+            $device->syncLastMaintenanceDateFromParent();
+        }
         if (($data['photo_path'] ?? null) && $oldPhotoPath && $oldPhotoPath !== $data['photo_path']) {
             $this->deleteEquipmentPhoto($oldPhotoPath);
         }
@@ -1085,7 +1098,7 @@ class DeviceController extends Controller
         }
 
         return redirect()
-            ->route('admin.devices.index')
+            ->route('admin.devices.index', ['load' => 1])
             ->with('success', $successMessage);
     }
 

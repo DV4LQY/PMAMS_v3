@@ -49,6 +49,7 @@ class MaintenanceAttentionService
             ->with([
                 'type',
                 'latestMaintenanceRecord',
+                'parentProperty.latestMaintenanceRecord',
                 'currentAssignment.staff.office.location',
                 'currentAssignment.staff.office.responsibleStaff',
                 'currentAssignment.office.location',
@@ -329,17 +330,12 @@ class MaintenanceAttentionService
             }
         }
 
-        $lastMaintenance = $device->latestMaintenanceRecord?->maintenance_date
-            ?? $device->last_maintenance_date;
+        $lastMaintenance = $device->effectiveLastMaintenanceDate();
         $checklistRecord = $device->latestMaintenanceRecord;
         $checklistCondition = $this->key($checklistRecord?->condition);
         $displayCondition = $checklistCondition !== ''
             ? $checklistCondition
             : $condition;
-        $lastMaintenance = $lastMaintenance
-            ? ($lastMaintenance instanceof Carbon ? $lastMaintenance : Carbon::parse($lastMaintenance))
-            : null;
-
         $daysSinceMaintenance = null;
         if (! $lastMaintenance) {
             $score += 20;

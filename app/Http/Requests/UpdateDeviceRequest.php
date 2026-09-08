@@ -35,7 +35,7 @@ class UpdateDeviceRequest extends FormRequest
                 'string',
                 'max:50',
                 'regex:' . StoreDeviceRequest::PROPERTY_NUMBER_REGEX,
-                Rule::exists('devices', 'property_number')->where(function ($query) {
+                Rule::exists('devices', 'property_number')->where(function ($query) use ($deviceId) {
                     $query
                         ->where('id', '!=', $deviceId)
                         ->whereNull('part_of_property_number');

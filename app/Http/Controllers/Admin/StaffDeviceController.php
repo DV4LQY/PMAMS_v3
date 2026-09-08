@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\Staff;
 use App\Models\Device;
 use App\Models\DeviceAssignment;
+use App\Models\Location;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -39,7 +40,19 @@ class StaffDeviceController extends Controller
             ->whereDoesntHave('currentAssignment')
             ->count();
 
-        return view('admin.staff.devices', compact('staff', 'assignments', 'availableDevicesCount'));
+        // Reuse the same active location/office tree as the Staff directory
+        // transfer modal. The destination office remains dependent on the
+        // selected destination location in the browser and is revalidated by
+        // StaffController before the transfer is persisted.
+        $transferLocations = Location::query()
+            ->whereHas('offices')
+            ->with(['offices' => fn ($query) => $query
+                ->select(['id', 'location_id', 'name'])
+                ->orderBy('name')])
+            ->orderBy('name')
+            ->get(['id', 'name', 'code']);
+
+        return view('admin.staff.devices', compact('staff', 'assignments', 'availableDevicesCount', 'transferLocations'));
     }
 
     public function issue(Request $request, Staff $staff)

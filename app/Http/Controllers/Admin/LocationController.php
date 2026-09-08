@@ -8,6 +8,7 @@ use App\Models\DeviceAssignment;
 use App\Models\Location;
 use App\Models\MaintenancePlanSchedule;
 use App\Models\Office;
+use App\Models\Staff;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,24 +30,39 @@ class LocationController extends Controller
     public function index(Request $request)
     {
         // Keep the location search server-side so it covers every paginated
-        // result, including locations matched through one of their offices.
+        // result, including locations matched through one of their offices or
+        // staff members.
         $search = trim($request->string('q')->toString());
         if (mb_strlen($search) > 150) {
             $search = mb_substr($search, 0, 150);
         }
+        $searchTerms = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         $locations = Location::query()
             ->with(['offices:id,location_id,name'])
             ->withCount('offices')
-            ->when($search !== '', function (Builder $query) use ($search): void {
+            ->when($search !== '', function (Builder $query) use ($search, $searchTerms): void {
                 $like = "%{$search}%";
 
-                $query->where(function (Builder $locationQuery) use ($like): void {
+                $query->where(function (Builder $locationQuery) use ($like, $searchTerms): void {
                     $locationQuery
                         ->where('name', 'like', $like)
                         ->orWhere('code', 'like', $like)
                         ->orWhereHas('offices', function (Builder $officeQuery) use ($like): void {
                             $officeQuery->where('name', 'like', $like);
+                        })
+                        ->orWhereHas('offices.staff', function (Builder $staffQuery) use ($searchTerms): void {
+                            // Match every word across first/last name so a
+                            // search such as "Juan Dela Cruz" still finds a
+                            // staff record stored as separate name fields.
+                            foreach ($searchTerms as $term) {
+                                $termLike = "%{$term}%";
+                                $staffQuery->where(function (Builder $nameQuery) use ($termLike): void {
+                                    $nameQuery
+                                        ->where('first_name', 'like', $termLike)
+                                        ->orWhere('last_name', 'like', $termLike);
+                                });
+                            }
                         });
                 });
             })
@@ -54,9 +70,12 @@ class LocationController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        $locationIds = $locations->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
+
         // Keep the parent location row (the page is a location directory),
-        // but expose which office caused an office-name search to match.
+        // but expose which office or staff member caused a search to match.
         $locationOfficeMatches = [];
+        $locationStaffMatches = [];
         if ($search !== '') {
             $needle = mb_strtolower($search);
 
@@ -74,9 +93,46 @@ class LocationController extends Controller
                     $locationOfficeMatches[$location->id] = $matches;
                 }
             }
+
+            if ($locationIds !== []) {
+                $staffMatches = Staff::query()
+                    ->select(['id', 'office_id', 'first_name', 'last_name'])
+                    ->where(function (Builder $staffQuery) use ($searchTerms): void {
+                        foreach ($searchTerms as $term) {
+                            $termLike = "%{$term}%";
+                            $staffQuery->where(function (Builder $nameQuery) use ($termLike): void {
+                                $nameQuery
+                                    ->where('first_name', 'like', $termLike)
+                                    ->orWhere('last_name', 'like', $termLike);
+                            });
+                        }
+                    })
+                    ->whereHas('office', function (Builder $officeQuery) use ($locationIds): void {
+                        $officeQuery->whereIn('location_id', $locationIds);
+                    })
+                    ->with('office:id,location_id,name')
+                    ->orderBy('last_name')
+                    ->orderBy('first_name')
+                    ->limit(50)
+                    ->get();
+
+                foreach ($staffMatches as $staffMatch) {
+                    $locationId = $staffMatch->office?->location_id;
+                    if (! $locationId || ! in_array((int) $locationId, $locationIds, true)) {
+                        continue;
+                    }
+
+                    $locationStaffMatches[$locationId] ??= [];
+                    $locationStaffMatches[$locationId][] = [
+                        'id' => $staffMatch->id,
+                        'name' => $staffMatch->display_name,
+                        'office_id' => $staffMatch->office_id,
+                        'office_name' => $staffMatch->office?->name,
+                    ];
+                }
+            }
         }
 
-        $locationIds = $locations->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
         $locationStats = [];
 
         if ($locationIds !== []) {
@@ -127,7 +183,7 @@ class LocationController extends Controller
             }
         }
 
-        return view('admin.locations.index', compact('locations', 'locationStats', 'search', 'locationOfficeMatches'));
+        return view('admin.locations.index', compact('locations', 'locationStats', 'search', 'locationOfficeMatches', 'locationStaffMatches'));
     }
 
     public function create()

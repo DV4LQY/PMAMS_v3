@@ -40,6 +40,9 @@ class DeviceChecklistController extends Controller
             ->orderBy('property_number')
             ->get(['id', 'device_type_id', 'property_number', 'serial_number', 'computer_name', 'part_of_property_number']);
 
+        $pmPlanProgress = app(PreventiveMaintenancePlanController::class)
+            ->checklistProgressFor($device, auth()->user(), $this->checklistReturnPath($device));
+
         return view('admin.devices.checklist-form', [
             'device' => $device,
             'linkedPeripherals' => $device->linkedPeripherals
@@ -49,6 +52,7 @@ class DeviceChecklistController extends Controller
             'checklistItems' => $this->checklistItems(),
             'softwareItems' => $this->softwareItems(),
             'defaultDate' => now()->toDateString(),
+            'pmPlanProgress' => $pmPlanProgress,
         ]);
     }
 
@@ -59,7 +63,7 @@ class DeviceChecklistController extends Controller
 
     public function store(Request $request, Device $device)
     {
-        $device->load(['type', 'linkedPeripherals.type']);
+        $device->load(['type', 'latestMaintenanceRecord', 'linkedPeripherals.type']);
         abort_unless($this->isComputerDevice($device->type?->name), 404);
         $this->assertPlanAccess($device);
 
@@ -132,27 +136,45 @@ class DeviceChecklistController extends Controller
             }
         }
 
-        // A Not Available row is intentionally outside the linked-property
-        // disposition workflow. Ignore stale browser values so an old
-        // condition/disposition cannot make the property number required.
-        foreach ($hardwareResponses as $key => $response) {
-            if ($response === 'Not Available') {
-                unset($dispositionResponses[$key], $conditionResponses[$key]);
-            }
-        }
-
-        // OK rows are always serviceable. A Not OK row defaults to
-        // unserviceable unless the checker explicitly selects Condemned.
+        // Not Available is intentionally outside the linked-property
+        // condition/status workflow. Ignore stale browser values so an old
+        // condition or status cannot make the property number required.
         foreach ($this->dispositionItems() as $key => $item) {
             $response = $hardwareResponses[$key] ?? null;
-            if ($response === 'OK' || $response === 'Not Available') {
-                $conditionResponses[$key] = 'serviceable';
-            } elseif ($response === 'Not OK' && ! isset($conditionResponses[$key])) {
-                $conditionResponses[$key] = 'unserviceable';
+
+            if ($response === 'Not Available') {
+                unset($dispositionResponses[$key], $conditionResponses[$key]);
+                continue;
             }
-        }
-        foreach ($dispositionResponses as $key => $disposition) {
-            $conditionResponses[$key] = $disposition === 'repair' ? 'unserviceable' : 'serviceable';
+
+            // OK always means a serviceable physical condition. Not in Use
+            // remains an independent operational status and is allowed below.
+            if ($response === 'OK') {
+                $conditionResponses[$key] = 'serviceable';
+                continue;
+            }
+
+            if ($response === 'Not OK') {
+                // The UI requires an explicit physical condition before a
+                // Not OK row can be submitted. Keep the server authoritative
+                // for requests that bypass the disabled Save control.
+                if (! array_key_exists($key, $conditionResponses)) {
+                    return redirect()
+                        ->back()
+                        ->withInput()
+                        ->withErrors(["condition.{$key}" => 'Select Unserviceable or Condemned for this Not OK checklist item.']);
+                }
+
+                // Serviceable is not a valid Not OK condition. Normalize a
+                // stale hidden value to the safe unserviceable default; the
+                // visible UI only offers Unserviceable or Condemned here.
+                $conditionResponses[$key] = $conditionResponses[$key] === 'condemned'
+                    ? 'condemned'
+                    : 'unserviceable';
+                continue;
+            }
+
+            unset($dispositionResponses[$key], $conditionResponses[$key]);
         }
 
         // Resolve each checklist section before any Not Available row can
@@ -164,18 +186,38 @@ class DeviceChecklistController extends Controller
         }
 
         foreach ($dispositionResponses as $key => $disposition) {
-            if (($hardwareResponses[$key] ?? null) !== 'Not OK') {
+            $hardwareResponse = $hardwareResponses[$key] ?? null;
+            $condition = $conditionResponses[$key] ?? null;
+
+            if ($hardwareResponse === 'OK') {
+                if ($disposition !== 'not_in_use') {
+                    return redirect()
+                        ->back()
+                        ->withInput()
+                        ->withErrors(["disposition.{$key}" => 'Only Not in Use can be selected for an OK checklist item.']);
+                }
+            } elseif ($hardwareResponse === 'Not OK') {
+                if (! in_array($disposition, ['repair', 'not_in_use'], true)
+                    || $condition !== 'unserviceable') {
+                    return redirect()
+                        ->back()
+                        ->withInput()
+                        ->withErrors(["disposition.{$key}" => 'Repair or Not in Use requires an Unserviceable condition on a Not OK checklist item.']);
+                }
+            } else {
+                // The normalization above normally removes this branch; keep
+                // the guard for tampered or future request payloads.
                 return redirect()
                     ->back()
                     ->withInput()
-                    ->withErrors(["disposition.{$key}" => 'Repair or Not in Use can only be selected for a Not OK checklist item.']);
+                    ->withErrors(["disposition.{$key}" => 'A status can only be selected for an OK or Not OK checklist item.']);
             }
 
             if ($key !== 'system_unit_power_on' && ($targetDevicesByKey[$key] ?? collect())->isEmpty()) {
                 return redirect()
                     ->back()
                     ->withInput()
-                    ->withErrors(["disposition.{$key}" => 'Link the section property number to this system unit before applying a disposition.']);
+                    ->withErrors(["disposition.{$key}" => 'Link the section property number to this system unit before applying a status.']);
             }
         }
 
@@ -236,6 +278,7 @@ class DeviceChecklistController extends Controller
                 ]);
         }
 
+        $monitorUnavailable = ($hardwareResponses['monitor_display'] ?? null) === 'Not Available';
         $avrUpsUnavailable = ($hardwareResponses['avr_ups_power_recovery'] ?? null) === 'Not Available';
         $printerUnavailable = ($hardwareResponses['printer_printout'] ?? null) === 'Not Available';
         $defectiveSections = collect($this->checklistItems())
@@ -244,12 +287,19 @@ class DeviceChecklistController extends Controller
             ->values()
             ->all();
 
+        $serviceableSectionChecked = collect($this->dispositionItems())
+            ->keys()
+            ->contains(fn ($key) => ($hardwareResponses[$key] ?? null) === 'OK');
+
         // Keep user-entered remarks intact. When no remarks are supplied,
         // describe Not OK sections from their selected condition/status. A
-        // plain Serviceable remark is only generated when the System Unit or
-        // Monitor itself is checked OK; checking only another row must not
-        // make the whole property appear serviceable.
-        $notAvailableRemarks = $this->formatNotAvailableRemarks($avrUpsUnavailable, $printerUnavailable);
+        // plain Serviceable remark is generated when any condition/status
+        // capable hardware section is checked OK.
+        $notAvailableRemarks = $this->formatNotAvailableRemarks(
+            $monitorUnavailable,
+            $avrUpsUnavailable,
+            $printerUnavailable
+        );
         if ($remarks === '') {
             $notOkRemarks = count($defectiveSections) > 0
                 ? $this->formatNotOkRemarks($hardwareResponses, $conditionResponses, $dispositionResponses)
@@ -258,13 +308,11 @@ class DeviceChecklistController extends Controller
             $remarks = $notOkRemarks !== ''
                 ? $notOkRemarks . ($notAvailableRemarks ? '; ' . $notAvailableRemarks : '')
                 : ($notAvailableRemarks
-                    ?? (($hardwareResponses['system_unit_power_on'] ?? null) === 'OK'
-                        || ($hardwareResponses['monitor_display'] ?? null) === 'OK'
-                        ? 'Serviceable'
-                        : null));
+                    ?? ($serviceableSectionChecked ? 'Serviceable' : null));
         }
 
-        if ($correctiveAction === '' && ($avrUpsUnavailable || $printerUnavailable)) {
+        if ($correctiveAction === ''
+            && ($defectiveSections !== [] || $monitorUnavailable || $avrUpsUnavailable || $printerUnavailable)) {
             $correctiveAction = 'office is advised to procure the equipment';
         }
 
@@ -428,8 +476,12 @@ class DeviceChecklistController extends Controller
 
             foreach (($targetDevicesByKey[$key] ?? collect()) as $targetDevice) {
                 $rowCondition = $conditionResponses[$key] ?? 'serviceable';
+                $targetMaintenanceDate = $targetDevice->last_maintenance_date;
+                if (! $targetMaintenanceDate || Carbon::parse($targetMaintenanceDate)->lessThan($date)) {
+                    $targetMaintenanceDate = $date->toDateString();
+                }
                 $targetUpdates = [
-                    'last_maintenance_date' => $dateChecked,
+                    'last_maintenance_date' => $targetMaintenanceDate,
                     'maintenance_remarks' => $remarks,
                     // Keep the selected condition aligned with the linked
                     // property's own inventory condition.
@@ -459,6 +511,21 @@ class DeviceChecklistController extends Controller
             }
         }
 
+        // A saved checklist is a maintenance event for the complete
+        // system-unit grouping. Keep every still-linked child (including
+        // scanners, network devices, and other peripherals without a
+        // dedicated checklist row) aligned with the parent's latest date.
+        $synchronizedPeripheralCount = 0;
+        foreach ($device->linkedPeripherals as $linkedPeripheral) {
+            if ((string) $linkedPeripheral->part_of_property_number !== (string) $device->property_number) {
+                continue;
+            }
+
+            if ($linkedPeripheral->syncLastMaintenanceDateFromParent($device)) {
+                $synchronizedPeripheralCount++;
+            }
+        }
+
         $activityDescription = "Marked device \"{$device->property_number}\" as checked with checklist";
         if ($dispositionResponses !== []) {
             $activityDescription .= '. Dispositions: ' . collect($dispositionResponses)
@@ -470,6 +537,9 @@ class DeviceChecklistController extends Controller
                 ->map(fn ($value, $key) => ($this->checklistItems()[$key]['group'] ?? $key) . ' = ' . ucfirst($value))
                 ->join(', ');
         }
+        if ($synchronizedPeripheralCount > 0) {
+            $activityDescription .= ". Synchronized the maintenance date for {$synchronizedPeripheralCount} linked peripheral" . ($synchronizedPeripheralCount === 1 ? '' : 's') . '.';
+        }
         if ($duplicateRecord) {
             $activityDescription .= ". Verification reason: {$verificationReason}";
         }
@@ -477,16 +547,34 @@ class DeviceChecklistController extends Controller
         ActivityLog::record('updated', $activityDescription, $device);
 
         $successMessage = 'Equipment has been marked as checked. Checklist saved.';
-        return redirect()
-            ->route('admin.devices.show', $device)
+        $pmPlanProgress = app(PreventiveMaintenancePlanController::class)
+            ->checklistProgressFor($device, $request->user(), $this->checklistReturnPath($device));
+        $completionPrompt = $pmPlanProgress
+            && $pmPlanProgress['can_complete']
+            && $pmPlanProgress['progress']['is_complete']
+            && ! $pmPlanProgress['completion'];
+
+        $checklistResult = [
+            'type' => 'success',
+            'title' => $completionPrompt ? 'PM Plan target completed' : 'Checklist completed',
+            'message' => $completionPrompt
+                ? "{$successMessage} All equipment in {$pmPlanProgress['target_label']} now has a checklist record. Record the office completion sign-off when ready."
+                : $successMessage,
+        ];
+        if ($completionPrompt) {
+            $checklistResult['action_url'] = $pmPlanProgress['completion_url'];
+            $checklistResult['action_label'] = 'Record office completion';
+        }
+
+        $redirect = $completionPrompt
+            ? redirect()->route('admin.devices.checklist.form', $device)
+            : redirect()->route('admin.devices.show', $device);
+
+        return $redirect
             // Keep the completion result separate from the normal flash
             // notifications so the checklist can show an interactive modal
             // after the redirect without duplicating a banner message.
-            ->with('checklist_result', [
-                'type' => 'success',
-                'title' => 'Checklist completed',
-                'message' => $successMessage,
-            ]);
+            ->with('checklist_result', $checklistResult);
     }
 
     public function generate(Request $request, Device $device)
@@ -509,6 +597,7 @@ class DeviceChecklistController extends Controller
             'monitor_display' => [
                 'group' => 'Monitor',
                 'label' => 'Check display',
+                'not_available' => true,
             ],
             'keyboard_keys' => [
                 'group' => 'Keyboard',
@@ -566,12 +655,7 @@ class DeviceChecklistController extends Controller
     {
         $sections = array_values(array_filter(array_map('strval', $sections)));
 
-        return match (count($sections)) {
-            0 => '',
-            1 => $sections[0],
-            2 => $sections[0] . ' and ' . $sections[1],
-            default => implode(', ', array_slice($sections, 0, -1)) . ', and ' . end($sections),
-        };
+        return implode(', ', $sections);
     }
 
     /**
@@ -591,14 +675,20 @@ class DeviceChecklistController extends Controller
                 continue;
             }
 
+            $section = $item['group'] ?? $key;
+            $isKeyboardOrMouse = in_array($section, ['Keyboard', 'Mouse'], true);
             $prefix = match (true) {
                 ($dispositionResponses[$key] ?? null) === 'repair' => 'Repair',
                 ($dispositionResponses[$key] ?? null) === 'not_in_use' => 'Not in Use',
                 ($conditionResponses[$key] ?? null) === 'condemned' => 'Condemned',
-                default => 'Defective',
+                ($conditionResponses[$key] ?? null) === 'unserviceable' => 'Unserviceable',
+                $isKeyboardOrMouse => 'Defective',
+                default => null,
             };
 
-            $groups[$prefix][] = $item['group'] ?? $key;
+            if ($prefix !== null) {
+                $groups[$prefix][] = $section;
+            }
         }
 
         return collect($groups)
@@ -606,9 +696,16 @@ class DeviceChecklistController extends Controller
             ->implode('; ');
     }
 
-    private function formatNotAvailableRemarks(bool $avrUpsUnavailable, bool $printerUnavailable): ?string
+    private function formatNotAvailableRemarks(
+        bool $monitorUnavailable,
+        bool $avrUpsUnavailable,
+        bool $printerUnavailable
+    ): ?string
     {
         $equipment = [];
+        if ($monitorUnavailable) {
+            $equipment[] = 'Monitor';
+        }
         if ($avrUpsUnavailable) {
             $equipment[] = 'UPS/AVR';
         }
@@ -622,6 +719,18 @@ class DeviceChecklistController extends Controller
     private function isComputerDevice(?string $deviceType): bool
     {
         return in_array(strtolower((string) $deviceType), ['desktop', 'laptop'], true);
+    }
+
+    /**
+     * Keep a checklist-triggered PM Plan completion flow returnable to the
+     * checklist without carrying a host or any user-controlled URL.
+     */
+    private function checklistReturnPath(Device $device): string
+    {
+        $url = route('admin.devices.checklist.form', $device);
+        $path = parse_url($url, PHP_URL_PATH);
+
+        return ($path ?: $url) . '#pm-plan-progress';
     }
 
     private function assertPlanAccess(Device $device): void

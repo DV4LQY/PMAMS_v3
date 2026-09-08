@@ -7,7 +7,7 @@
     $formDevice = $formDevice ?? null;
     $formDeviceSpecs = is_array($formDevice?->specs) ? $formDevice->specs : [];
     $formDeviceDateAcquired = $formDevice?->date_acquired?->format('Y-m-d');
-    $formDeviceLastMaintenanceDate = $formDevice?->last_maintenance_date?->format('Y-m-d');
+    $formDeviceLastMaintenanceDate = $formDevice?->effectiveLastMaintenanceDate()?->format('Y-m-d');
     $memoryOptions = ['2GB', '4GB', '8GB', '16GB', '32GB', '64GB'];
     $storageCapacityOptions = [
         'SSD' => ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'],
@@ -380,8 +380,9 @@
                     <select
                         x-model="storage.capacity"
                         @change="markStorageDirty()"
+                        x-effect="(() => { const value = storage.capacity || ''; $nextTick(() => { $el.value = value; }); })()"
                         class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        x-show="storage.type"
+                        :class="{ 'opacity-60': !storage.type }"
                         :disabled="!isComputerType(addTypeId) || !storage.type"
                         aria-label="Storage capacity"
                     >
@@ -410,7 +411,14 @@
         >
             + Add storage
         </button>
-        <input type="hidden" name="specs[storage]" :value="storageValue" :disabled="!isComputerType(addTypeId)">
+        <input
+            type="hidden"
+            name="specs[storage]"
+            :value="storageValue"
+            @input="parseStorage($event.target.value)"
+            @change="parseStorage($event.target.value)"
+            :disabled="!isComputerType(addTypeId)"
+        >
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Add another drive when needed. Saved values are combined, for example: 128GB SSD + 1TB HDD.</p>
         @error('specs.storage')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>

@@ -200,9 +200,32 @@
     $checklistReturnPath = parse_url(route('admin.devices.checklist.form', $device), PHP_URL_PATH)
         . '?open_link=1&peripheral_type=' . rawurlencode($requestedPeripheralType ?: 'monitor')
         . '&allow_linked=' . ($requestedAllowLinked ? '1' : '0');
+    $pmPlanSchedule = $pmPlanProgress['schedule'] ?? null;
+    $pmPlanProgressStats = $pmPlanProgress['progress'] ?? null;
+    $pmPlanCompletion = $pmPlanProgress['completion'] ?? null;
+    $completionSavedId = session('completion_saved');
+    $pmPlanTotal = (int) ($pmPlanProgressStats['total'] ?? 0);
+    $pmPlanChecked = (int) ($pmPlanProgressStats['checked'] ?? 0);
+    $pmPlanPercent = $pmPlanTotal > 0 ? min(100, (int) round(($pmPlanChecked / $pmPlanTotal) * 100)) : 0;
 @endphp
 
-<div class="space-y-6">
+<div
+    class="space-y-6"
+    @if($completionSavedId)
+        data-pmams-completion-saved="1"
+        x-data
+        x-init='try {
+            const ownerKey = @js((string) (auth()->id() ?: "anonymous"));
+            const storage = window.sessionStorage;
+            const prefix = `pmams-maintenance-completion:${ownerKey}:`;
+            Object.keys(storage)
+                .filter((key) => key.startsWith(prefix))
+                .forEach((key) => storage.removeItem(key));
+        } catch (error) {
+            // Draft cleanup is best effort in restricted/private browsers.
+        }'
+    @endif
+>
     <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -210,7 +233,7 @@
                     Preventive Maintenance Checklist
                 </h1>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Choose OK or Not OK for each hardware item. UPS/AVR and Printer may also be marked Not Available.
+                    Choose OK or Not OK for each hardware item. Monitor, UPS/AVR and Printer may also be marked Not Available.
                 </p>
             </div>
 
@@ -223,6 +246,38 @@
         </div>
     </div>
 
+    @if($pmPlanSchedule && $pmPlanProgressStats)
+        <section id="pm-plan-progress" class="rounded-xl border {{ $pmPlanProgressStats['is_complete'] ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20' : 'border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/20' }} p-4" aria-live="polite">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 class="font-semibold {{ $pmPlanProgressStats['is_complete'] ? 'text-emerald-900 dark:text-emerald-100' : 'text-blue-900 dark:text-blue-100' }}">PM Plan progress</h2>
+                    <p class="mt-1 text-sm {{ $pmPlanProgressStats['is_complete'] ? 'text-emerald-800 dark:text-emerald-200' : 'text-blue-800 dark:text-blue-200' }}">{{ $pmPlanProgress['target_label'] ?? 'Assigned office/location' }}</p>
+                </div>
+                <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold {{ $pmPlanProgressStats['is_complete'] ? 'text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-100' : 'text-blue-800 dark:bg-blue-900/50 dark:text-blue-100' }} shadow-sm">{{ $pmPlanChecked }}/{{ $pmPlanTotal }}</span>
+            </div>
+            <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/80 dark:bg-gray-800/70" role="progressbar" aria-label="PM Plan equipment progress" aria-valuenow="{{ $pmPlanPercent }}" aria-valuemin="0" aria-valuemax="100">
+                <div class="h-full rounded-full {{ $pmPlanProgressStats['is_complete'] ? 'bg-emerald-500' : 'bg-blue-500' }} transition-all" style="width: {{ $pmPlanPercent }}%"></div>
+            </div>
+            @if($pmPlanProgressStats['is_complete'])
+                @if($pmPlanCompletion)
+                    <div class="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+                        <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">Signed</span>
+                        <span>Recorded{{ $pmPlanCompletion->actual_date ? ' on ' . $pmPlanCompletion->actual_date->format('F j, Y') : ' on an unspecified date' }}.</span>
+                    </div>
+                @elseif($pmPlanProgress['can_complete'] ?? false)
+                    <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        <p class="text-sm font-semibold text-emerald-800 dark:text-emerald-200">All equipment in this PM Plan target has a checklist record. Record the office completion sign-off.</p>
+                        <a href="{{ $pmPlanProgress['completion_url'] }}" wire:navigate class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-emerald-950/20">Record office completion</a>
+                    </div>
+                @else
+                    <p class="mt-3 text-sm font-semibold text-emerald-800 dark:text-emerald-200">All equipment in this PM Plan target has a checklist record. An assigned administrator can record the office completion sign-off.</p>
+                @endif
+            @else
+                <p class="mt-3 text-xs {{ $pmPlanProgressStats['checked'] > 0 ? 'text-blue-800 dark:text-blue-200' : 'text-blue-700 dark:text-blue-300' }}">{{ $pmPlanChecked }} of {{ $pmPlanTotal }} target equipment records are complete. Progress updates after each checklist is saved.</p>
+            @endif
+        </section>
+    @endif
+
     <form
         id="maintenance-checklist-form"
         method="POST"
@@ -232,6 +287,7 @@
         x-data="{
             remarks: @js(old('remarks', '')),
             remarksEdited: false,
+            restoringChecklistState: false,
             correctiveAction: @js(old('corrective_action', '')),
             checklistReady: false,
             checklistAnsweredCount: 0,
@@ -239,9 +295,16 @@
             checklistRowCount: {{ count($checklistItems) + count($softwareItems) }},
             duplicateReasonOpen: {{ session('duplicate_warning') ? 'true' : 'false' }},
             verificationReason: @js(old('verification_reason', '')),
+            conditionRequiredKeys: @js(collect($checklistItems)
+                ->reject(fn ($item) => in_array($item['group'] ?? '', ['Keyboard', 'Mouse'], true))
+                ->keys()
+                ->values()
+                ->all()),
+            okRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [$key => old("hardware.$key") === 'OK'])->all()),
             notOkRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [$key => old("hardware.$key") === 'Not OK'])->all()),
+            notAvailableRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [$key => old("hardware.$key") === 'Not Available'])->all()),
             conditionRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [
-                $key => old("condition.$key", old("hardware.$key") === 'Not OK' ? 'unserviceable' : ''),
+                $key => old("condition.$key", ''),
             ])->all()),
             statusRows: @js(collect($checklistItems)->mapWithKeys(fn ($item, $key) => [$key => old("disposition.$key", '')])->all()),
             checklistStateKey() {
@@ -258,29 +321,44 @@
                 if (!stored?.fields) return;
 
                 const controls = Array.from(this.$root.elements || []);
-                stored.fields.forEach((saved) => {
-                    controls
-                        .filter((control) => control.name === saved.name)
-                        .forEach((control) => {
-                            if (control.type === 'radio' || control.type === 'checkbox') {
-                                control.checked = Boolean(saved.checked);
-                            } else if (typeof saved.value === 'string') {
-                                control.value = saved.value;
-                            }
-                        });
+                controls.forEach((control) => {
+                    const isChoice = control.type === 'radio' || control.type === 'checkbox';
+                    const saved = stored.fields.find((candidate) => candidate.name === control.name
+                        && (!isChoice
+                            || (candidate.type === control.type
+                                && String(candidate.value ?? '') === String(control.value ?? ''))));
+
+                    if (!saved) return;
+
+                    if (isChoice) {
+                        // Radio buttons and same-name checkbox groups must be
+                        // matched by value as well as name. Otherwise restoring
+                        // one selected option would toggle every option in the
+                        // group and the final radio/checkbox state would be lost.
+                        control.checked = Boolean(saved.checked);
+                    } else if (typeof saved.value === 'string') {
+                        control.value = saved.value;
+                    }
                 });
 
                 // Replay the same events used by normal user interaction so
-                // Alpine rebuilds notOkRows, conditionRows, and statusRows.
-                controls.forEach((control) => {
-                    if (!control.name || control.name === '_token' || control.name === '_method') return;
-                    if (control.type === 'radio' || control.type === 'checkbox') {
-                        if (control.checked) control.dispatchEvent(new Event('change', { bubbles: true }));
-                    } else if (['date', 'text', 'textarea', 'search'].includes(control.type || control.tagName?.toLowerCase())) {
-                        control.dispatchEvent(new Event('input', { bubbles: true }));
-                        control.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
+                // Alpine rebuilds the row response, availability, condition,
+                // and status state. Restored generated remarks must stay
+                // eligible for regeneration when a reviewer changes a row.
+                this.restoringChecklistState = true;
+                try {
+                    controls.forEach((control) => {
+                        if (!control.name || control.name === '_token' || control.name === '_method') return;
+                        if (control.type === 'radio' || control.type === 'checkbox') {
+                            if (control.checked) control.dispatchEvent(new Event('change', { bubbles: true }));
+                        } else if (['date', 'text', 'textarea', 'search'].includes(control.type || control.tagName?.toLowerCase())) {
+                            control.dispatchEvent(new Event('input', { bubbles: true }));
+                            control.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    });
+                } finally {
+                    this.restoringChecklistState = false;
+                }
 
                 try {
                     window.sessionStorage.removeItem(this.checklistStateKey());
@@ -290,7 +368,14 @@
                 }
             },
             allChecklistAnswered() {
-                return this.answeredChecklistCount() === this.checklistRowCount;
+                if (this.answeredChecklistCount() !== this.checklistRowCount) return false;
+
+                // A Not OK row must have an explicit physical condition before
+                // the checklist can be submitted. Status remains optional,
+                // but it is only enabled after this condition is selected.
+                return this.conditionRequiredKeys.every((key) =>
+                    !this.isNotOkSelected(key) || Boolean(this.conditionRows[key])
+                );
             },
             answeredChecklistCount() {
                 const selectedRows = new Set(
@@ -311,28 +396,20 @@
                 this.checklistReady = this.allChecklistAnswered();
             },
             setNotOkRow(key, enabled) {
+                // Keep result state reactive. Reading only the checked DOM
+                // node here would let the remarks generator see a change,
+                // but Alpine would not re-evaluate x-show bindings for the
+                // condition/status cells.
+                this.okRows[key] = !enabled;
                 this.notOkRows[key] = enabled;
+                this.notAvailableRows[key] = false;
 
                 if (!enabled) {
                     this.conditionRows[key] = '';
                     this.statusRows[key] = '';
-                } else if (!this.conditionRows[key]) {
-                    // Not OK rows start as unserviceable, while still allowing
-                    // the reviewer to change the condition immediately.
-                    this.conditionRows[key] = 'unserviceable';
                 }
 
-                this.$root.querySelectorAll('input').forEach((input) => {
-                    if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) {
-                        input.disabled = !enabled;
-                        input.checked = enabled
-                            ? input.value === (input.name.startsWith('condition[')
-                                ? this.conditionRows[key]
-                                : this.statusRows[key])
-                            : false;
-                    }
-                });
-
+                this.syncConditionStatusControls(key);
                 this.refreshChecklistState();
             },
             setNotAvailableRow(key) {
@@ -341,31 +418,76 @@
                 // Clear and disable those controls immediately so a previous
                 // Not OK selection cannot keep a stale Repair/Condemn value
                 // or make the linked property appear required.
+                this.okRows[key] = false;
                 this.notOkRows[key] = false;
+                this.notAvailableRows[key] = true;
                 this.conditionRows[key] = '';
                 this.statusRows[key] = '';
 
-                this.$root.querySelectorAll('input').forEach((input) => {
-                    if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) {
-                        input.disabled = true;
-                        input.checked = false;
-                    }
-                });
-
+                this.syncConditionStatusControls(key);
                 this.applyChecklistDefaults();
                 this.refreshChecklistState();
             },
+            isOkSelected(key) {
+                return Boolean(this.okRows[key]);
+            },
             isNotOkSelected(key) {
-                return Array.from(this.$root.querySelectorAll('input'))
-                    .some((input) => input.name === `hardware[${key}]` && input.value === 'Not OK' && input.checked);
+                return Boolean(this.notOkRows[key]);
+            },
+            isNotAvailableSelected(key) {
+                return Boolean(this.notAvailableRows[key]);
             },
             isUnserviceableSelected(key) {
-                return this.conditionRows[key] === 'unserviceable';
+                return this.isNotOkSelected(key)
+                    && !this.isNotAvailableSelected(key)
+                    && this.conditionRows[key] === 'unserviceable';
+            },
+            isStatusSelectionVisible(key) {
+                const hasStatusControls = this.$root.querySelector(`input[name='disposition[${key}]']`);
+
+                return Boolean(hasStatusControls)
+                    && !this.isNotAvailableSelected(key)
+                    && (this.isOkSelected(key) || this.isUnserviceableSelected(key));
+            },
+            syncConditionStatusControls(key) {
+                const isOk = this.isOkSelected(key);
+                const isNotOk = this.isNotOkSelected(key);
+                const isNotAvailable = this.isNotAvailableSelected(key);
+                const conditionEnabled = isNotOk && !isNotAvailable;
+                const statusEnabled = !isNotAvailable
+                    && (isOk || (isNotOk && this.conditionRows[key] === 'unserviceable'));
+
+                this.$root.querySelectorAll('input').forEach((input) => {
+                    if (input.name === `condition[${key}]`) {
+                        input.disabled = !conditionEnabled;
+                        if (!conditionEnabled) input.checked = false;
+                        return;
+                    }
+
+                    if (input.name === `disposition[${key}]`) {
+                        const isAllowed = statusEnabled
+                            && (isOk ? input.value === 'not_in_use' : ['repair', 'not_in_use'].includes(input.value));
+                        input.disabled = !isAllowed;
+                        if (!isAllowed) {
+                            input.checked = false;
+                        } else {
+                            input.checked = input.value === this.statusRows[key];
+                        }
+                    }
+                });
             },
             syncCondition(key, event) {
-                const selectedValue = event?.target?.checked
+                let selectedValue = event?.target?.checked
                     ? event.target.value
                     : (this.$root.querySelector(`input[name='condition[${key}]']:checked`)?.value || '');
+
+                // A Not OK result always has a physical condition. If a
+                // checkbox is toggled off with no alternative selected, keep
+                // the default Unserviceable value aligned with the server.
+                if (!selectedValue && this.isNotOkSelected(key)) {
+                    selectedValue = 'unserviceable';
+                }
+
                 this.conditionRows[key] = selectedValue;
                 this.$root.querySelectorAll(`input[name='condition[${key}]']`).forEach((input) => {
                     input.checked = input.value === selectedValue;
@@ -380,14 +502,26 @@
                     });
                 }
 
+                this.syncConditionStatusControls(key);
+                this.applyChecklistDefaults();
                 this.refreshChecklistState();
             },
             syncStatus(key, event) {
-                const selectedValue = event?.target?.checked ? event.target.value : '';
+                const isOk = this.isOkSelected(key);
+                const isUnserviceable = this.isUnserviceableSelected(key);
+                const selectedValue = event?.target?.checked
+                    && !this.isNotAvailableSelected(key)
+                    && (isOk
+                        ? event.target.value === 'not_in_use'
+                        : isUnserviceable && ['repair', 'not_in_use'].includes(event.target.value))
+                    ? event.target.value
+                    : '';
                 this.statusRows[key] = selectedValue;
                 this.$root.querySelectorAll(`input[name='disposition[${key}]']`).forEach((input) => {
                     input.checked = input.value === selectedValue;
                 });
+                this.syncConditionStatusControls(key);
+                this.applyChecklistDefaults();
                 this.refreshChecklistState();
             },
             clearDisposition(key) {
@@ -399,12 +533,26 @@
                 this.$root.querySelectorAll('input').forEach((input) => {
                     if (input.name === `disposition[${key}]` || input.name === `condition[${key}]`) input.checked = false;
                 });
+
+                this.syncConditionStatusControls(key);
             },
             formatSectionList(sections) {
-                if (sections.length === 0) return '';
-                if (sections.length === 1) return sections[0];
-                if (sections.length === 2) return `${sections[0]} and ${sections[1]}`;
-                return `${sections.slice(0, -1).join(', ')}, and ${sections[sections.length - 1]}`;
+                return sections.join(', ');
+            },
+            unavailableEquipmentLabels() {
+                const form = this.$root;
+                const unavailableEquipment = [];
+                if (form.elements['hardware[monitor_display]']?.value === 'Not Available') {
+                    unavailableEquipment.push('Monitor');
+                }
+                if (form.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available') {
+                    unavailableEquipment.push('UPS/AVR');
+                }
+                if (form.elements['hardware[printer_printout]']?.value === 'Not Available') {
+                    unavailableEquipment.push('Printer');
+                }
+
+                return unavailableEquipment;
             },
             generatedRemarks() {
                 const sectionGroups = {};
@@ -419,57 +567,66 @@
                             ? 'Repair'
                             : (this.statusRows[key] === 'not_in_use'
                                 ? 'Not in Use'
-                                : (this.conditionRows[key] === 'condemned' ? 'Condemned' : 'Defective'));
+                                : (this.conditionRows[key] === 'condemned'
+                                    ? 'Condemned'
+                                    : (this.conditionRows[key] === 'unserviceable'
+                                        ? 'Unserviceable'
+                                        : (['Keyboard', 'Mouse'].includes(section) ? 'Defective' : null))));
+                        if (!prefix) return;
                         (sectionGroups[prefix] ||= []).push(section);
                     });
 
+                const unavailableEquipment = this.unavailableEquipmentLabels();
                 const defectiveRemarks = Object.entries(sectionGroups)
                     .map(([prefix, sections]) => `${prefix} ${this.formatSectionList(sections)}`)
                     .join('; ');
                 if (defectiveRemarks) {
-                    return defectiveRemarks;
+                    return unavailableEquipment.length
+                        ? `${defectiveRemarks}; not available ${unavailableEquipment.join(', ')}`
+                        : defectiveRemarks;
                 }
 
-                const form = this.$root;
-                const avrUnavailable = form.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
-                const printerUnavailable = form.elements['hardware[printer_printout]']?.value === 'Not Available';
-                const unavailableEquipment = [];
-                if (avrUnavailable) unavailableEquipment.push('UPS/AVR');
-                if (printerUnavailable) unavailableEquipment.push('Printer');
                 if (unavailableEquipment.length) return `not available ${unavailableEquipment.join(', ')}`;
-                const systemUnitChecked = form.elements['hardware[system_unit_power_on]']?.value === 'OK';
-                const monitorChecked = form.elements['hardware[monitor_display]']?.value === 'OK';
-                if (systemUnitChecked || monitorChecked) return 'Serviceable';
+
+                // Do not call another section Serviceable while a
+                // condition-capable Not OK row is still waiting for its
+                // required condition choice.
+                const hasPendingNotOk = Array.from(this.$root.querySelectorAll('input'))
+                    .some((input) => input.name.startsWith('hardware[') && input.value === 'Not OK' && input.checked);
+                if (hasPendingNotOk) return '';
+
+                const serviceableKeys = [
+                    'system_unit_power_on',
+                    'monitor_display',
+                    'avr_ups_power_recovery',
+                    'printer_printout',
+                ];
+                if (serviceableKeys.some((key) => this.isOkSelected(key))) return 'Serviceable';
                 return '';
             },
             applyChecklistDefaults() {
                 const currentRemarks = this.remarks.trim();
                 const isGeneratedRemark = currentRemarks === ''
                     || currentRemarks === 'Serviceable'
-                    || currentRemarks === 'not available UPS/AVR'
                     || currentRemarks.startsWith('not available ')
                     || currentRemarks.startsWith('Defective ')
                     || currentRemarks.startsWith('Repair ')
                     || currentRemarks.startsWith('Not in Use ')
-                    || currentRemarks.startsWith('Condemned ');
+                    || currentRemarks.startsWith('Condemned ')
+                    || currentRemarks.startsWith('Unserviceable ');
 
                 if (!this.remarksEdited && isGeneratedRemark) {
                     this.remarks = this.generatedRemarks();
                 }
 
-                const form = this.$root;
-                const avrUnavailable = form.elements['hardware[avr_ups_power_recovery]']?.value === 'Not Available';
-                const printerUnavailable = form.elements['hardware[printer_printout]']?.value === 'Not Available';
+                const hasUnavailableEquipment = this.unavailableEquipmentLabels().length > 0;
+                const hasNotOkEquipment = Array.from(this.$root.querySelectorAll('input'))
+                    .some((input) => input.name.startsWith('hardware[') && input.value === 'Not OK' && input.checked);
+                const needsProcurement = hasUnavailableEquipment || hasNotOkEquipment;
 
-                if (avrUnavailable && !this.remarks.trim()) {
-                    this.remarks = 'not available UPS/AVR';
-                } else if (!avrUnavailable && this.remarks.trim() === 'not available UPS/AVR') {
-                    this.remarks = '';
-                }
-
-                if ((avrUnavailable || printerUnavailable) && !this.correctiveAction.trim()) {
+                if (needsProcurement && !this.correctiveAction.trim()) {
                     this.correctiveAction = 'office is advised to procure the equipment';
-                } else if (!avrUnavailable && !printerUnavailable && this.correctiveAction.trim() === 'office is advised to procure the equipment') {
+                } else if (!needsProcurement && this.correctiveAction.trim() === 'office is advised to procure the equipment') {
                     this.correctiveAction = '';
                 }
             }
@@ -568,7 +725,7 @@
             <div class="mt-3 h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/50" role="progressbar" aria-label="Checklist completion" x-bind:aria-valuenow="checklistCompletionPercent()" aria-valuemin="0" aria-valuemax="100">
                 <div class="h-full rounded-full bg-blue-600 transition-all duration-300 dark:bg-blue-400" x-bind:style="`width: ${checklistCompletionPercent()}%`"></div>
             </div>
-            <p class="mt-2 text-xs text-blue-800 dark:text-blue-200" x-show="!checklistReady" x-cloak>Select one result for every hardware and software item. Condition and Status appear only for Not OK rows.</p>
+            <p class="mt-2 text-xs text-blue-800 dark:text-blue-200" x-show="!checklistReady" x-cloak>Select one result for every hardware and software item. Not OK rows expose Condition, and Status is available for OK rows or for Not OK rows marked Unserviceable.</p>
             <p class="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300" x-show="checklistReady" x-cloak>All checklist items are complete. You can save this checklist.</p>
         </div>
 
@@ -576,7 +733,7 @@
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40">
                 <div>
                     <h2 class="font-semibold text-gray-900 dark:text-white">Checklist items</h2>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one result per row. Use the Not OK controls only when a condition or status needs to be recorded.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one result per row. Not OK rows require a condition; status is available for OK rows or after an Unserviceable condition is selected.</p>
                 </div>
                 <div class="flex flex-wrap gap-2 text-[11px] font-semibold">
                     <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">OK</span>
@@ -617,6 +774,9 @@
                                 'monitor', 'avr/ups', 'printer' => $sectionDevices->pluck('property_number')->all(),
                                 default => [],
                             };
+                            $sectionEditReturnPath = $checklistPath
+                                . '?open_link=1&peripheral_type=' . rawurlencode($sectionKey)
+                                . '&allow_linked=1';
                         @endphp
                         <tr>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
@@ -639,7 +799,7 @@
                                         @endif
                                         @foreach($sectionDevices as $sectionDevice)
                                             <a
-                                                href="{{ route('admin.devices.edit', ['device' => $sectionDevice, 'return_to' => $checklistPath]) }}"
+                                                href="{{ route('admin.devices.edit', ['device' => $sectionDevice, 'return_to' => $sectionEditReturnPath]) }}"
                                                 wire:navigate
                                                 title="Edit specs for {{ $sectionDevice->property_number }}"
                                                 aria-label="Edit specs for {{ $sectionDevice->property_number }}"
@@ -690,6 +850,7 @@
                                         type="radio"
                                         name="hardware[{{ $key }}]"
                                         value="OK"
+                                        data-section="{{ $item['group'] ?? '-' }}"
                                         class="peer sr-only"
                                         @if($loop->first) required @endif
                                         x-on:change="setNotOkRow('{{ $key }}', $event.target.value === 'Not OK'); clearDisposition('{{ $key }}'); applyChecklistDefaults(); refreshChecklistState()"
@@ -729,9 +890,9 @@
                                             x-on:change="setNotAvailableRow('{{ $key }}')"
                                             @checked(old("hardware.$key") === 'Not Available')
                                         >
-                                       <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
-    N/A
-</span>
+                                        <span class="flex h-8 w-8 items-center justify-center rounded border-2 border-gray-400 text-lg font-bold text-transparent dark:border-gray-500 peer-checked:border-gray-700 peer-checked:bg-gray-700 peer-checked:text-white dark:peer-checked:border-gray-400 dark:peer-checked:bg-gray-500">
+                                            N/A
+                                        </span>
                                     </label>
                                 @else
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
@@ -742,28 +903,28 @@
                                 @if(!in_array($item['group'] ?? '', ['Keyboard', 'Mouse'], true))
                                     <div
                                         class="flex flex-col items-start justify-center gap-1 text-xs text-gray-600 dark:text-gray-300"
-                                        x-bind:class="{ 'opacity-50': !notOkRows['{{ $key }}'] }"
+                                        x-bind:class="{ 'opacity-50': !isNotOkSelected('{{ $key }}') && !isNotAvailableSelected('{{ $key }}') }"
                                     >
-                                        <span x-show="!notOkRows['{{ $key }}']" x-cloak class="font-semibold text-emerald-600 dark:text-emerald-400">Serviceable</span>
-                                        <label x-show="notOkRows['{{ $key }}']" x-cloak class="inline-flex cursor-pointer items-center gap-1">
+                                        <span x-show="!isNotOkSelected('{{ $key }}') && !isNotAvailableSelected('{{ $key }}')" x-cloak class="font-semibold text-emerald-600 dark:text-emerald-400">Serviceable</span>
+                                        <label x-show="isNotOkSelected('{{ $key }}')" x-cloak class="inline-flex cursor-pointer items-center gap-1">
                                             <input
                                                 type="checkbox"
                                                 name="condition[{{ $key }}]"
                                                 value="unserviceable"
                                                 class="h-3.5 w-3.5 accent-red-600"
-                                                x-bind:disabled="!notOkRows['{{ $key }}']"
+                                                x-bind:disabled="!isNotOkSelected('{{ $key }}')"
                                                 x-on:change="syncCondition('{{ $key }}', $event)"
-                                                @checked(old("condition.$key", old("hardware.$key") === 'Not OK' ? 'unserviceable' : null) === 'unserviceable')
+                                                @checked(old("condition.$key") === 'unserviceable')
                                             >
                                             <span>Unserviceable</span>
                                         </label>
-                                        <label x-show="notOkRows['{{ $key }}']" x-cloak class="inline-flex cursor-pointer items-center gap-1">
+                                        <label x-show="isNotOkSelected('{{ $key }}')" x-cloak class="inline-flex cursor-pointer items-center gap-1">
                                             <input
                                                 type="checkbox"
                                                 name="condition[{{ $key }}]"
                                                 value="condemned"
                                                 class="h-3.5 w-3.5 accent-red-700"
-                                                x-bind:disabled="!notOkRows['{{ $key }}']"
+                                                x-bind:disabled="!isNotOkSelected('{{ $key }}')"
                                                 x-on:change="syncCondition('{{ $key }}', $event)"
                                                 @checked(old("condition.$key") === 'condemned')
                                             >
@@ -777,34 +938,35 @@
 
                             <td
                                 class="px-3 py-3 text-center"
-                                x-show="isUnserviceableSelected('{{ $key }}')"
+                                x-cloak
+                                x-show="isStatusSelectionVisible('{{ $key }}')"
                             >
                                 @if(!in_array($item['group'] ?? '', ['Keyboard', 'Mouse'], true))
                                     <div
-                                        x-show="isUnserviceableSelected('{{ $key }}')"
+                                        x-show="isStatusSelectionVisible('{{ $key }}')"
                                         x-cloak
                                         class="flex flex-col items-start justify-center gap-1 text-xs text-gray-600 dark:text-gray-300"
-                                        x-bind:class="{ 'opacity-50': !isUnserviceableSelected('{{ $key }}') }"
+                                        x-bind:class="{ 'opacity-50': !isStatusSelectionVisible('{{ $key }}') }"
                                     >
-                                    <label class="inline-flex cursor-pointer items-center gap-1">
-                                        <input
-                                            type="checkbox"
-                                            name="disposition[{{ $key }}]"
-                                            value="repair"
-                                            class="h-3.5 w-3.5 accent-amber-500"
-                                            x-bind:disabled="!isUnserviceableSelected('{{ $key }}')"
-                                            x-on:change="syncStatus('{{ $key }}', $event)"
-                                            @checked(old("disposition.$key") === 'repair')
-                                        >
-                                        <span>Repair</span>
-                                    </label>
-                                    <label class="inline-flex cursor-pointer items-center gap-1">
+                                        <label x-show="isUnserviceableSelected('{{ $key }}')" x-cloak class="inline-flex cursor-pointer items-center gap-1">
+                                            <input
+                                                type="checkbox"
+                                                name="disposition[{{ $key }}]"
+                                                value="repair"
+                                                class="h-3.5 w-3.5 accent-amber-500"
+                                                x-bind:disabled="!isUnserviceableSelected('{{ $key }}')"
+                                                x-on:change="syncStatus('{{ $key }}', $event)"
+                                                @checked(old("disposition.$key") === 'repair')
+                                            >
+                                            <span>Repair</span>
+                                        </label>
+                                        <label x-show="isOkSelected('{{ $key }}') || isUnserviceableSelected('{{ $key }}')" x-cloak class="inline-flex cursor-pointer items-center gap-1">
                                             <input
                                                 type="checkbox"
                                                 name="disposition[{{ $key }}]"
                                                 value="not_in_use"
                                                 class="h-3.5 w-3.5 accent-slate-500"
-                                                x-bind:disabled="!isUnserviceableSelected('{{ $key }}')"
+                                                x-bind:disabled="!isStatusSelectionVisible('{{ $key }}')"
                                                 x-on:change="syncStatus('{{ $key }}', $event)"
                                                 @checked(old("disposition.$key") === 'not_in_use')
                                             >
@@ -870,7 +1032,7 @@
                 <textarea
                     name="remarks"
                     x-model="remarks"
-                    x-on:input="remarksEdited = true"
+                    x-on:input="if (!restoringChecklistState) remarksEdited = true"
                     rows="3"
                     class="min-h-[7rem] w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     placeholder="Optional remarks; automatic text will appear when applicable"
@@ -1001,6 +1163,74 @@
                 linkablePeripherals: @js($linkablePeripheralOptions),
                 linkSubmitting: false,
                 linkError: '',
+                linkDraftKey() {
+                    return `pmams-checklist-link:${window.location.pathname}`;
+                },
+                readLinkDraft() {
+                    try {
+                        const stored = JSON.parse(window.sessionStorage.getItem(this.linkDraftKey()) || 'null');
+                        return stored?.version === 1 ? stored : null;
+                    } catch (error) {
+                        return null;
+                    }
+                },
+                rememberLinkState() {
+                    if (!this.linkOpen) return;
+
+                    try {
+                        window.sessionStorage.setItem(this.linkDraftKey(), JSON.stringify({
+                            version: 1,
+                            peripheralType: this.peripheralType || '',
+                            allowLinked: Boolean(this.allowLinked),
+                            peripheralQuery: this.peripheralQuery || '',
+                            selectedPeripheralId: this.selectedPeripheral?.id ?? null,
+                            parentPropertyNumber: this.parentPropertyNumber || '',
+                        }));
+                    } catch (error) {
+                        // State restoration is best effort only.
+                    }
+                },
+                clearLinkState() {
+                    try {
+                        window.sessionStorage.removeItem(this.linkDraftKey());
+                    } catch (error) {
+                        // Storage can be unavailable in private browsing.
+                    }
+                },
+                rebuildLinkCandidates() {
+                    const type = String(this.peripheralType || '').toLowerCase();
+                    this.candidates = this.linkablePeripherals.filter((peripheral) => {
+                        const name = String(peripheral.type || '').toLowerCase();
+                        const matchesType = type === 'avr/ups'
+                            ? ['avr', 'ups'].includes(name)
+                            : name === type;
+                        return matchesType && (this.allowLinked || !peripheral.parent_property_number);
+                    });
+                },
+                restoreLinkState() {
+                    const stored = this.readLinkDraft();
+                    const sameParent = stored
+                        && String(stored.parentPropertyNumber || '') === String(this.parentPropertyNumber || '');
+
+                    if (sameParent) {
+                        this.peripheralType = stored.peripheralType || this.peripheralType;
+                        this.allowLinked = Boolean(stored.allowLinked);
+                        this.peripheralQuery = stored.peripheralQuery || '';
+                        this.rebuildLinkCandidates();
+                        this.selectedPeripheral = this.candidates.find((peripheral) =>
+                            String(peripheral.id) === String(stored.selectedPeripheralId)
+                        ) || null;
+                        this.linkOpen = true;
+                        return;
+                    }
+
+                    if (stored) this.clearLinkState();
+
+                    if (this.linkOpen && this.peripheralType) {
+                        this.rebuildLinkCandidates();
+                        this.rememberLinkState();
+                    }
+                },
                 checklistStateKey() {
                     return `pmams-checklist-state:${window.location.pathname}`;
                 },
@@ -1029,6 +1259,7 @@
                     this.linkSubmitting = true;
                     this.linkError = '';
                     this.rememberChecklistState();
+                    this.rememberLinkState();
 
                     try {
                         const response = await fetch(event.target.action, {
@@ -1046,6 +1277,8 @@
                         if (!response.ok && !redirected) {
                             throw new Error('The peripheral could not be linked. Please try again.');
                         }
+
+                        this.clearLinkState();
 
                         const target = new URL(window.location.href);
                         // Linking is complete, so return to the checklist
@@ -1074,14 +1307,9 @@
                     this.allowLinked = allowLinked;
                     this.peripheralQuery = '';
                     this.selectedPeripheral = null;
-                    this.candidates = this.linkablePeripherals.filter((peripheral) => {
-                        const name = String(peripheral.type || '').toLowerCase();
-                        const matchesType = type === 'avr/ups'
-                            ? ['avr', 'ups'].includes(name)
-                            : name === type;
-                        return matchesType && (allowLinked || !peripheral.parent_property_number);
-                    });
+                    this.rebuildLinkCandidates();
                     this.linkOpen = true;
+                    this.rememberLinkState();
                 },
                 filteredCandidates() {
                     const query = this.peripheralQuery.trim().toLowerCase();
@@ -1108,6 +1336,7 @@
                     returnUrl.searchParams.set('allow_linked', this.allowLinked ? '1' : '0');
                     url.searchParams.set('return_to', returnUrl.pathname + returnUrl.search);
                     this.rememberChecklistState();
+                    this.rememberLinkState();
                     const path = window.adminLocalNavigatePath
                         ? window.adminLocalNavigatePath(url)
                         : `${url.pathname}${url.search}`;
@@ -1117,15 +1346,31 @@
                         window.location.assign(url.toString());
                     }
                 },
+                peripheralEditReturnUrl(peripheral) {
+                    const target = new URL(this.editReturnTo, window.location.origin);
+                    const typeName = String(peripheral?.type || this.peripheralType || '').toLowerCase();
+                    const requestedType = ['avr', 'ups'].includes(typeName)
+                        ? 'avr/ups'
+                        : (typeName || 'monitor');
+
+                    target.searchParams.set('open_link', '1');
+                    target.searchParams.set('peripheral_type', requestedType);
+                    // Keep linked records visible after returning from edit.
+                    target.searchParams.set('allow_linked', '1');
+
+                    return `${target.pathname}${target.search}`;
+                },
                 selectPeripheral(peripheral) {
                     this.linkError = '';
                     this.selectedPeripheral = peripheral;
+                    this.rememberLinkState();
                 }
             }"
-            x-init="if (linkOpen && peripheralType) $nextTick(() => openLink(peripheralType, allowLinked))"
+            x-init="restoreLinkState()"
             x-on:open-checklist-link.window="openLink($event.detail.peripheralType, $event.detail.allowLinked)"
+            x-on:pmams-modal-close.window="if ($event.detail.id === 'checklist-link-modal') clearLinkState()"
         >
-            <x-modal show="linkOpen" title="Link Peripheral to This System Unit" maxWidth="max-w-xl">
+            <x-modal id="checklist-link-modal" show="linkOpen" title="Link Peripheral to This System Unit" maxWidth="max-w-xl">
                 <form
                     method="POST"
                     x-bind:action="selectedPeripheral ? `${linkBaseUrl}/${selectedPeripheral.id}/link-parent` : '#'"
@@ -1165,6 +1410,7 @@
                         <input
                             type="search"
                             x-model="peripheralQuery"
+                            x-on:input="$nextTick(() => rememberLinkState())"
                             placeholder="Search property number, serial number, or computer name..."
                             autocomplete="off"
                             class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
@@ -1187,8 +1433,9 @@
                                         <span class="block truncate text-xs text-gray-500 dark:text-gray-400" x-text="[peripheral.serial_number, peripheral.computer_name, peripheral.parent_property_number ? `Linked to ${peripheral.parent_property_number}` : 'Not linked'].filter(Boolean).join(' / ') || 'No serial or computer name'"></span>
                                     </button>
                                     <a
-                                        x-bind:href="`${linkBaseUrl}/${peripheral.id}/edit?return_to=${encodeURIComponent(editReturnTo)}`"
+                                        x-bind:href="`${linkBaseUrl}/${peripheral.id}/edit?return_to=${encodeURIComponent(peripheralEditReturnUrl(peripheral))}`"
                                         wire:navigate
+                                        x-on:click="rememberLinkState()"
                                         title="Edit specs"
                                         aria-label="Edit specs"
                                         class="inline-flex shrink-0 items-center justify-center px-3 text-gray-500 hover:bg-gray-100 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-300"
@@ -1207,7 +1454,7 @@
                         <button
                             type="button"
                             class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                            x-on:click="linkOpen = false"
+                            x-on:click="clearLinkState(); linkOpen = false"
                         >
                             Cancel
                         </button>

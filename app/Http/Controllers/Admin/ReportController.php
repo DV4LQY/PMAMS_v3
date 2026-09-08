@@ -100,6 +100,7 @@ class ReportController extends Controller
             'admin_id',
             'type_id',
             'location_id',
+            'office_id',
             'date_from',
             'date_to',
             'q',
@@ -111,6 +112,9 @@ class ReportController extends Controller
         }
         $typeId = $request->integer('type_id') ?: null;
         $locationId = $request->integer('location_id') ?: null;
+        // Offices are scoped to the selected location. Ignore a stale office
+        // value when the location filter has been cleared.
+        $officeId = $locationId ? ($request->integer('office_id') ?: null) : null;
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
         $q = $request->string('q')->toString();
@@ -150,6 +154,11 @@ class ReportController extends Controller
             'typeId' => $typeId,
             'locations' => Location::orderBy('name')->get(),
             'locationId' => $locationId,
+            'offices' => Office::with('location')
+                ->when($locationId, fn ($query) => $query->where('location_id', $locationId))
+                ->orderBy('name')
+                ->get(),
+            'officeId' => $officeId,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'q' => $q,
@@ -297,6 +306,7 @@ class ReportController extends Controller
         $checkerId = $request->integer('checker_id') ?: $request->integer('admin_id') ?: null;
         $typeId = $request->integer('type_id') ?: null;
         $locationId = $request->integer('location_id') ?: null;
+        $officeId = $locationId ? ($request->integer('office_id') ?: null) : null;
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
         $q = $request->string('q')->toString();
@@ -324,11 +334,34 @@ class ReportController extends Controller
                     $locationQuery->where('location_id', $locationId)
                         ->orWhere(function ($legacyQuery) use ($locationId) {
                             $legacyQuery->whereNull('location_id')
-                                ->whereHas('device.currentAssignment', function ($assignmentQuery) use ($locationId) {
-                                    $assignmentQuery->where('location_id', $locationId)
-                                        ->orWhereHas('staff.office', function ($officeQuery) use ($locationId) {
-                                            $officeQuery->where('location_id', $locationId);
+                                ->where(function ($locationSourceQuery) use ($locationId) {
+                                    $locationSourceQuery
+                                        ->whereHas('office', fn ($officeQuery) => $officeQuery->where('location_id', $locationId))
+                                        ->orWhereHas('device.currentAssignment', function ($assignmentQuery) use ($locationId) {
+                                            $assignmentQuery->where('location_id', $locationId)
+                                                ->orWhereHas('staff.office', function ($officeQuery) use ($locationId) {
+                                                    $officeQuery->where('location_id', $locationId);
+                                                });
                                         });
+                                });
+                        });
+                });
+            })
+            ->when($officeId, function ($query) use ($officeId) {
+                $query->where(function ($officeQuery) use ($officeId) {
+                    // Newer checklist rows keep the office snapshot on the
+                    // history record. Legacy rows fall back to the current
+                    // assignment or the saved staff member's office.
+                    $officeQuery->where('office_id', $officeId)
+                        ->orWhere(function ($legacyQuery) use ($officeId) {
+                            $legacyQuery->whereNull('office_id')
+                                ->where(function ($assignmentOrStaffQuery) use ($officeId) {
+                                    $assignmentOrStaffQuery
+                                        ->whereHas('device.currentAssignment', function ($assignmentQuery) use ($officeId) {
+                                            $assignmentQuery->where('office_id', $officeId)
+                                                ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('office_id', $officeId));
+                                        })
+                                        ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('office_id', $officeId));
                                 });
                         });
                 });

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -89,6 +90,13 @@ class Device extends Model
                             ->orWhereHas('currentAssignment.location', function (Builder $location) use ($like) {
                                 $location->where('name', 'like', $like)
                                     ->orWhere('code', 'like', $like);
+                            })
+                            ->orWhereHas('currentAssignment.office', function (Builder $office) use ($like) {
+                                $office->where('name', 'like', $like)
+                                    ->orWhereHas('location', function (Builder $location) use ($like) {
+                                        $location->where('name', 'like', $like)
+                                            ->orWhere('code', 'like', $like);
+                                    });
                             })
                             ->orWhereHas('currentAssignment.staff', function (Builder $staff) use ($like) {
                                 $staff->where('first_name', 'like', $like)
@@ -200,6 +208,17 @@ class Device extends Model
         return $this->hasMany(self::class, 'part_of_property_number', 'property_number');
     }
 
+    /**
+     * The standalone equipment record this peripheral belongs to.
+     *
+     * Property numbers are intentionally used instead of the numeric device
+     * id because that is the persisted relationship for linked equipment.
+     */
+    public function parentProperty(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'part_of_property_number', 'property_number');
+    }
+
     public function maintenanceRecords(): HasMany
     {
         return $this->hasMany(DeviceMaintenanceRecord::class);
@@ -219,5 +238,83 @@ class Device extends Model
     {
         return $this->hasOne(DeviceMaintenanceRecord::class)
             ->latestOfMany('maintenance_date');
+    }
+
+    /**
+     * Return the newest maintenance date known for this equipment itself.
+     *
+     * The denormalized device column is retained for fast inventory reads,
+     * while the history relation covers checklist records saved before that
+     * column was synchronized.
+     */
+    private function latestOwnMaintenanceDate(): ?Carbon
+    {
+        return collect([
+            $this->last_maintenance_date,
+            $this->latestMaintenanceRecord?->maintenance_date,
+        ])
+            ->filter(fn ($date) => filled($date))
+            ->map(fn ($date) => Carbon::parse($date))
+            ->sortBy(fn (Carbon $date) => $date->getTimestamp())
+            ->last();
+    }
+
+    /**
+     * Return the date that should be shown as the last maintenance date.
+     *
+     * Linked/part-of-property equipment inherits the latest saved checklist
+     * date from its standalone parent. A newer date recorded directly on the
+     * child remains authoritative, so an older parent checklist cannot make
+     * the child appear to go backwards in time.
+     */
+    public function effectiveLastMaintenanceDate(): ?Carbon
+    {
+        $dates = collect([$this->latestOwnMaintenanceDate()]);
+
+        if (filled($this->part_of_property_number)) {
+            $parent = $this->relationLoaded('parentProperty')
+                ? $this->getRelation('parentProperty')
+                : $this->parentProperty()->with('latestMaintenanceRecord')->first();
+
+            if ($parent) {
+                $dates->push($parent->latestOwnMaintenanceDate());
+            }
+        }
+
+        return $dates
+            ->filter(fn ($date) => $date instanceof Carbon)
+            ->sortBy(fn (Carbon $date) => $date->getTimestamp())
+            ->last();
+    }
+
+    /**
+     * Copy the parent checklist date into a linked child when it is newer.
+     * Returns true when the child record was updated.
+     */
+    public function syncLastMaintenanceDateFromParent(?self $parent = null): bool
+    {
+        if (blank($this->part_of_property_number)) {
+            return false;
+        }
+
+        $parent ??= $this->relationLoaded('parentProperty')
+            ? $this->getRelation('parentProperty')
+            : $this->parentProperty()->with('latestMaintenanceRecord')->first();
+
+        $parentDate = $parent?->latestOwnMaintenanceDate();
+        if (! $parentDate) {
+            return false;
+        }
+
+        $childDate = $this->last_maintenance_date
+            ? Carbon::parse($this->last_maintenance_date)
+            : null;
+        if ($childDate && $childDate->greaterThanOrEqualTo($parentDate)) {
+            return false;
+        }
+
+        $this->update(['last_maintenance_date' => $parentDate->toDateString()]);
+
+        return true;
     }
 }

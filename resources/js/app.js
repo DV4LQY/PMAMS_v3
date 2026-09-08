@@ -297,6 +297,564 @@ import './bootstrap';
     });
 })();
 
+// Keep an unfinished maintenance checklist intact while an admin moves
+// through the SPA (for example, when linking/editing a peripheral) or reloads
+// the browser tab. The checklist page also exposes Alpine restore methods; the
+// persistent listener below is the fallback for navigations where the page's
+// ordinary script/x-init is not evaluated again.
+(function setupMaintenanceChecklistState() {
+    if (window.__pmamsChecklistStateReady) return;
+    window.__pmamsChecklistStateReady = true;
+
+    const formSelector = '#maintenance-checklist-form';
+    let restoring = false;
+    let skipPageSave = false;
+
+    const getStorage = () => {
+        try { return window.sessionStorage; } catch (error) { return null; }
+    };
+
+    const getKey = () => `pmams-checklist-state:${window.location.pathname}`;
+    const getForm = () => document.querySelector(formSelector);
+
+    const serializeForm = (form) => ({
+        version: 2,
+        fields: Array.from(form.elements || [])
+            .filter((control) => control.name
+                && control.type !== 'file'
+                && !['_token', '_method'].includes(control.name))
+            .map((control) => ({
+                name: control.name,
+                type: control.type || control.tagName?.toLowerCase(),
+                value: control.value ?? '',
+                checked: control.type === 'radio' || control.type === 'checkbox'
+                    ? control.checked
+                    : undefined,
+            })),
+    });
+
+    const save = () => {
+        if (restoring) return;
+
+        const form = getForm();
+        const storage = getStorage();
+        if (!form || !storage) return;
+
+        try {
+            storage.setItem(getKey(), JSON.stringify(serializeForm(form)));
+        } catch (error) {
+            // Session storage can be unavailable in private/restricted browsers.
+        }
+    };
+
+    const clear = () => {
+        const storage = getStorage();
+        if (!storage) return;
+
+        try { storage.removeItem(getKey()); } catch (error) { /* best effort */ }
+    };
+
+    const read = () => {
+        const storage = getStorage();
+        if (!storage) return null;
+
+        try {
+            const stored = JSON.parse(storage.getItem(getKey()) || 'null');
+            return stored?.fields ? stored : null;
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const findChecklistData = (form) => {
+        const stack = form?._x_dataStack || [];
+        return stack.find((data) => typeof data?.restoreChecklistState === 'function') || null;
+    };
+
+    const restoreControlsDirectly = (form, stored) => {
+        const controls = Array.from(form.elements || []);
+
+        controls.forEach((control) => {
+            const isChoice = control.type === 'radio' || control.type === 'checkbox';
+            const saved = stored.fields.find((candidate) => candidate.name === control.name
+                && (!isChoice
+                    || (candidate.type === control.type
+                        && String(candidate.value ?? '') === String(control.value ?? ''))));
+
+            if (!saved) return;
+
+            if (isChoice) {
+                control.checked = Boolean(saved.checked);
+            } else if (typeof saved.value === 'string') {
+                control.value = saved.value;
+            }
+        });
+
+        // Re-run Alpine's normal change handlers so dependent condition and
+        // disposition fields match the restored hardware result.
+        controls.forEach((control) => {
+            if (!control.name || control.name === '_token' || control.name === '_method') return;
+
+            if (control.type === 'radio' || control.type === 'checkbox') {
+                if (control.checked) control.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (['date', 'text', 'textarea', 'search'].includes(control.type || control.tagName?.toLowerCase())) {
+                control.dispatchEvent(new Event('input', { bubbles: true }));
+                control.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+    };
+
+    const restore = () => {
+        const form = getForm();
+        const stored = read();
+        if (!form || !stored) return;
+
+        restoring = true;
+        try {
+            const data = findChecklistData(form);
+            if (data) {
+                data.restoreChecklistState();
+                data.applyChecklistDefaults?.();
+                data.refreshChecklistState?.();
+            } else {
+                restoreControlsDirectly(form, stored);
+            }
+        } catch (error) {
+            // A page-level Alpine tree may still be initializing. The direct
+            // control restore keeps the selected values available in either
+            // case, and the normal page x-init will rebuild dependent state.
+            try { restoreControlsDirectly(form, stored); } catch (ignored) { /* best effort */ }
+        } finally {
+            restoring = false;
+            clear();
+        }
+    };
+
+    const restoreWhenReady = (attempt = 0) => {
+        if (!getForm()) return;
+
+        if (findChecklistData(getForm()) || attempt >= 40) {
+            restore();
+            return;
+        }
+
+        window.setTimeout(() => restoreWhenReady(attempt + 1), 25);
+    };
+
+    document.addEventListener('input', (event) => {
+        if (event.target?.closest?.(formSelector)) save();
+    }, true);
+
+    document.addEventListener('change', (event) => {
+        if (event.target?.closest?.(formSelector)) save();
+    }, true);
+
+    document.addEventListener('submit', (event) => {
+        if (event.target?.id !== 'maintenance-checklist-form') return;
+
+        // A real checklist submission is now handled by the server. Do not
+        // restore its previous draft on the success/validation response.
+        skipPageSave = true;
+        clear();
+    }, true);
+
+    // The unlink action uses a native form submit from an inline handler, so
+    // capture the click before that handler leaves the page.
+    document.addEventListener('click', (event) => {
+        if (event.target?.closest?.('#maintenance-checklist-form [data-unlink-url]')) save();
+    }, true);
+
+    document.addEventListener('livewire:navigating', () => {
+        if (!skipPageSave) save();
+    });
+
+    document.addEventListener('livewire:navigated', () => {
+        skipPageSave = false;
+        window.setTimeout(restoreWhenReady, 0);
+    });
+
+    window.addEventListener('pagehide', () => {
+        if (!skipPageSave) save();
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => restoreWhenReady(), { once: true });
+    } else {
+        restoreWhenReady();
+    }
+})();
+
+// Keep unfinished Add and Edit Equipment forms through a browser reload, while
+// discarding them when the user leaves the page or explicitly closes/cancels
+// the form. Session storage is tab-scoped. File inputs, CSRF fields, and
+// navigation fields are intentionally excluded; the server remains the source
+// of truth after a real submission.
+(function setupEquipmentDraftState() {
+    if (window.__pmamsEquipmentDraftReady) return;
+    window.__pmamsEquipmentDraftReady = true;
+
+    const formEntries = [
+        {
+            key: 'add',
+            selector: 'form[data-equipment-add-form]',
+            storageKey: 'pmams.equipment.add-draft',
+        },
+        {
+            key: 'edit',
+            selector: 'form[data-equipment-edit-form]',
+            storageKey: 'pmams.equipment.edit-draft',
+        },
+    ];
+    const formSelector = formEntries.map(({ selector }) => selector).join(', ');
+    let restoring = false;
+    let skipPageSave = false;
+    let discardOnNavigation = false;
+    let saveTimer = null;
+
+    const getStorage = () => {
+        try { return window.sessionStorage; } catch (error) { return null; }
+    };
+
+    const pageKey = () => `${window.location.pathname}${window.location.search}`;
+    const isExcluded = (control) => !control.name
+        || control.type === 'file'
+        || ['_token', '_method', 'form_context', 'return_to'].includes(control.name);
+
+    const isFormOpen = (form) => {
+        const modal = form?.closest('[role="dialog"]');
+        if (!modal) return true;
+
+        return modal.dataset.nativeOpen === 'true'
+            || window.getComputedStyle(modal).display !== 'none';
+    };
+
+    const getForm = (entry) => entry ? document.querySelector(entry.selector) : null;
+    const getEntry = (form) => formEntries.find((entry) => form?.matches?.(entry.selector)) || null;
+    const getEntryForModalId = (id) => {
+        if (/edit-(?:equipment|device)-modal$/.test(id)) {
+            return formEntries.find((entry) => entry.key === 'edit') || null;
+        }
+
+        if (/(?:dashboard-)?add-equipment-modal$/.test(id)) {
+            return formEntries.find((entry) => entry.key === 'add') || null;
+        }
+
+        return null;
+    };
+
+    const serializeForm = (form, entry) => {
+        const occurrences = new Map();
+        const fields = Array.from(form.elements || [])
+            .filter((control) => !isExcluded(control))
+            .map((control) => {
+                const ordinal = occurrences.get(control.name) || 0;
+                occurrences.set(control.name, ordinal + 1);
+
+                return {
+                    name: control.name,
+                    ordinal,
+                    type: control.type || control.tagName?.toLowerCase(),
+                    value: control.value ?? '',
+                    checked: control.type === 'radio' || control.type === 'checkbox'
+                        ? control.checked
+                        : undefined,
+                };
+            });
+
+        return {
+            version: 1,
+            kind: entry.key,
+            page: pageKey(),
+            fields,
+        };
+    };
+
+    const read = (entry) => {
+        const storage = getStorage();
+        if (!storage) return null;
+
+        try {
+            const draft = JSON.parse(storage.getItem(entry.storageKey) || 'null');
+            return draft?.version === 1 && Array.isArray(draft.fields) ? draft : null;
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const clear = (entry) => {
+        const storage = getStorage();
+        if (!storage || !entry) return;
+
+        try { storage.removeItem(entry.storageKey); } catch (error) { /* best effort */ }
+    };
+
+    const activeForm = () => formEntries
+        .map((entry) => ({ entry, form: getForm(entry) }))
+        .find(({ form }) => form && isFormOpen(form)) || null;
+
+    const save = (form = null) => {
+        if (restoring || skipPageSave || discardOnNavigation) return;
+
+        const active = form
+            ? { entry: getEntry(form), form }
+            : activeForm();
+        const entry = active?.entry;
+        const targetForm = active?.form;
+        const storage = getStorage();
+        if (!entry || !targetForm || !storage || !isFormOpen(targetForm)) return;
+
+        try {
+            storage.setItem(entry.storageKey, JSON.stringify(serializeForm(targetForm, entry)));
+        } catch (error) {
+            // Session storage can be unavailable in private/restricted browsers.
+        }
+    };
+
+    const flushSave = (form = null) => {
+        if (saveTimer) {
+            window.clearTimeout(saveTimer);
+            saveTimer = null;
+        }
+        save(form);
+    };
+
+    const queueSave = (form) => {
+        if (!form || !isFormOpen(form)) return;
+        // A cancel/close can leave the page in place (for example when the
+        // modal is reopened). A new edit/add interaction starts a fresh draft
+        // lifecycle without carrying over the previous discard guard.
+        discardOnNavigation = false;
+        if (saveTimer) window.clearTimeout(saveTimer);
+        saveTimer = window.setTimeout(() => {
+            saveTimer = null;
+            save(form);
+        }, 0);
+    };
+
+    const controlsByName = (form) => {
+        const controls = new Map();
+
+        Array.from(form.elements || []).forEach((control) => {
+            if (isExcluded(control)) return;
+            const list = controls.get(control.name) || [];
+            list.push(control);
+            controls.set(control.name, list);
+        });
+
+        return controls;
+    };
+
+    const restoreControls = (form, draft) => {
+        const controls = controlsByName(form);
+        const restored = [];
+
+        draft.fields.forEach((saved) => {
+            const candidates = controls.get(saved.name) || [];
+            const control = candidates[saved.ordinal ?? 0];
+            if (!control) return;
+
+            const isChoice = control.type === 'radio' || control.type === 'checkbox';
+            if (isChoice) {
+                control.checked = Boolean(saved.checked);
+            } else if (typeof saved.value === 'string') {
+                control.value = saved.value;
+            }
+
+            restored.push({ control, saved });
+        });
+
+        const dispatch = (control) => {
+            if (control.matches('[data-location-deployed-search], [data-location-deployed-id], [data-office-deployed-id]')) {
+                return;
+            }
+
+            if (control.type === 'radio' || control.type === 'checkbox') {
+                control.dispatchEvent(new Event('change', { bubbles: true }));
+                return;
+            }
+
+            control.dispatchEvent(new Event('input', { bubbles: true }));
+            control.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+
+        // Update the Alpine type/condition state first so dependent fields are
+        // enabled before their restored values are processed.
+        const typeField = restored.find(({ control }) => control.name === 'device_type_id');
+        if (typeField) dispatch(typeField.control);
+        restored.forEach(({ control }) => {
+            if (control !== typeField?.control) dispatch(control);
+        });
+
+        // Location lookup intentionally clears its hidden IDs when the text is
+        // changed without a selected suggestion. Restore those references after
+        // dispatching the other controls.
+        restored
+            .filter(({ control }) => control.matches('[data-location-deployed-id], [data-office-deployed-id]'))
+            .forEach(({ control, saved }) => {
+                control.value = saved.value ?? '';
+            });
+    };
+
+    const openRestoredForm = (form, entry) => {
+        const root = form.closest('[x-data]');
+        const stack = root?._x_dataStack || [];
+        const state = stack.find((candidate) => {
+            if (!candidate) return false;
+
+            if (entry.key === 'edit') {
+                return Object.prototype.hasOwnProperty.call(candidate, 'editOpen');
+            }
+
+            return Object.prototype.hasOwnProperty.call(candidate, 'addOpen')
+                || Object.prototype.hasOwnProperty.call(candidate, 'addDeviceOpen');
+        });
+
+        if (state) {
+            if (entry.key === 'edit' && Object.prototype.hasOwnProperty.call(state, 'editOpen')) {
+                state.editOpen = true;
+            }
+            if (entry.key === 'add') {
+                if (Object.prototype.hasOwnProperty.call(state, 'addOpen')) state.addOpen = true;
+                if (Object.prototype.hasOwnProperty.call(state, 'addDeviceOpen')) state.addDeviceOpen = true;
+            }
+        }
+
+        const modal = form.closest('[role="dialog"]');
+        if (modal?.id) window.pmamsOpenModal?.(modal.id);
+    };
+
+    const restore = () => {
+        const drafts = formEntries
+            .map((entry) => ({ entry, draft: read(entry) }))
+            .filter(({ draft }) => draft);
+        if (!drafts.length) return;
+
+        restoring = true;
+        try {
+            drafts.forEach(({ entry, draft }) => {
+                const form = getForm(entry);
+                if (!form || draft.page !== pageKey()) {
+                    clear(entry);
+                    return;
+                }
+
+                try {
+                    restoreControls(form, draft);
+                    openRestoredForm(form, entry);
+                } catch (error) {
+                    // A partially initialized Alpine tree should not prevent
+                    // basic control restoration; the next navigation/reload
+                    // can retry.
+                    try {
+                        restoreControls(form, draft);
+                        openRestoredForm(form, entry);
+                    } catch (ignored) { /* best effort */ }
+                } finally {
+                    clear(entry);
+                }
+            });
+        } finally {
+            restoring = false;
+        }
+    };
+
+    const restoreWhenReady = (attempt = 0) => {
+        const drafts = formEntries.filter((entry) => read(entry));
+        if (!drafts.length) return;
+
+        const alpinePending = drafts.some((entry) => {
+            const form = getForm(entry);
+            const root = form?.closest('[x-data]');
+            return !form || (root && window.Alpine && !root._x_dataStack?.length);
+        });
+
+        if (alpinePending && attempt < 40) {
+            window.setTimeout(() => restoreWhenReady(attempt + 1), 25);
+            return;
+        }
+
+        if (attempt >= 40) {
+            drafts.forEach((entry) => {
+                if (!getForm(entry)) clear(entry);
+            });
+        }
+
+        restore();
+    };
+
+    const discard = (entry) => {
+        discardOnNavigation = true;
+        if (saveTimer) {
+            window.clearTimeout(saveTimer);
+            saveTimer = null;
+        }
+        clear(entry);
+    };
+
+    document.addEventListener('input', (event) => {
+        const form = event.target?.closest?.(formSelector);
+        if (form) queueSave(form);
+    }, true);
+
+    document.addEventListener('change', (event) => {
+        const form = event.target?.closest?.(formSelector);
+        if (form) queueSave(form);
+    }, true);
+
+    document.addEventListener('submit', (event) => {
+        const form = event.target?.matches?.(formSelector) ? event.target : null;
+        const entry = getEntry(form);
+        if (!entry) return;
+
+        // A real submission is now handled by the server. Do not restore its
+        // previous draft on the success or validation response.
+        skipPageSave = true;
+        if (saveTimer) {
+            window.clearTimeout(saveTimer);
+            saveTimer = null;
+        }
+        clear(entry);
+    }, true);
+
+    document.addEventListener('click', (event) => {
+        const form = event.target?.closest?.(formSelector);
+        const nativeClose = event.target?.closest?.('[data-native-modal-close]');
+        const nativeCloseId = nativeClose?.dataset?.nativeModalClose || '';
+        const modalId = nativeCloseId || event.target?.id || '';
+        const entry = getEntry(form) || getEntryForModalId(modalId);
+        const cancel = event.target?.closest?.('[data-equipment-add-cancel], [data-equipment-edit-cancel]');
+
+        if (entry && (cancel || getEntryForModalId(modalId))) {
+            discard(entry);
+        }
+    }, true);
+
+    document.addEventListener('pmams-modal-close', (event) => {
+        const entry = getEntryForModalId(event.detail?.id || '');
+        if (entry) discard(entry);
+    }, true);
+
+    document.addEventListener('livewire:navigating', () => {
+        if (!skipPageSave && !discardOnNavigation) flushSave();
+    });
+
+    document.addEventListener('livewire:navigated', () => {
+        skipPageSave = false;
+        discardOnNavigation = false;
+        window.setTimeout(restoreWhenReady, 0);
+    });
+
+    window.addEventListener('pagehide', () => {
+        if (!skipPageSave && !discardOnNavigation) flushSave();
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => restoreWhenReady(), { once: true });
+    } else {
+        restoreWhenReady();
+    }
+})();
+
 // Submit marked PM Plan actions through fetch, then let Livewire replace the
 // current page. This keeps the PM Plan in SPA mode while preserving Laravel's
 // normal redirects, validation errors, flash messages, CSRF protection, and

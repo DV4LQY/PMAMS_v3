@@ -542,14 +542,14 @@
                     <button type="button" data-native-modal-close="dashboard-add-equipment-modal" @click="addDeviceOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700">&times;</button>
                 </div>
 
-                <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="flex min-h-0 flex-1 flex-col" x-on:submit="cleanUnitPrices($event.target)">
+                <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="flex min-h-0 flex-1 flex-col" data-equipment-add-form x-on:submit="cleanUnitPrices($event.target)">
                     @csrf
                     <input type="hidden" name="form_context" value="add_equipment">
                     <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                         @include('admin.devices._add-equipment-fields')
                     </div>
                     <div class="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-6 py-4">
-                        <button type="button" data-native-modal-close="dashboard-add-equipment-modal" @click="addDeviceOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Cancel</button>
+                        <button type="button" data-native-modal-close="dashboard-add-equipment-modal" data-equipment-add-cancel @click="addDeviceOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Cancel</button>
                         <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save Equipment</button>
                     </div>
                 </form>

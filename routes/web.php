@@ -399,6 +399,8 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
             ->name('admin.staff.edit');
         Route::put('admin/offices/{office}/staff/{staff}', [StaffController::class, 'update'])
             ->name('admin.staff.update');
+        Route::post('admin/offices/{office}/staff/{staff}/transfer', [StaffController::class, 'transfer'])
+            ->name('admin.staff.transfer');
         Route::delete('admin/offices/{office}/staff/{staff}', [StaffController::class, 'destroy'])
             ->name('admin.staff.destroy');
 

@@ -13,6 +13,7 @@
             'deleted' => 'bg-red-100 text-red-700',
             'issued' => 'bg-amber-100 text-amber-700',
             'returned' => 'bg-purple-100 text-purple-700',
+            'transferred' => 'bg-indigo-100 text-indigo-700',
             default => 'bg-gray-100 text-gray-700',
         };
 
@@ -22,6 +23,7 @@
             'deleted' => '🗑️',
             'issued' => '📤',
             'returned' => '📥',
+            'transferred' => '↔️',
             default => '•',
         };
     @endphp
@@ -88,6 +90,7 @@
             deleted: 'bg-red-100 text-red-700',
             issued: 'bg-amber-100 text-amber-700',
             returned: 'bg-purple-100 text-purple-700',
+            transferred: 'bg-indigo-100 text-indigo-700',
         };
 
         function actionChipClass(action) {

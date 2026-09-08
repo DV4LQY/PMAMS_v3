@@ -1237,6 +1237,8 @@
                         title: @js($hasChecklistErrors ? 'Checklist could not be saved' : ($checklistResult['title'] ?? 'Checklist completed')),
                         message: @js($hasChecklistErrors ? 'Please correct the highlighted items and try again.' : ($checklistResult['message'] ?? 'Checklist saved successfully.')),
                         errors: @js($checklistErrorMessages),
+                        actionUrl: @js($hasChecklistErrors ? '' : ($checklistResult['action_url'] ?? '')),
+                        actionLabel: @js($hasChecklistErrors ? '' : ($checklistResult['action_label'] ?? '')),
                     }"
                     x-show="open"
                     x-cloak
@@ -1286,7 +1288,15 @@
                             </template>
                         </ul>
 
-                        <div class="mt-6 flex justify-end">
+                        <div class="mt-6 flex flex-wrap justify-end gap-2">
+                            <a
+                                x-show="actionUrl"
+                                x-cloak
+                                x-bind:href="actionUrl"
+                                wire:navigate
+                                class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-gray-800"
+                                x-text="actionLabel || 'Open related form'"
+                            ></a>
                             <button
                                 type="button"
                                 x-on:click="open = false"
@@ -2021,6 +2031,161 @@
         // Run immediately for a full load; Livewire will run this again after
         // a SPA navigation replaces the page controls.
         restoreFields();
+    })();
+</script>
+
+<script>
+    // Keep the complete Equipment filter state (search plus dropdowns) when
+    // the user leaves the page through Livewire navigation and comes back.
+    // The URL remains the source of truth; session storage is only a fallback
+    // for a plain /admin/devices navigation that has no query string.
+    (function setupPmamsEquipmentFilterState() {
+        if (window.__pmamsEquipmentFilterStateReady) return;
+        window.__pmamsEquipmentFilterStateReady = true;
+
+        const storageKey = 'pmams.equipment.filter-state';
+        const filterNames = ['q', 'type', 'location', 'college', 'office_id', 'status', 'condition'];
+        let restoring = false;
+        let resetPending = false;
+
+        const getStorage = () => {
+            try { return window.sessionStorage; } catch (error) { return null; }
+        };
+        const getFilterForm = () => document.querySelector('form[data-pmams-equipment-filter]');
+        const isEquipmentPath = (url) => /\/admin\/devices\/?$/.test(url.pathname);
+        const hasFilterValue = (url) => filterNames.some((name) => {
+            const value = url.searchParams.get(name);
+            return value !== null && value.trim() !== '';
+        });
+        const hasExplicitEquipmentState = (url) => (
+            hasFilterValue(url)
+            || url.searchParams.has('page')
+            || url.searchParams.has('load')
+            || url.searchParams.has('open_add')
+            || url.searchParams.has('return_to')
+        );
+        const readState = () => {
+            const store = getStorage();
+            if (!store) return '';
+            try { return store.getItem(storageKey) || ''; } catch (error) { return ''; }
+        };
+        const writeState = (path) => {
+            const store = getStorage();
+            if (!store) return;
+            try {
+                if (path) store.setItem(storageKey, path);
+                else store.removeItem(storageKey);
+            } catch (error) {
+                // Session storage can be unavailable in private/restricted browsers.
+            }
+        };
+        const statePathFromUrl = (sourceUrl) => {
+            const url = new URL(sourceUrl.href);
+            if (!isEquipmentPath(url) || !hasFilterValue(url)) return '';
+
+            const params = new URLSearchParams();
+            [...filterNames, 'page'].forEach((name) => {
+                const value = url.searchParams.get(name);
+                if (value !== null && value.trim() !== '') params.set(name, value);
+            });
+            params.set('load', '1');
+            return `${url.pathname}?${params.toString()}`;
+        };
+        const statePathFromForm = (form) => {
+            const currentUrl = new URL(window.location.href);
+            const params = new URLSearchParams();
+
+            new FormData(form).forEach((value, name) => {
+                if (!filterNames.includes(name)) return;
+                const text = String(value ?? '').trim();
+                if (text !== '') params.set(name, text);
+            });
+
+            if (![...params.keys()].length) return '';
+            params.set('load', '1');
+            return `${currentUrl.pathname}?${params.toString()}`;
+        };
+        const persistCurrentUrl = () => {
+            if (restoring || resetPending) return;
+            const currentUrl = new URL(window.location.href);
+            const statePath = statePathFromUrl(currentUrl);
+            if (statePath) writeState(statePath);
+            else if (isEquipmentPath(currentUrl) && currentUrl.searchParams.has('load')) writeState('');
+        };
+        const restoreSavedState = () => {
+            if (restoring) return;
+
+            const currentUrl = new URL(window.location.href);
+            const form = getFilterForm();
+            if (!form || !isEquipmentPath(currentUrl) || hasExplicitEquipmentState(currentUrl)) {
+                if (isEquipmentPath(currentUrl) && hasFilterValue(currentUrl)) {
+                    writeState(statePathFromUrl(currentUrl));
+                }
+                return;
+            }
+
+            const savedPath = readState();
+            if (!savedPath) return;
+
+            let targetUrl;
+            try { targetUrl = new URL(savedPath, window.location.origin); } catch (error) { return; }
+            if (targetUrl.pathname !== currentUrl.pathname || !hasFilterValue(targetUrl)) return;
+
+            restoring = true;
+            const targetPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+            if (window.Livewire && typeof window.Livewire.navigate === 'function') {
+                window.Livewire.navigate(targetPath);
+            } else {
+                window.location.replace(targetPath);
+            }
+        };
+
+        document.addEventListener('submit', (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || !form.matches('form[data-pmams-equipment-filter]')) return;
+            const statePath = statePathFromForm(form);
+            resetPending = !statePath;
+            writeState(statePath);
+        }, true);
+
+        document.addEventListener('change', (event) => {
+            const form = event.target?.form;
+            if (!(form instanceof HTMLFormElement) || !form.matches('form[data-pmams-equipment-filter]')) return;
+            const statePath = statePathFromForm(form);
+            resetPending = !statePath;
+            writeState(statePath);
+        }, true);
+
+        document.addEventListener('click', (event) => {
+            const reset = event.target.closest?.('[data-pmams-equipment-reset]');
+            if (!reset) return;
+            resetPending = true;
+            writeState('');
+        }, true);
+
+        document.addEventListener('livewire:navigating', persistCurrentUrl);
+        document.addEventListener('livewire:navigate', persistCurrentUrl);
+        document.addEventListener('livewire:navigated', () => {
+            resetPending = false;
+            restoring = false;
+            const currentUrl = new URL(window.location.href);
+            if (isEquipmentPath(currentUrl) && hasFilterValue(currentUrl)) {
+                writeState(statePathFromUrl(currentUrl));
+            } else if (isEquipmentPath(currentUrl) && currentUrl.searchParams.has('load')) {
+                writeState('');
+            }
+            restoreSavedState();
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            persistCurrentUrl();
+            restoreSavedState();
+        }, { once: true });
+
+        // Run immediately for full loads. If Livewire has not started yet,
+        // restoreSavedState() falls back to a normal same-origin redirect.
+        persistCurrentUrl();
+        restoreSavedState();
     })();
 </script>
 

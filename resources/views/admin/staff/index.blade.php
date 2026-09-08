@@ -54,6 +54,15 @@
 
         $addBag = $errors->getBag('add');
         $editBag = $errors->getBag('edit');
+        $transferBag = $errors->getBag('transfer');
+        $transferIsOfficeHead = filter_var(
+            old('transfer_is_office_head', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $transferPreserveAssignments = filter_var(
+            old('preserve_assignments', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
         $officeHeadTitle = $office->responsibleTitle();
 
         [$addSinglePosition, $addSinglePositionOther] = $resolvePosition(old('position'));
@@ -91,8 +100,19 @@
                 addOpen: {{ ($addBag->any() || ($openAddStaff ?? false)) ? 'true' : 'false' }},
                 returnTo: @js(request('return_to', '')),
                 editOpen: {{ $editBag->any() ? 'true' : 'false' }},
+                transferOpen: {{ $transferBag->any() ? 'true' : 'false' }},
                 deleteOpen: false,
                 bulkEnabled: {{ old('staff') !== null ? 'true' : 'false' }},
+
+                transferLocations: @js($transferLocations->map(fn ($location) => [
+                    'id' => $location->id,
+                    'name' => $location->name,
+                    'code' => $location->code,
+                    'offices' => $location->offices->map(fn ($destinationOffice) => [
+                        'id' => $destinationOffice->id,
+                        'name' => $destinationOffice->name,
+                    ])->values(),
+                ])->values()),
 
                 commonPositions: @json($commonPositions),
 
@@ -144,6 +164,16 @@
                 },
 
                 deleteStaffId: null,
+
+                transferStaff: {
+                    id: @js((int) old('transfer_staff_id', 0)),
+                    name: @js(old('transfer_staff_name', '')),
+                    activeAssignments: @js((int) old('transfer_active_assignments', 0)),
+                    isOfficeHead: {{ $transferIsOfficeHead ? 'true' : 'false' }},
+                },
+                transferLocationId: @js((string) old('destination_location_id', '')),
+                transferOfficeId: @js((string) old('destination_office_id', '')),
+                preserveAssignments: {{ $transferPreserveAssignments ? 'true' : 'false' }},
 
                 blankRow() {
                     return {
@@ -210,6 +240,32 @@
                     this.deleteStaffId = id;
                     this.deleteOpen = true;
                     this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
+                },
+
+                officesForTransfer() {
+                    const location = this.transferLocations.find((item) => String(item.id) === String(this.transferLocationId));
+
+                    return location?.offices || [];
+                },
+
+                openTransfer(staff) {
+                    this.transferStaff = {
+                        id: staff.id,
+                        name: staff.name ?? '',
+                        activeAssignments: Number(staff.active_assignments ?? 0),
+                        isOfficeHead: !!staff.is_office_head,
+                    };
+                    this.transferLocationId = '';
+                    this.transferOfficeId = '';
+                    this.preserveAssignments = false;
+                    this.transferOpen = true;
+                },
+
+                closeTransfer() {
+                    this.transferOpen = false;
+                    this.transferLocationId = '';
+                    this.transferOfficeId = '';
+                    this.preserveAssignments = false;
                 }
             }));
             initializeStaffManagerTree();
@@ -331,6 +387,22 @@
                             class="h-10 w-10"
                         />
 
+                        @if(auth()->user()?->canAction('staff', 'edit'))
+                            <x-action-icon
+                                type="button"
+                                icon="issue"
+                                variant="purple"
+                                label="Transfer staff"
+                                class="h-10 w-10"
+                                @click="openTransfer({
+                                    id: {{ $s->id }},
+                                    name: @js($s->display_name),
+                                    active_assignments: {{ (int) ($s->active_assignments_count ?? 0) }},
+                                    is_office_head: {{ $s->is_office_head ? 'true' : 'false' }}
+                                })"
+                            />
+                        @endif
+
                         @if(auth()->user()?->canAction('staff', 'edit') || auth()->user()?->canAction('staff', 'delete'))
                              @if(auth()->user()?->canAction('staff', 'edit'))
                              <x-action-icon
@@ -438,6 +510,21 @@
                                             label="View equipment"
                                         />
 
+                                        @if(auth()->user()?->canAction('staff', 'edit'))
+                                            <x-action-icon
+                                                type="button"
+                                                icon="issue"
+                                                variant="purple"
+                                                label="Transfer staff"
+                                                @click="openTransfer({
+                                                    id: {{ $s->id }},
+                                                    name: @js($s->display_name),
+                                                    active_assignments: {{ (int) ($s->active_assignments_count ?? 0) }},
+                                                    is_office_head: {{ $s->is_office_head ? 'true' : 'false' }}
+                                                })"
+                                            />
+                                        @endif
+
                                         @if(auth()->user()?->canAction('staff', 'edit') || auth()->user()?->canAction('staff', 'delete'))
                                             @if(auth()->user()?->canAction('staff', 'edit'))
                                             <x-action-icon
@@ -494,6 +581,114 @@
         <div>
             {{ $staff->links() }}
         </div>
+
+        {{-- Transfer modal --}}
+        <x-modal
+            id="transfer-staff-modal"
+            show="transferOpen"
+            title="Transfer staff to another office"
+            x-on:pmams-modal-close.window="if ($event.detail.id === 'transfer-staff-modal') closeTransfer()"
+        >
+            <form
+                method="POST"
+                :action="'{{ route('admin.staff.transfer', ['office' => $office->id, 'staff' => '__STAFF__']) }}'.replace('__STAFF__', transferStaff.id)"
+                @submit="if (!transferStaff.id || !transferLocationId || !transferOfficeId || (transferStaff.activeAssignments > 0 && !preserveAssignments)) $event.preventDefault()"
+                class="space-y-4"
+            >
+                @csrf
+
+                @if($transferBag->any())
+                    <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                        <ul class="list-disc space-y-1 pl-5">
+                            @foreach($transferBag->all() as $message)
+                                <li>{{ $message }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+
+                <input type="hidden" name="transfer_staff_id" :value="transferStaff.id">
+                <input type="hidden" name="transfer_staff_name" :value="transferStaff.name">
+                <input type="hidden" name="transfer_active_assignments" :value="transferStaff.activeAssignments">
+                <input type="hidden" name="transfer_is_office_head" :value="transferStaff.isOfficeHead ? 1 : 0">
+
+                <div class="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    <div class="font-semibold" x-text="transferStaff.name || 'Selected staff member'"></div>
+                    <div class="mt-1 text-xs text-gray-500">
+                        Current location/office: {{ $office->location->name }} / {{ $office->name }}
+                    </div>
+                </div>
+
+                <div>
+                    <label for="transfer-location" class="text-sm font-medium text-gray-700">Destination location <span class="text-red-500">*</span></label>
+                    <select
+                        id="transfer-location"
+                        name="destination_location_id"
+                        x-model="transferLocationId"
+                        @change="if (!officesForTransfer().some((item) => String(item.id) === String(transferOfficeId))) transferOfficeId = ''"
+                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                        required
+                    >
+                        <option value="">Select destination location</option>
+                        <template x-for="location in transferLocations" :key="location.id">
+                            <option :value="location.id" x-text="location.code ? `${location.code} - ${location.name}` : location.name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="transfer-office" class="text-sm font-medium text-gray-700">Destination office <span class="text-red-500">*</span></label>
+                    <select
+                        id="transfer-office"
+                        name="destination_office_id"
+                        x-model="transferOfficeId"
+                        class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100"
+                        :disabled="!transferLocationId"
+                        required
+                    >
+                        <option value="" x-text="transferLocationId ? 'Select destination office' : 'Select a location first'"></option>
+                        <template x-for="destinationOffice in officesForTransfer()" :key="destinationOffice.id">
+                            <option :value="destinationOffice.id" x-text="destinationOffice.name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div
+                    x-show="transferStaff.activeAssignments > 0"
+                    x-cloak
+                    class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                >
+                    <p>
+                        This staff member has <strong x-text="transferStaff.activeAssignments"></strong> active equipment assignment(s).
+                        Transferring will automatically return the equipment and mark it Available. The assignment history will remain recorded against the original office/location.
+                    </p>
+                    <label class="mt-2 flex items-start gap-2">
+                        <input
+                            type="checkbox"
+                            name="preserve_assignments"
+                            value="1"
+                            x-model="preserveAssignments"
+                            :required="transferStaff.activeAssignments > 0"
+                            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                        >
+                        <span>I understand that active equipment will be returned and made available; historical assignment records will not be rewritten.</span>
+                    </label>
+                </div>
+
+                <div
+                    x-show="transferStaff.isOfficeHead"
+                    x-cloak
+                    class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800"
+                >
+                    The current office-head designation will be cleared during the transfer. Assign the staff member as the destination office representative separately if needed.
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">Transfer staff</button>
+                    <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200" @click="closeTransfer()">Cancel</button>
+                </div>
+            </form>
+        </x-modal>
 
         {{-- Add modal --}}
         <x-modal id="add-staff-modal" show="addOpen" title="Add Staff" x-on:pmams-modal-close.window="if ($event.detail.id === 'add-staff-modal') closeAdd()">

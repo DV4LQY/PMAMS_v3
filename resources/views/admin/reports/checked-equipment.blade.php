@@ -130,7 +130,8 @@
 
 
             <select name="location_id"
-                    class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">
+                    class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white"
+                    onchange="const officeField = this.form.querySelector('[name=office_id]'); if (officeField) officeField.value = ''; this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
                 <option value="">All locations</option>
                 @foreach($locations as $location)
                     <option value="{{ $location->id }}" @selected((int) $locationId === $location->id)>
@@ -138,6 +139,23 @@
                     </option>
                 @endforeach
             </select>
+
+            @if($locationId)
+                <select name="office_id"
+                        class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white"
+                        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                    <option value="">All offices in selected location</option>
+                    @foreach($offices as $office)
+                        <option value="{{ $office->id }}" @selected((int) $officeId === $office->id)>
+                            {{ $office->name }}
+                        </option>
+                    @endforeach
+                </select>
+            @else
+                <div class="flex min-h-[38px] items-center rounded-lg border border-dashed px-3 py-2 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400" title="Select a location to filter by office">
+                    Select a location to filter by office
+                </div>
+            @endif
 
 
             <select name="type_id"
@@ -533,6 +551,7 @@
             <input type="hidden" name="filter_checker_id" value="{{ $checkerId }}">
             <input type="hidden" name="filter_type_id" value="{{ $typeId }}">
             <input type="hidden" name="filter_location_id" value="{{ $locationId }}">
+            <input type="hidden" name="filter_office_id" value="{{ $officeId }}">
             <input type="hidden" name="filter_q" value="{{ $q }}">
             <input type="hidden" name="date_from" value="{{ $dateFrom }}">
             <input type="hidden" name="date_to" value="{{ $dateTo }}">

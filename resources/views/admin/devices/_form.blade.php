@@ -76,7 +76,7 @@
         <label class="text-sm font-medium">Last Maintenance Date</label>
         <input name="last_maintenance_date"
                type="date"
-               value="{{ old('last_maintenance_date', $editing && $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '') }}"
+               value="{{ old('last_maintenance_date', $editing ? ($device->effectiveLastMaintenanceDate()?->format('Y-m-d') ?? '') : '') }}"
                class="mt-1 w-full border rounded px-3 py-2">
         @error('last_maintenance_date') <div class="text-sm text-red-600 mt-1">{{ $message }}</div> @enderror
     </div>

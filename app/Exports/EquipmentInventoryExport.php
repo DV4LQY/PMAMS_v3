@@ -32,6 +32,8 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
                 'currentAssignment.staff.office.location',
                 'currentAssignment.office.location',
                 'currentAssignment.location',
+                'latestMaintenanceRecord',
+                'parentProperty.latestMaintenanceRecord',
             ])
             ->filterInventory($this->filters)
             ->orderByRaw('COALESCE(part_of_property_number, property_number)')
@@ -110,7 +112,7 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
             $device->date_acquired?->format('Y-m-d'),
             ucfirst((string) $device->status),
             ucfirst((string) $device->condition),
-            $device->last_maintenance_date?->format('Y-m-d'),
+            $device->effectiveLastMaintenanceDate()?->format('Y-m-d'),
             $device->maintenance_remarks,
             $staff ? trim($staff->first_name . ' ' . $staff->last_name) : null,
             $staff?->email,

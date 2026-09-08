@@ -10,7 +10,6 @@ use App\Models\Location;
 use App\Models\MaintenancePlanCompletion;
 use App\Models\MaintenancePlanSchedule;
 use App\Models\Office;
-use App\Models\SystemSetting;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -98,6 +97,25 @@ class PreventiveMaintenancePlanController extends Controller
             $schedules->getCollection()->map(fn (MaintenancePlanSchedule $schedule) => $this->scheduleRow($schedule))
         );
 
+        $completionReturnTo = $this->safeLocalReturnPath($request->query('return_to'));
+        $openCompletion = null;
+        $openCompletionId = $request->integer('open_completion') ?: null;
+        if ($openCompletionId && $this->canManagePublishedPlan($request->user(), 'complete')) {
+            $requestedSchedule = $this->visibleSchedules($request)
+                ->whereKey($openCompletionId)
+                ->with(['location', 'office', 'latestOverride', 'completion'])
+                ->first();
+
+            if ($requestedSchedule) {
+                $requestedProgress = $this->scheduleProgress($requestedSchedule);
+                if ($requestedProgress['is_complete']) {
+                    $openCompletion = $this->completionModalPayload($requestedSchedule, $requestedProgress, $completionReturnTo);
+                }
+            }
+        }
+
+        $completionSavedId = $request->session()->get('completion_saved');
+
         return view('admin.maintenance-plan.index', [
             'schedules' => $schedules,
             'locations' => $locations,
@@ -110,6 +128,8 @@ class PreventiveMaintenancePlanController extends Controller
             'selectedAssignedUserId' => $selectedAssignedUserId,
             'monthFrom' => $monthFrom,
             'monthTo' => $monthTo,
+            'openCompletion' => $openCompletion,
+            'completionSavedId' => $completionSavedId,
         ]);
     }
 
@@ -725,6 +745,7 @@ class PreventiveMaintenancePlanController extends Controller
             'signature_data' => ['nullable', 'string', 'max:500000'],
             'privacy_consent' => ['accepted'],
             'remarks' => ['nullable', 'string', 'max:2000'],
+            'return_to' => ['nullable', 'string', 'max:2048'],
         ]);
 
         $personInCharge = $progress['checker_names']
@@ -760,7 +781,15 @@ class PreventiveMaintenancePlanController extends Controller
             ])
         );
 
-        return back()->with('success', 'Completion details saved for the preventive maintenance schedule.');
+        $successMessage = 'Office completion signed and recorded'
+            . ($completion->actual_date ? ' on ' . $completion->actual_date->format('F j, Y') : '')
+            . '.';
+        $returnTo = $this->safeLocalReturnPath($data['return_to'] ?? null);
+        $redirect = $returnTo ? redirect()->to($returnTo) : back();
+
+        return $redirect
+            ->with('success', $successMessage)
+            ->with('completion_saved', $schedule->id);
     }
 
     public function report(Request $request)
@@ -856,6 +885,99 @@ class PreventiveMaintenancePlanController extends Controller
                 ->orWhere('assigned_user_id', $user->id)
                 ->orWhereHas('assignedUsers', fn ($assigned) => $assigned->whereKey($user->id));
         })->exists();
+    }
+
+    /**
+     * Resolve the PM Plan that covers a checklist device and return its
+     * server-calculated progress. A device can be covered by an
+     * office-specific schedule or by a location-wide schedule; for the same
+     * time window, the specific office target wins when both are present. The
+     * same target-device and effective-date rules used by the PM Plan page are
+     * then reused here.
+     */
+    public function checklistProgressFor(Device $device, ?User $user = null, ?string $returnTo = null): ?array
+    {
+        $user ??= auth()->user();
+        $returnTo = $this->safeLocalReturnPath($returnTo);
+        $device->loadMissing([
+            'currentAssignment.staff.office.location',
+            'currentAssignment.office.location',
+            'currentAssignment.location',
+        ]);
+
+        $assignment = $device->currentAssignment;
+        $office = $assignment?->office ?: $assignment?->staff?->office;
+        $locationId = $office?->location_id ?: $assignment?->location_id;
+        $officeId = $office?->id ? (int) $office->id : null;
+
+        if (! $locationId) {
+            return null;
+        }
+
+        $schedules = MaintenancePlanSchedule::query()
+            ->visibleTo($user)
+            ->where('location_id', (int) $locationId)
+            ->where(function ($query) use ($officeId) {
+                if ($officeId) {
+                    $query->where('office_id', $officeId)->orWhereNull('office_id');
+                } else {
+                    $query->whereNull('office_id');
+                }
+            })
+            ->with(['location', 'office', 'latestOverride', 'completion'])
+            ->get();
+
+        $currentMonth = now()->startOfMonth();
+        $schedule = $schedules
+            // Prefer the plan covering the current month, then the most
+            // recent past plan, then the nearest future plan. Specific office
+            // targets win only after the time window is selected, preventing
+            // an old office plan from masking a current location-wide plan.
+            ->sortBy(function (MaintenancePlanSchedule $candidate) use ($currentMonth) {
+                [$from, $to] = $this->scheduleWindow($candidate);
+                $specificity = $candidate->office_id === null ? 1 : 0;
+
+                if (! $from || ! $to) {
+                    return [3, $specificity, 0, (int) $candidate->id];
+                }
+
+                if ($from->lte($currentMonth) && $to->gte($currentMonth)) {
+                    return [0, $specificity, -$from->timestamp, (int) $candidate->id];
+                }
+
+                if ($from->lte($currentMonth)) {
+                    return [1, $specificity, -$from->timestamp, (int) $candidate->id];
+                }
+
+                return [2, $specificity, $from->timestamp, (int) $candidate->id];
+            })
+            ->first();
+
+        if (! $schedule) {
+            return null;
+        }
+
+        $progress = $this->scheduleProgress($schedule);
+        $completion = $this->currentCompletion($schedule);
+        $completionQuery = [
+            'open_completion' => $schedule->id,
+            'location_id' => $schedule->location_id,
+        ];
+        if ($schedule->office_id) {
+            $completionQuery['office_id'] = $schedule->office_id;
+        }
+        if ($returnTo) {
+            $completionQuery['return_to'] = $returnTo;
+        }
+
+        return [
+            'schedule' => $schedule,
+            'progress' => $progress,
+            'completion' => $completion,
+            'can_complete' => $this->canManagePublishedPlan($user, 'complete'),
+            'target_label' => $this->scheduleTargetLabel($schedule),
+            'completion_url' => route('admin.maintenance-plan.index', $completionQuery) . '#published-schedules',
+        ];
     }
 
     private function visibleSchedules(Request $request)
@@ -996,6 +1118,31 @@ class PreventiveMaintenancePlanController extends Controller
         ];
     }
 
+    /**
+     * Keep the completion form payload in one place so manual PM Plan actions
+     * and a checklist-triggered completion prompt use the same defaults.
+     */
+    private function completionModalPayload(MaintenancePlanSchedule $schedule, array $progress, ?string $returnTo = null): array
+    {
+        $completion = $this->currentCompletion($schedule);
+
+        return [
+            'id' => $schedule->id,
+            'action' => route('admin.maintenance-plan.complete', $schedule),
+            'return_to' => $returnTo,
+            'form' => [
+                'actual_date' => $completion?->actual_date?->format('Y-m-d')
+                    ?? $progress['actual_date']?->format('Y-m-d')
+                    ?? now()->toDateString(),
+                'person_in_charge' => $progress['checker_names']
+                    ?: ($completion?->person_in_charge ?? ''),
+                'signer_name' => $completion?->signer_name ?? '',
+                'signature_data' => $completion?->signature_data ?? '',
+                'remarks' => $completion?->remarks ?? '',
+            ],
+        ];
+    }
+
     private function scheduleProgress(MaintenancePlanSchedule $schedule): array
     {
         $effectiveDate = $schedule->latestOverride?->override_month_from
@@ -1004,11 +1151,7 @@ class PreventiveMaintenancePlanController extends Controller
             ?? $schedule->scheduled_date;
         $effectiveDate = $effectiveDate instanceof Carbon ? $effectiveDate->copy() : Carbon::parse($effectiveDate);
 
-        $completion = $this->currentCompletion($schedule);
-        $cycleStart = $effectiveDate->copy();
-        if (! $completion && $schedule->completion?->actual_date) {
-            $cycleStart = $cycleStart->max(Carbon::parse($schedule->completion->actual_date)->addMonthsNoOverflow($this->duplicateWindowMonths()));
-        }
+        $recordsStart = $effectiveDate->copy();
 
         $devices = $this->targetDevices($schedule);
         $deviceIds = $devices->pluck('id');
@@ -1016,7 +1159,7 @@ class PreventiveMaintenancePlanController extends Controller
             ? collect()
             : DeviceMaintenanceRecord::query()
                 ->whereIn('device_id', $deviceIds)
-                ->whereDate('maintenance_date', '>=', $cycleStart->toDateString())
+                ->whereDate('maintenance_date', '>=', $recordsStart->toDateString())
                 ->with('checkedBy:id,name')
                 ->orderByDesc('maintenance_date')
                 ->orderByDesc('id')
@@ -1326,20 +1469,31 @@ class PreventiveMaintenancePlanController extends Controller
         return $value->format('m/d/Y');
     }
 
-    private function duplicateWindowMonths(): int
+    /**
+     * Accept only an application-local path for post-completion navigation.
+     * This prevents the checklist return hook from becoming an open redirect.
+     */
+    private function safeLocalReturnPath(mixed $value): ?string
     {
-        return max(1, min(36, (int) SystemSetting::getValue('maintenance_checklist_duplicate_window_months', 3)));
+        $returnTo = trim((string) $value);
+
+        if ($returnTo === ''
+            || ! str_starts_with($returnTo, '/')
+            || str_starts_with($returnTo, '//')
+            || str_starts_with($returnTo, '/\\')
+            || str_contains($returnTo, "\r")
+            || str_contains($returnTo, "\n")) {
+            return null;
+        }
+
+        return $returnTo;
     }
 
     private function currentCompletion(MaintenancePlanSchedule $schedule): ?MaintenancePlanCompletion
     {
-        $completion = $schedule->completion;
-        if (! $completion?->actual_date) {
-            return $completion;
-        }
-
-        return Carbon::parse($completion->actual_date)->addMonthsNoOverflow($this->duplicateWindowMonths())->isFuture()
-            ? $completion
-            : null;
+        // A signed PM Plan completion is a historical record and remains
+        // visible/editable regardless of the checklist duplicate-verification
+        // window. That window applies only to repeated checklist submissions.
+        return $schedule->completion;
     }
 }

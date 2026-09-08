@@ -74,6 +74,7 @@ class MaintenanceCleanupController extends Controller
             'filter_checker_id' => ['nullable', 'integer', 'exists:users,id'],
             'filter_type_id' => ['nullable', 'integer', 'exists:device_types,id'],
             'filter_location_id' => ['nullable', 'integer', 'exists:locations,id'],
+            'filter_office_id' => ['nullable', 'integer', 'exists:offices,id'],
             'filter_q' => ['nullable', 'string', 'max:255'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
@@ -112,9 +113,29 @@ class MaintenanceCleanupController extends Controller
                         $locationQuery->where('location_id', $value)
                             ->orWhere(function ($legacyQuery) use ($value) {
                                 $legacyQuery->whereNull('location_id')
-                                    ->whereHas('device.currentAssignment', function ($assignment) use ($value) {
-                                        $assignment->where('location_id', $value)
-                                            ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $value));
+                                    ->where(function ($locationSourceQuery) use ($value) {
+                                        $locationSourceQuery
+                                            ->whereHas('office', fn ($office) => $office->where('location_id', $value))
+                                            ->orWhereHas('device.currentAssignment', function ($assignment) use ($value) {
+                                                $assignment->where('location_id', $value)
+                                                    ->orWhereHas('staff.office', fn ($office) => $office->where('location_id', $value));
+                                            });
+                                    });
+                            });
+                    });
+                })
+                ->when($data['filter_office_id'] ?? null, function ($q, $value) {
+                    $q->where(function ($officeQuery) use ($value) {
+                        $officeQuery->where('office_id', $value)
+                            ->orWhere(function ($legacyQuery) use ($value) {
+                                $legacyQuery->whereNull('office_id')
+                                    ->where(function ($assignmentOrStaffQuery) use ($value) {
+                                        $assignmentOrStaffQuery
+                                            ->whereHas('device.currentAssignment', function ($assignmentQuery) use ($value) {
+                                                $assignmentQuery->where('office_id', $value)
+                                                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('office_id', $value));
+                                            })
+                                            ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('office_id', $value));
                                     });
                             });
                     });

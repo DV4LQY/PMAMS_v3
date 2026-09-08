@@ -59,7 +59,7 @@
             }
         }"
     >
-        <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-6" x-on:submit="cleanUnitPrices($event.target)">
+        <form method="POST" action="{{ route('admin.devices.update', $device) }}" enctype="multipart/form-data" class="space-y-6" data-equipment-edit-form x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             @method('PUT')
             <input type="hidden" name="device_id" value="{{ $device->id }}">
@@ -76,7 +76,7 @@
 
             <div class="flex gap-2">
                 <button class="rounded bg-blue-600 px-4 py-2 text-white">Save Changes</button>
-                <a href="{{ $safeReturnTo ?: route('admin.devices.index') }}" wire:navigate class="rounded bg-gray-100 px-4 py-2">Cancel</a>
+                <a href="{{ $safeReturnTo ?: route('admin.devices.index') }}" wire:navigate data-equipment-edit-cancel class="rounded bg-gray-100 px-4 py-2">Cancel</a>
             </div>
         </form>
     </div>

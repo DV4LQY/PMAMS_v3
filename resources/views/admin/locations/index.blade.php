@@ -31,7 +31,6 @@ function registerLocationManager() {
         editOpen: {{ $editBag->any() ? 'true' : 'false' }},
         deleteOpen: false,
         issueOpen: false,
-        submitTimer: null,
         bulkEnabled: {{ old('names') !== null ? 'true' : 'false' }},
 
         addSingle: {
@@ -68,11 +67,6 @@ function registerLocationManager() {
         issueDeviceId: '',
         issueDeviceSelected: null,
         issueRemarks: '',
-
-        submitSearch() {
-            clearTimeout(this.submitTimer);
-            this.submitTimer = setTimeout(() => this.$refs.locationFilterForm.requestSubmit(), 450);
-        },
 
         clearSearch() {
             try {
@@ -282,21 +276,33 @@ document.addEventListener('livewire:navigated', () => {
             class="flex flex-col gap-3 sm:flex-row sm:items-end"
         >
             <div class="min-w-0 flex-1">
-                <label for="location-search" class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Search locations</label>
-                <input
-                    id="location-search"
-                    name="q"
-                    data-pmams-search
-                    x-ref="locationSearch"
-                    value="{{ $search }}"
-                    type="search"
-                    autocomplete="off"
-                    maxlength="150"
-                    placeholder="Search by location name or code"
-                    x-on:input="submitSearch()"
-                    x-on:keydown.enter.prevent="$refs.locationFilterForm.requestSubmit()"
-                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
-                >
+                <label for="location-search" class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Search locations, offices, and staff</label>
+                <div class="relative">
+                    <input
+                        id="location-search"
+                        name="q"
+                        data-pmams-search
+                        x-ref="locationSearch"
+                        value="{{ $search }}"
+                        type="search"
+                        autocomplete="off"
+                        maxlength="150"
+                        placeholder="Search by location, office, or staff name"
+                        x-on:keydown.enter.prevent="$refs.locationFilterForm.requestSubmit()"
+                        class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-11 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
+                    >
+                    <button
+                        type="submit"
+                        class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-r-lg text-gray-500 transition hover:bg-gray-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-blue-300"
+                        aria-label="Search locations, offices, and staff"
+                        title="Search"
+                    >
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+                            <circle cx="11" cy="11" r="7"></circle>
+                            <path stroke-linecap="round" d="m20 20-4-4"></path>
+                        </svg>
+                    </button>
+                </div>
             </div>
             @if($search !== '')
                 <button
@@ -309,7 +315,7 @@ document.addEventListener('livewire:navigated', () => {
             @endif
         </form>
         <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Results update automatically as you type. Search matches location names, codes, and office names.
+            Enter a term, then press Enter or select the search icon. Search matches location names, codes, office names, and staff names.
             <span class="font-medium">{{ number_format($locations->total()) }} matching</span>
         </p>
     </div>
@@ -377,6 +383,18 @@ document.addEventListener('livewire:navigated', () => {
                                         href="{{ route('admin.staff.index', $officeMatch['id']) }}"
                                         class="font-semibold hover:underline"
                                     >{{ $officeMatch['name'] }}</a>{{ !$loop->last ? ', ' : '' }}
+                                @endforeach
+                            </div>
+                        @endif
+                        @if(!empty($locationStaffMatches[$c->id] ?? []))
+                            <div class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                                Staff match:
+                                @foreach($locationStaffMatches[$c->id] as $staffMatch)
+                                    <a
+                                        href="{{ route('admin.staff.devices.index', $staffMatch['id']) }}"
+                                        class="font-semibold hover:underline"
+                                    >{{ $staffMatch['name'] }}</a>
+                                    <span class="text-gray-500 dark:text-gray-400">({{ $staffMatch['office_name'] }})</span>{{ !$loop->last ? ', ' : '' }}
                                 @endforeach
                             </div>
                         @endif
@@ -508,6 +526,18 @@ document.addEventListener('livewire:navigated', () => {
                                                 href="{{ route('admin.staff.index', $officeMatch['id']) }}"
                                                 class="font-semibold hover:underline"
                                             >{{ $officeMatch['name'] }}</a>{{ !$loop->last ? ', ' : '' }}
+                                        @endforeach
+                                    </div>
+                                @endif
+                                @if(!empty($locationStaffMatches[$c->id] ?? []))
+                                    <div class="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                                        Staff match:
+                                        @foreach($locationStaffMatches[$c->id] as $staffMatch)
+                                            <a
+                                                href="{{ route('admin.staff.devices.index', $staffMatch['id']) }}"
+                                                class="font-semibold hover:underline"
+                                            >{{ $staffMatch['name'] }}</a>
+                                            <span class="text-gray-500 dark:text-gray-400">({{ $staffMatch['office_name'] }})</span>{{ !$loop->last ? ', ' : '' }}
                                         @endforeach
                                     </div>
                                 @endif

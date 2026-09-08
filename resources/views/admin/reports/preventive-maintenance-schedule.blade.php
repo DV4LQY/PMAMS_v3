@@ -18,7 +18,15 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">The Office column uses registered locations and offices. Actual dates are calculated from saved equipment checklists.</p>
         </div>
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('admin.reports.maintenanceSchedule.pdf', request()->query()) }}" class="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700">Print</a>
+            <a
+                href="{{ route('admin.reports.maintenanceSchedule.pdf', request()->query()) }}"
+                target="_blank"
+                rel="noopener"
+                data-no-spa="true"
+                class="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700"
+            >
+                Print
+            </a>
         </div>
     </div>
 

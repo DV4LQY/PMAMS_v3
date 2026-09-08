@@ -6,9 +6,12 @@ use Illuminate\Validation\ValidationException;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\DeviceAssignment;
+use App\Models\Location;
 use App\Models\Office;
 use App\Models\Staff;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class StaffController extends Controller
 {
@@ -133,14 +136,27 @@ class StaffController extends Controller
     public function index(Request $request, Office $office)
     {
         $staff = Staff::where('office_id', $office->id)
+            ->withCount('activeAssignments')
             ->orderBy('last_name')->orderBy('first_name')
             ->paginate(15);
 
         $office->load(['location', 'college']);
 
+        // The transfer form needs the complete active location/office tree so
+        // the destination office can never be selected independently of its
+        // parent location. Soft-deleted locations and offices are excluded by
+        // the normal Eloquent relationships.
+        $transferLocations = Location::query()
+            ->whereHas('offices')
+            ->with(['offices' => fn ($query) => $query
+                ->select(['id', 'location_id', 'name'])
+                ->orderBy('name')])
+            ->orderBy('name')
+            ->get(['id', 'name', 'code']);
+
         $openAddStaff = $request->boolean('open_add');
 
-        return view('admin.staff.index', compact('office', 'staff', 'openAddStaff'));
+        return view('admin.staff.index', compact('office', 'staff', 'openAddStaff', 'transferLocations'));
     }
 
     public function store(Request $request, Office $office)
@@ -471,6 +487,199 @@ class StaffController extends Controller
         $office->load('college');
 
         return redirect()->route('admin.staff.index', $office)->with('success', 'Staff updated.');
+    }
+
+    /**
+     * Move a staff directory record to another active office/location.
+     *
+     * Active equipment is automatically returned as part of the same
+     * transaction. The assignment rows remain as historical issuance records,
+     * while their devices become available for a new issue.
+     */
+    public function transfer(Request $request, Office $office, Staff $staff)
+    {
+        abort_unless($staff->office_id === $office->id, 404);
+
+        $data = $request->validateWithBag('transfer', [
+            'transfer_staff_id' => ['required', 'integer', Rule::in([$staff->id])],
+            'destination_location_id' => [
+                'required',
+                'integer',
+                Rule::exists('locations', 'id')->where(fn ($query) => $query->whereNull('deleted_at')),
+            ],
+            'destination_office_id' => [
+                'required',
+                'integer',
+                Rule::exists('offices', 'id')->where(function ($query) use ($request): void {
+                    $query
+                        ->where('location_id', (int) $request->input('destination_location_id'))
+                        ->whereNull('deleted_at');
+                }),
+            ],
+            'preserve_assignments' => ['sometimes', 'boolean'],
+            'return_to' => ['nullable', 'string', 'max:2048'],
+        ], [
+            'transfer_staff_id.in' => 'The selected staff member is no longer available. Refresh and try again.',
+            'destination_location_id.exists' => 'Select an active destination location.',
+            'destination_office_id.exists' => 'Select an active office belonging to the selected location.',
+        ]);
+
+        $sourceOffice = $office->loadMissing('location');
+        $destinationOffice = Office::query()
+            ->with('location')
+            ->findOrFail((int) $data['destination_office_id']);
+
+        if ((int) $destinationOffice->id === (int) $sourceOffice->id) {
+            return back()
+                ->withErrors(['destination_office_id' => 'Choose an office different from the current office.'], 'transfer')
+                ->withInput();
+        }
+
+        $activeAssignmentCount = $staff->activeAssignments()->count();
+        if ($activeAssignmentCount > 0 && ! $request->boolean('preserve_assignments')) {
+            return back()
+                ->withErrors([
+                    'preserve_assignments' => "This staff member has {$activeAssignmentCount} active equipment assignment(s). Confirm that the equipment will be returned and marked available while the assignment history is retained.",
+                ], 'transfer')
+                ->withInput();
+        }
+
+        $staffName = $staff->display_name;
+        $wasOfficeHead = $staff->is_office_head === true;
+        $before = [
+            'location' => $sourceOffice->location?->name,
+            'office' => $sourceOffice->name,
+            'is_office_head' => $staff->is_office_head,
+        ];
+        $after = [
+            'location' => $destinationOffice->location?->name,
+            'office' => $destinationOffice->name,
+            // Office-head status is scoped to the office. Clearing it avoids
+            // carrying a designation into another office without review.
+            'is_office_head' => null,
+        ];
+
+        $releasedAssignments = [];
+
+        DB::transaction(function () use (&$releasedAssignments, $staff, $destinationOffice, $staffName, $before, $after, $wasOfficeHead): void {
+            $activeAssignments = DeviceAssignment::query()
+                ->where('staff_id', $staff->id)
+                ->whereNull('returned_at')
+                ->with('device.type')
+                ->lockForUpdate()
+                ->get();
+
+            $returnedAt = now();
+            foreach ($activeAssignments as $assignment) {
+                $device = $assignment->device;
+                $previousDeviceStatus = $device?->status;
+                $otherActiveAssignment = DeviceAssignment::query()
+                    ->where('device_id', $assignment->device_id)
+                    ->whereNull('returned_at')
+                    ->where('id', '<>', $assignment->id)
+                    ->exists();
+
+                $assignment->update([
+                    'returned_at' => $returnedAt,
+                    'remarks' => trim(($assignment->remarks ? $assignment->remarks . ' ' : '')
+                        . 'Automatically returned during staff transfer on ' . $returnedAt->format('M d, Y h:i A') . '.'),
+                ]);
+
+                // A valid equipment record has one active assignment. Keep a
+                // conflicting device issued rather than masking another
+                // active assignment if legacy data violates that invariant.
+                if ($device && ! $otherActiveAssignment) {
+                    $device->update(['status' => 'available']);
+                }
+
+                $deviceLabel = $device?->property_number ?: 'Device #' . $assignment->device_id;
+                $releasedAssignments[] = [
+                    'assignment_id' => $assignment->id,
+                    'device_id' => $assignment->device_id,
+                    'property_number' => $device?->property_number,
+                    'status' => $device && ! $otherActiveAssignment ? 'Available' : 'Not changed (conflicting active assignment)',
+                ];
+
+                ActivityLog::record(
+                    'returned',
+                    "Automatically returned equipment \"{$deviceLabel}\" during staff transfer of \"{$staffName}\"",
+                    $device ?: $assignment,
+                    ActivityLog::makePayload([
+                        'property_number' => $device?->property_number,
+                        'device_type' => $device?->type?->name,
+                        'returned_from' => $staffName,
+                        'from_office' => $before['office'],
+                        'from_location' => $before['location'],
+                        'status' => $device && ! $otherActiveAssignment ? 'Issued → Available' : 'Assignment closed; device status unchanged',
+                        'reason' => 'Staff transfer',
+                        'returned_at' => $returnedAt->format('M d, Y h:i A'),
+                    ], [
+                        'status' => [
+                            'old' => $previousDeviceStatus,
+                            'new' => $device?->status,
+                        ],
+                    ])
+                );
+            }
+
+            $staff->update([
+                'office_id' => $destinationOffice->id,
+                'is_office_head' => null,
+            ]);
+
+            ActivityLog::record(
+                'transferred',
+                "Transferred staff \"{$staffName}\" from {$before['office']} to {$after['office']}",
+                $staff,
+                ActivityLog::makePayload(
+                    [
+                        'staff' => $staffName,
+                        'from_location' => $before['location'],
+                        'from_office' => $before['office'],
+                        'to_location' => $after['location'],
+                        'to_office' => $after['office'],
+                        'active_assignments_released' => count($releasedAssignments),
+                        'released_equipment' => collect($releasedAssignments)
+                            ->pluck('property_number')
+                            ->filter()
+                            ->values()
+                            ->all(),
+                        'office_head_cleared' => $wasOfficeHead,
+                    ],
+                    ActivityLog::buildChanges($before, $after)
+                )
+            );
+        });
+
+        $message = "Staff \"{$staffName}\" transferred to {$destinationOffice->name} ({$destinationOffice->location?->name}).";
+        $releasedAssignmentCount = count($releasedAssignments);
+        if ($releasedAssignmentCount > 0) {
+            $availableDeviceCount = collect($releasedAssignments)
+                ->where('status', 'Available')
+                ->count();
+            $message .= " {$availableDeviceCount} equipment device(s) were automatically returned and marked available; assignment history was retained.";
+
+            if ($availableDeviceCount < $releasedAssignmentCount) {
+                $message .= ' A conflicting active assignment prevented one or more device status updates; review the activity log.';
+            }
+        }
+        if ($wasOfficeHead) {
+            $message .= ' The previous office-head designation was cleared; assign the designation separately if needed.';
+        }
+
+        $returnTo = trim((string) ($data['return_to'] ?? ''));
+        if ($returnTo !== ''
+            && str_starts_with($returnTo, '/')
+            && ! str_starts_with($returnTo, '//')
+            && ! str_starts_with($returnTo, '/\\')
+            && ! str_contains($returnTo, "\r")
+            && ! str_contains($returnTo, "\n")) {
+            return redirect()->to($returnTo)->with('success', $message);
+        }
+
+        return redirect()
+            ->route('admin.staff.index', $destinationOffice)
+            ->with('success', $message);
     }
 
     public function destroy(Office $office, Staff $staff)

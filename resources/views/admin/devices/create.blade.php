@@ -15,7 +15,7 @@
 
 @section('content')
 <div class="bg-white rounded shadow-sm p-6 max-w-4xl">
-    <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-6">
+    <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-6" data-equipment-add-form>
         @csrf
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -294,7 +294,7 @@
 
         <div class="flex gap-2">
             <button class="px-4 py-2 rounded bg-blue-600 text-white">Save</button>
-            <a href="{{ route('admin.devices.index') }}" class="px-4 py-2 rounded bg-gray-100">Cancel</a>
+            <a href="{{ route('admin.devices.index') }}" data-equipment-add-cancel class="px-4 py-2 rounded bg-gray-100">Cancel</a>
         </div>
     </form>
     <datalist id="network-location-options"></datalist>
@@ -420,7 +420,12 @@
                 storageTypeSelectEl.value = entry.type || '';
                 storageTypeSelectEl.addEventListener('change', function () {
                     storageEntries[index].type = this.value;
-                    changeStorageType(index);
+                    // Do not replace this select while its native change event is
+                    // still being dispatched. Deferring the render keeps the next
+                    // capacity click attached to the live row.
+                    window.requestAnimationFrame(function () {
+                        changeStorageType(index);
+                    });
                 });
 
                 var capacitySelect = document.createElement('select');
@@ -443,7 +448,8 @@
                     capacitySelect.appendChild(custom);
                 }
                 capacitySelect.value = entry.capacity || '';
-                capacitySelect.style.display = entry.type ? '' : 'none';
+                capacitySelect.style.display = '';
+                capacitySelect.classList.toggle('opacity-60', !entry.type);
                 capacitySelect.disabled = !entry.type;
                 capacitySelect.addEventListener('change', function () {
                     storageEntries[index].capacity = this.value;

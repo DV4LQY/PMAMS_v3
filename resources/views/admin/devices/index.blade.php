@@ -21,7 +21,6 @@
         importOpen: false,
         selectedDeviceIds: [],
         selectAllMatching: false,
-        filterTimer: null,
 
         addTypeId: '{{ old('device_type_id', $addTypeId ?? $types->first()?->id) }}',
         addCondition: @js(strtolower((string) old('condition', 'serviceable'))),
@@ -344,7 +343,9 @@
             setValue('specs[memory]', specs.memory);
             setValue('specs[processor]', specs.processor);
             setValue('specs[storage]', specs.storage);
-            form.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '', bubbles: true }));
+            // Dispatch on the window so the nested storage editor receives the
+            // saved value even when the modal is initialized lazily.
+            window.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '' }));
             setValue('specs[form_factor]', specs.form_factor);
             setValue('os_version', this.addOsVersion);
             setValue('os_license', device.os_license);
@@ -432,10 +433,6 @@
             this.bulkDeleteOpen = false;
         },
 
-        submitEquipmentFilters() {
-            clearTimeout(this.filterTimer);
-            this.filterTimer = setTimeout(() => this.$refs.equipmentFilterForm?.requestSubmit(), 450);
-        }
     }"
     x-on:open-equipment-add.window="openAddEquipment()"
     class="space-y-5"
@@ -561,17 +558,29 @@
 
     {{-- Filters --}}
     <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <form x-ref="equipmentFilterForm" method="GET" class="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <input
-                name="q"
-                data-pmams-search
-                value="{{ $q ?? '' }}"
-                x-on:input="submitEquipmentFilters()"
-                x-on:keydown.enter.prevent="$refs.equipmentFilterForm.requestSubmit()"
-                placeholder="Search property #, serial #..."
-                autocomplete="off"
-                class="order-first min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
-            >
+        <form x-ref="equipmentFilterForm" method="GET" data-pmams-equipment-filter class="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div class="relative order-first min-w-0 flex-1">
+                <input
+                    name="q"
+                    data-pmams-search
+                    value="{{ $q ?? '' }}"
+                    x-on:keydown.enter.prevent="$refs.equipmentFilterForm.requestSubmit()"
+                    placeholder="Search property #, serial #, office, or location..."
+                    autocomplete="off"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 pr-11 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
+                >
+                <button
+                    type="submit"
+                    aria-label="Search equipment"
+                    title="Search equipment"
+                    class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-r-lg text-gray-500 transition hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset dark:text-gray-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+                >
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+                        <circle cx="11" cy="11" r="6.5"></circle>
+                        <path stroke-linecap="round" d="m16 16 4 4"></path>
+                    </svg>
+                </button>
+            </div>
             <div class="w-full lg:w-44">
                 <select
                     name="type"
@@ -653,17 +662,9 @@
             </div>
 
             <div class="flex gap-2">
-                <!--
-                <button
-                    type="submit"
-                    class="inline-flex items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                >
-                    Search
-                </button>
-                -->
-
                 <a
                     href="{{ route('admin.devices.index', ['load' => 1]) }}"
+                    data-pmams-equipment-reset
                     class="inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 >
                     Reset
@@ -726,6 +727,16 @@
                 $isDesktop = $deviceTypeName === 'desktop';
                 $isComputerDevice = in_array($deviceTypeName, ['desktop', 'laptop'], true);
                     $isPeripheralDevice = in_array($deviceTypeName, ['printer', 'monitor', 'ups', 'avr', 'scanner', 'network device', 'other'], true);
+                $currentAssignment = $d->currentAssignment;
+                $assignedOffice = $currentAssignment?->office ?? $currentAssignment?->staff?->office;
+                $assignedLocation = $currentAssignment?->location ?? $assignedOffice?->location;
+                $displayOffice = $currentAssignment ? $assignedOffice : $d->deployedOffice;
+                $displayLocation = $currentAssignment
+                    ? ($assignedLocation ?? $assignedOffice?->location)
+                    : ($d->deployedOffice?->location ?? $d->deployedLocation);
+                $displayLocationName = $displayLocation?->name ?: ($currentAssignment ? '-' : ($d->location_deployed ?: '-'));
+                $displayOfficeName = $displayOffice?->name ?: '-';
+                $displayLastMaintenanceDate = $d->effectiveLastMaintenanceDate();
             @endphp
 
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -763,6 +774,12 @@
                     </div>
 
                     <div>
+                        <div class="text-gray-500 dark:text-gray-400">Location / Office</div>
+                        <div class="text-gray-900 dark:text-white">{{ $displayLocationName }}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Office: {{ $displayOfficeName }}</div>
+                    </div>
+
+                    <div>
                         <div class="text-gray-500 dark:text-gray-400">Acquired</div>
                         <div class="text-gray-900 dark:text-white">
                             {{ $d->date_acquired ? $d->date_acquired->format('M d, Y') : '-' }}
@@ -777,7 +794,7 @@
                     <div>
                         <div class="text-gray-500 dark:text-gray-400">Last Maintenance</div>
                         <div class="text-gray-900 dark:text-white">
-                            {{ $d->last_maintenance_date ? $d->last_maintenance_date->format('M d, Y') : 'Not yet checked' }}
+                            {{ $displayLastMaintenanceDate?->format('M d, Y') ?? 'Not yet checked' }}
                         </div>
                     </div>
 
@@ -865,7 +882,7 @@
                             mac_address: @js($d->mac_address ?? ''),
                             unit_price: @js($d->unit_price ?? ''),
                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
-                            last_maintenance_date: @js($d->last_maintenance_date ? $d->last_maintenance_date->format('Y-m-d') : ''),
+                            last_maintenance_date: @js($displayLastMaintenanceDate?->format('Y-m-d') ?? ''),
                             maintenance_remarks: @js(''),
                             status: @js($d->status ?? 'available'),
                             condition: @js($d->condition ?? 'serviceable'),
@@ -922,6 +939,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Type</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Property #</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Serial #</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Location / Office</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Acquired</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Last Maintenance</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Condition</th>
@@ -931,6 +949,18 @@
 
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($devices as $d)
+                        @php
+                            $currentAssignment = $d->currentAssignment;
+                            $assignedOffice = $currentAssignment?->office ?? $currentAssignment?->staff?->office;
+                            $assignedLocation = $currentAssignment?->location ?? $assignedOffice?->location;
+                            $displayOffice = $currentAssignment ? $assignedOffice : $d->deployedOffice;
+                            $displayLocation = $currentAssignment
+                                ? ($assignedLocation ?? $assignedOffice?->location)
+                                : ($d->deployedOffice?->location ?? $d->deployedLocation);
+                            $displayLocationName = $displayLocation?->name ?: ($currentAssignment ? '-' : ($d->location_deployed ?: '-'));
+                            $displayOfficeName = $displayOffice?->name ?: '-';
+                            $displayLastMaintenanceDate = $d->effectiveLastMaintenanceDate();
+                        @endphp
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                             @if(auth()->user()->isSuperAdmin())
                                 <td class="px-4 py-3 align-top">
@@ -953,12 +983,16 @@
                             </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $d->serial_number ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                <div class="font-medium text-gray-900 dark:text-white">{{ $displayLocationName }}</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">Office: {{ $displayOfficeName }}</div>
+                            </td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 {{ $d->date_acquired ? $d->date_acquired->format('M d, Y') : '-' }}
                             </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                                @if($d->last_maintenance_date)
+                                @if($displayLastMaintenanceDate)
                                     <div class="font-medium text-gray-900 dark:text-white">
-                                        {{ $d->last_maintenance_date->format('M d, Y') }}
+                                        {{ $displayLastMaintenanceDate->format('M d, Y') }}
                                     </div>
                                     @if($d->maintenance_remarks)
                                         <div class="max-w-xs truncate text-xs text-gray-500 dark:text-gray-400">
@@ -1023,7 +1057,7 @@
                                             mac_address: @js($d->mac_address ?? ''),
                                             unit_price: @js($d->unit_price ?? ''),
                                             date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
-                                            last_maintenance_date: @js($d->last_maintenance_date ? $d->last_maintenance_date->format('Y-m-d') : ''),
+                                            last_maintenance_date: @js($displayLastMaintenanceDate?->format('Y-m-d') ?? ''),
                                             maintenance_remarks: @js(''),
                                             status: @js($d->status ?? 'available'),
                                             condition: @js($d->condition ?? 'serviceable'),
@@ -1063,7 +1097,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ auth()->user()->isSuperAdmin() ? 8 : 7 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="{{ auth()->user()->isSuperAdmin() ? 9 : 8 }}" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                 No equipment found.
                             </td>
                         </tr>
@@ -1099,24 +1133,30 @@
         @endforeach
     </datalist>
 
+    @php
+        // Preserve the current inventory filters when an add/edit form posts
+        // back to the equipment index. The index is filter-first, so the
+        // destination always includes load=1 to render the table immediately.
+        $requestedEquipmentReturnTo = request()->input('return_to');
+        $equipmentReturnTo = is_string($requestedEquipmentReturnTo)
+            ? trim($requestedEquipmentReturnTo)
+            : '';
+        if ($equipmentReturnTo === ''
+            || ! str_starts_with($equipmentReturnTo, '/')
+            || str_starts_with($equipmentReturnTo, '//')) {
+            $equipmentQuery = request()->except(['open_add', 'return_to']);
+            $equipmentQuery['load'] = 1;
+            $equipmentReturnTo = request()->getPathInfo()
+                . ($equipmentQuery !== [] ? '?' . http_build_query($equipmentQuery) : '');
+        }
+    @endphp
+
     @if(auth()->user()?->canAction('equipment', 'add'))
     {{-- Add modal --}}
     <x-modal id="add-equipment-modal" show="addOpen" title="Add Equipment" max-width="max-w-4xl" x-on:pmams-modal-close.window="if ($event.detail.id === 'add-equipment-modal') closeAddEquipment()">
-        <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" x-on:submit="cleanUnitPrices($event.target)">
+        <form method="POST" action="{{ route('admin.devices.store') }}" enctype="multipart/form-data" class="space-y-4" data-equipment-add-form x-on:submit="cleanUnitPrices($event.target)">
             @csrf
             <input type="hidden" name="form_context" value="add_equipment">
-            @php
-                // Return to the same filtered inventory view after saving. The
-                // index is filter-first, so include load=1 in the destination
-                // to ensure the table is populated immediately.
-                $equipmentReturnTo = request()->input('return_to');
-                if (! is_string($equipmentReturnTo) || trim($equipmentReturnTo) === '') {
-                    $equipmentQuery = request()->except(['open_add', 'return_to']);
-                    $equipmentQuery['load'] = 1;
-                    $equipmentReturnTo = request()->getPathInfo()
-                        . ($equipmentQuery !== [] ? '?' . http_build_query($equipmentQuery) : '');
-                }
-            @endphp
             <input type="hidden" name="return_to" value="{{ $equipmentReturnTo }}">
 
             @include('admin.devices._add-equipment-fields')
@@ -1128,6 +1168,7 @@
                 <button
                     type="button"
                     data-native-modal-close="add-equipment-modal"
+                    data-equipment-add-cancel
                     class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                     x-on:click="closeAddEquipment()"
                 >
@@ -1140,18 +1181,20 @@
 
     @if(auth()->user()?->canAction('equipment', 'edit'))
     {{-- Edit modal --}}
-    <x-modal show="editOpen" title="Edit Equipment" max-width="max-w-4xl">
+    <x-modal id="edit-equipment-modal" show="editOpen" title="Edit Equipment" max-width="max-w-4xl">
         <form
             method="POST"
             :action="`{{ url('/admin/devices') }}/${editDevice.id}`"
             enctype="multipart/form-data"
             class="space-y-4"
+            data-equipment-edit-form
             x-ref="editEquipmentForm"
             x-on:submit="cleanUnitPrices($event.target)"
         >
             @csrf
             @method('PUT')
             <input type="hidden" name="device_id" x-model="editDevice.id">
+            <input type="hidden" name="return_to" value="{{ $equipmentReturnTo }}">
 
             @include('admin.devices._add-equipment-fields', [
                 'lockEquipmentType' => true,
@@ -1163,6 +1206,7 @@
                 </button>
                 <button
                     type="button"
+                    data-equipment-edit-cancel
                     class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                     x-on:click="editOpen = false"
                 >
@@ -1389,7 +1433,7 @@
                                     <option value="SSD">SSD</option>
                                     <option value="HDD">HDD</option>
                                 </select>
-                                <select x-model="storage.capacity" @change="markStorageDirty()" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" x-show="storage.type" :disabled="!isComputerType(editDevice.device_type_id) || !storage.type" aria-label="Storage capacity">
+                                <select x-model="storage.capacity" @change="markStorageDirty()" x-effect="(() => { const value = storage.capacity || ''; $nextTick(() => { $el.value = value; }); })()" class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" :class="{ 'opacity-60': !storage.type }" :disabled="!isComputerType(editDevice.device_type_id) || !storage.type" aria-label="Storage capacity">
                                     <option value="">Select capacity</option>
                                     <template x-for="capacity in (capacities[storage.type] || [])" :key="capacity"><option :value="capacity" x-text="capacity"></option></template>
                                     <option x-show="storage.capacity && !(capacities[storage.type] || []).includes(storage.capacity)" :value="storage.capacity" x-text="storage.capacity"></option>

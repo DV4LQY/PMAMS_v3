@@ -19,6 +19,7 @@
     $canEditPmPlan = (bool) ($pmPlanUser?->isSuperAdmin() || ($pmPlanUser?->canAction('maintenance_plan', 'edit') ?? false));
     $canDeletePmPlan = (bool) ($pmPlanUser?->isSuperAdmin() || ($pmPlanUser?->canAction('maintenance_plan', 'delete') ?? false));
     $canOverridePmPlan = (bool) ($pmPlanUser && ($pmPlanUser->isAdmin() || $pmPlanUser->isCustodian()));
+    $pmPlanEditScheduleId = (int) old('edit_schedule_id', 0);
     $pmPlanSelectedOfficeIds = collect(old('office_ids', []))
         ->map(fn ($id) => (string) $id)
         ->filter()
@@ -46,7 +47,7 @@
         }
     }
 @endphp
-<div class="space-y-6" x-data="maintenanceCompletionModal()">
+<div class="space-y-6" x-data="maintenanceCompletionModal(@js($openCompletion ?? null), @js($completionSavedId ?? null), @js($pmPlanUser?->id))">
     <div class="flex flex-col gap-4 rounded-2xl sm:flex-row sm:items-center sm:justify-between">
         <div>
             <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
@@ -118,7 +119,11 @@
                       <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one location and optionally select several offices. Leaving offices unchecked creates one location-wide schedule. Review the target preview above before publishing.</p>
                 </div>
                 <div>
-                    @php($selectedAssignedUserIds = collect(old('assigned_user_ids', old('assigned_user_id') ? [old('assigned_user_id')] : []))->map(fn ($id) => (int) $id)->all())
+                    @php
+                        $selectedAssignedUserIds = collect(old('assigned_user_ids', old('assigned_user_id') ? [old('assigned_user_id')] : []))
+                            ->map(fn ($id) => (int) $id)
+                            ->all();
+                    @endphp
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin <span class="font-normal text-gray-500">(select one or more)</span></label>
                     <div class="overflow-hidden rounded-xl border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800">
                         <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
@@ -280,7 +285,9 @@
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($schedules as $row)
-                        @php($schedule = $row['schedule'])
+                        @php
+                            $schedule = $row['schedule'];
+                        @endphp
                         <tr class="align-top hover:bg-gray-50 dark:hover:bg-gray-900/30">
                             @if($canDeletePmPlan)
                                 <td class="px-4 py-4 text-center">
@@ -290,7 +297,9 @@
                             <td class="px-4 py-4">
                                 <div class="font-semibold text-gray-900 dark:text-white">{{ $row['office'] }}</div>
                                 <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ $schedule->title }}</div>
-                                @php($assignedNames = $schedule->assignedUsers->pluck('name')->filter()->values())
+                                @php
+                                    $assignedNames = $schedule->assignedUsers->pluck('name')->filter()->values();
+                                @endphp
                                 @if($assignedNames->isNotEmpty())
                                     <div class="mt-2 text-xs text-blue-700 dark:text-blue-300">Assigned: {{ $assignedNames->join(', ') }}</div>
                                 @elseif($schedule->assignedUser)
@@ -368,8 +377,41 @@
                                     @endif
                                 </div>
                                  @if($canEditPmPlan)
-                                    @php($scheduleAssignedIds = $schedule->assignedUsers->pluck('id')->merge([$schedule->assigned_user_id])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all())
-                                    <div id="pm-plan-edit-{{ $schedule->id }}" role="dialog" aria-modal="true" style="display:none" class="fixed inset-0 z-[80] overflow-y-auto bg-gray-950/70 p-4" x-data="maintenancePlanEditForm(@js($locations->map(fn ($location) => ['id' => $location->id, 'code' => $location->code, 'name' => $location->name, 'offices' => $location->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values()])->values()), @js((string) $schedule->location_id), @js((string) ($schedule->office_id ?? ''))) ">
+                                    @php
+                                        $scheduleAssignedIds = $schedule->assignedUsers->pluck('id')
+                                            ->merge([$schedule->assigned_user_id])
+                                            ->filter()
+                                            ->map(fn ($id) => (int) $id)
+                                            ->unique()
+                                            ->values()
+                                            ->all();
+                                        $editingThisSchedule = $pmPlanEditScheduleId === (int) $schedule->id;
+                                        $editLocationId = $editingThisSchedule
+                                            ? (int) old('location_id', $schedule->location_id)
+                                            : (int) $schedule->location_id;
+                                        $editOfficeId = $editingThisSchedule
+                                            ? (int) old('office_id', $schedule->office_id ?? 0)
+                                            : (int) ($schedule->office_id ?? 0);
+                                        $editMonthFrom = $editingThisSchedule
+                                            ? (string) old('schedule_month_from', optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m'))
+                                            : (string) optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m');
+                                        $editMonthTo = $editingThisSchedule
+                                            ? (string) old('schedule_month_to', optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m'))
+                                            : (string) optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m');
+                                        $editTitle = $editingThisSchedule ? old('title', $schedule->title) : $schedule->title;
+                                        $editNotes = $editingThisSchedule ? old('notes', $schedule->notes) : $schedule->notes;
+                                        $editAssignedIds = $editingThisSchedule
+                                            ? collect(old('assigned_user_ids', old('assigned_user_id') !== null && old('assigned_user_id') !== '' ? [old('assigned_user_id')] : []))
+                                                ->map(fn ($id) => (int) $id)
+                                                ->filter()
+                                                ->unique()
+                                                ->values()
+                                                ->all()
+                                            : $scheduleAssignedIds;
+                                        $editLocation = $locations->firstWhere('id', $editLocationId);
+                                        $editOffice = $editLocation?->offices?->firstWhere('id', $editOfficeId);
+                                    @endphp
+                                    <div id="pm-plan-edit-{{ $schedule->id }}" role="dialog" aria-modal="true" style="display:{{ $editingThisSchedule ? 'block' : 'none' }}" @if($editingThisSchedule) data-native-open="true" @endif class="fixed inset-0 z-[80] overflow-y-auto bg-gray-950/70 p-4" x-data="maintenancePlanEditForm(@js($locations->map(fn ($location) => ['id' => $location->id, 'code' => $location->code, 'name' => $location->name, 'offices' => $location->offices->map(fn ($office) => ['id' => $office->id, 'name' => $office->name])->values()])->values()), @js((string) $editLocationId), @js($editOfficeId > 0 ? (string) $editOfficeId : ''))">
                                         <div class="flex min-h-full items-center justify-center">
                                             <div class="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800">
                                                 <div class="mb-4 flex items-start justify-between gap-4">
@@ -378,13 +420,14 @@
                                                 </div>
                                                 <form method="POST" action="{{ route('admin.maintenance-plan.update', $schedule) }}" data-spa-form="true" class="space-y-3">
                                                     @csrf @method('PUT')
+                                                    <input type="hidden" name="edit_schedule_id" value="{{ $schedule->id }}">
                                                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                                         <div>
                                                             <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Location <span class="text-red-500">*</span></label>
                                                             <select name="location_id" x-model="locationId" @change="syncOffice($event.target.value)" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                                 <option value="">Select a registered location</option>
                                                                 @foreach($locations as $location)
-                                                                    <option value="{{ $location->id }}">{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
+                                                                    <option value="{{ $location->id }}" @selected((int) $location->id === $editLocationId)>{{ $location->code ? $location->code . ' - ' : '' }}{{ $location->name }}</option>
                                                                 @endforeach
                                                             </select>
                                                         </div>
@@ -392,6 +435,10 @@
                                                             <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Office <span class="font-normal text-gray-500">(optional)</span></label>
                                                             <select name="office_id" x-model="officeId" @change="rememberOffice()" :disabled="!locationId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                                 <option value="">All offices / location-wide</option>
+                                                                @if($editOfficeId > 0 && $editOffice)
+                                                                    {{-- Fallback keeps the current office visible before Alpine initializes. --}}
+                                                                    <option data-pm-plan-fallback-office value="{{ $editOffice->id }}" selected>{{ $editOffice->name }}</option>
+                                                                @endif
                                                                 <template x-for="office in availableOffices" :key="office.id">
                                                                     <option :value="String(office.id)" x-text="office.name"></option>
                                                                 </template>
@@ -401,8 +448,8 @@
                                                     </div>
                                                     <p class="text-xs text-gray-500 dark:text-gray-400">Choose a registered location and, optionally, one of its offices. Changing the target keeps this plan’s completion and override history attached to the schedule.</p>
                                                     <div class="grid grid-cols-2 gap-2">
-                                                        <input type="month" name="schedule_month_from" value="{{ optional($schedule->schedule_month_from ?: $schedule->scheduled_date)->format('Y-m') }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                                                        <input type="month" name="schedule_month_to" value="{{ optional($schedule->schedule_month_to ?: $schedule->scheduled_date)->format('Y-m') }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                        <input type="month" name="schedule_month_from" value="{{ $editMonthFrom }}" required class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                                                        <input type="month" name="schedule_month_to" value="{{ $editMonthTo }}" class="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                                                     </div>
                                                     <p class="text-xs text-gray-500 dark:text-gray-400">The edited range cannot overlap another PM Plan for the selected location and office. Recycled plans are included in the duplicate check.</p>
                                                     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Assigned Admin / Super Admin</label>
@@ -414,7 +461,7 @@
                                                         <div class="max-h-40 overflow-y-auto p-2">
                                                             @forelse($admins as $admin)
                                                                 <label class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-gray-700">
-                                                                    <input type="checkbox" name="assigned_user_ids[]" value="{{ $admin->id }}" @checked(in_array((int) $admin->id, $scheduleAssignedIds, true)) class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 dark:border-gray-500 dark:bg-gray-700">
+                                                                    <input type="checkbox" name="assigned_user_ids[]" value="{{ $admin->id }}" @checked(in_array((int) $admin->id, $editAssignedIds, true)) class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 dark:border-gray-500 dark:bg-gray-700">
                                                                     <span>{{ $admin->name }} <span class="text-xs text-gray-500 dark:text-gray-400">({{ $admin->roleLabel() }})</span></span>
                                                                 </label>
                                                             @empty
@@ -423,11 +470,11 @@
                                                         </div>
                                                     </div>
                                                     <p class="text-xs text-gray-500 dark:text-gray-400">Leave every box unchecked to allow all eligible Admin or Super Admin accounts.</p>
-                                                    <input type="text" name="title" value="{{ $schedule->title }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" placeholder="Schedule title">
-                                                    <textarea name="notes" rows="3" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $schedule->notes }}</textarea>
+                                                    <input type="text" name="title" value="{{ $editTitle }}" required maxlength="150" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" placeholder="Schedule title">
+                                                    <textarea name="notes" rows="3" maxlength="2000" placeholder="Planning notes" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">{{ $editNotes }}</textarea>
                                                     <div class="flex justify-end gap-2 pt-2">
                                                         <button type="button" data-native-modal-close="pm-plan-edit-{{ $schedule->id }}" class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
-                                                        <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save schedule</button>
+                                                        <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Update</button>
                                                     </div>
                                                 </form>
                                             </div>
@@ -485,17 +532,18 @@
         @endif
     </div>
 
-    <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-950/70 p-4 sm:items-center" role="dialog" aria-modal="true" @keydown.escape.window="open = false">
-        <div class="my-auto max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800" @click.outside="open = false">
+    <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-950/70 p-4 sm:items-center" role="dialog" aria-modal="true" @keydown.escape.window="closeCompletion()">
+        <div class="my-auto max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800" @click.outside="closeCompletion()">
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Record office completion</h2>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">All equipment in this target has a checklist record. Add the sign-off details for the monitoring report.</p>
                 </div>
-                <button type="button" @click="open = false" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close">&times;</button>
+                <button type="button" @click="closeCompletion()" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close">&times;</button>
             </div>
-            <form method="POST" :action="action" data-spa-form="true" class="mt-5 space-y-4">
+            <form method="POST" :action="action" data-spa-form="true" class="mt-5 space-y-4" @submit="rememberCompletionState()">
                 @csrf
+                <input type="hidden" name="return_to" x-bind:value="returnTo">
                 <input type="hidden" name="privacy_consent" :value="consentGiven ? '1' : '0'">
                 <div x-show="!consentGiven" x-cloak class="space-y-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
                     <h3 class="font-semibold">Data Privacy consent</h3>
@@ -505,14 +553,14 @@
                         <span>I have read and consent to proceed.</span>
                     </label>
                     <div class="flex justify-end gap-2">
-                        <button type="button" @click="open = false" class="rounded-xl bg-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100">Cancel</button>
+                        <button type="button" @click="closeCompletion()" class="rounded-xl bg-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100">Cancel</button>
                         <button type="button" @click="consentGiven = true" :disabled="!consentChecked" class="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Proceed</button>
                     </div>
                 </div>
                 <div x-show="consentGiven" x-cloak class="space-y-4">
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Actual date</label>
-                    <input type="date" name="actual_date" x-model="form.actual_date" required class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    <input type="date" name="actual_date" x-model="form.actual_date" @input="$nextTick(() => rememberCompletionState())" @change="$nextTick(() => rememberCompletionState())" required class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Person/s in charge</label>
@@ -520,7 +568,7 @@
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Name of signer</label>
-                    <input type="text" name="signer_name" x-model="form.signer_name" required maxlength="255" placeholder="Full name of the person signing" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    <input type="text" name="signer_name" x-model="form.signer_name" @input="$nextTick(() => rememberCompletionState())" @change="$nextTick(() => rememberCompletionState())" required maxlength="255" placeholder="Full name of the person signing" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Signature <span class="font-normal text-gray-500">(optional)</span></label>
@@ -535,10 +583,10 @@
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Remarks</label>
-                    <textarea name="remarks" x-model="form.remarks" rows="3" maxlength="2000" placeholder="Optional monitoring remarks" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"></textarea>
+                    <textarea name="remarks" x-model="form.remarks" @input="$nextTick(() => rememberCompletionState())" @change="$nextTick(() => rememberCompletionState())" rows="3" maxlength="2000" placeholder="Optional monitoring remarks" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"></textarea>
                 </div>
                 <div class="flex justify-end gap-2">
-                    <button type="button" @click="open = false" class="rounded-xl bg-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
+                    <button type="button" @click="closeCompletion()" class="rounded-xl bg-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
                     <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700">Save completion</button>
                 </div>
                 </div>
@@ -695,6 +743,23 @@
             },
             init() {
                 this.rememberOffice();
+
+                // Keep the server-rendered option in place until Alpine has
+                // rendered the dependent office options. Removing it during
+                // init happens before x-model/x-for finish and makes the
+                // selected office fall back to the location-wide option.
+                this.$nextTick(() => {
+                    this.$root?.querySelectorAll('[data-pm-plan-fallback-office]').forEach((option) => option.remove());
+
+                    // Removing the fallback can move the native select back
+                    // to its first option. Re-apply the existing office after
+                    // the x-for options are present so the saved value is
+                    // both visible and submitted.
+                    const officeSelect = this.$root?.querySelector('select[name="office_id"]');
+                    if (officeSelect) {
+                        officeSelect.value = this.officeId || '';
+                    }
+                });
             },
             rememberOffice() {
                 const selected = this.availableOffices.find((office) => String(office.id) === String(this.officeId));
@@ -735,42 +800,163 @@
         };
     }
 
-    function maintenanceCompletionModal() {
+    function maintenanceCompletionModal(initialCompletion = null, completionSavedId = null, ownerId = null) {
+        const normaliseId = (id) => id === null || id === undefined ? '' : String(id);
+        const ownerKey = normaliseId(ownerId) || 'anonymous';
+        const draftPrefix = `pmams-maintenance-completion:${ownerKey}:`;
+        const activeDraftKey = `${draftPrefix}active`;
+        const emptyForm = () => ({ actual_date: '', person_in_charge: '', signer_name: '', signature_data: '', remarks: '' });
+        const getStorage = () => {
+            try { return window.sessionStorage; } catch (error) { return null; }
+        };
+
         return {
             open: false,
             consentChecked: false,
             consentGiven: false,
             action: '',
-            form: { actual_date: '', person_in_charge: '', signer_name: '', signature_data: '', remarks: '' },
+            scheduleId: '',
+            returnTo: '',
+            initialCompletion,
+            completionSavedId,
+            form: emptyForm(),
             pad: null,
             ctx: null,
             drawing: false,
+            readDraft(id) {
+                const storage = getStorage();
+                const scheduleId = normaliseId(id);
+                if (!storage || !scheduleId) return null;
+
+                try {
+                    const draft = JSON.parse(storage.getItem(`${draftPrefix}${scheduleId}`) || 'null');
+                    return draft?.version === 1 && normaliseId(draft.id) === scheduleId && draft.form && typeof draft.form === 'object'
+                        ? draft
+                        : null;
+                } catch (error) {
+                    return null;
+                }
+            },
+            readActiveDraft() {
+                const storage = getStorage();
+                if (!storage) return null;
+
+                try {
+                    const activeId = storage.getItem(activeDraftKey);
+                    return activeId ? this.readDraft(activeId) : null;
+                } catch (error) {
+                    return null;
+                }
+            },
+            rememberCompletionState() {
+                const storage = getStorage();
+                const scheduleId = normaliseId(this.scheduleId);
+                if (!storage || !this.open || !scheduleId || !this.action) return;
+
+                try {
+                    storage.setItem(`${draftPrefix}${scheduleId}`, JSON.stringify({
+                        version: 1,
+                        id: scheduleId,
+                        action: this.action,
+                        return_to: this.returnTo || '',
+                        form: { ...this.form },
+                    }));
+                    storage.setItem(activeDraftKey, scheduleId);
+                } catch (error) {
+                    // Restricted/private browsers may disable sessionStorage.
+                }
+            },
+            clearCompletionState(id = this.scheduleId) {
+                const storage = getStorage();
+                const scheduleId = normaliseId(id);
+                if (!storage || !scheduleId) return;
+
+                try { storage.removeItem(`${draftPrefix}${scheduleId}`); } catch (error) { /* best effort */ }
+                try {
+                    if (storage.getItem(activeDraftKey) === scheduleId) storage.removeItem(activeDraftKey);
+                } catch (error) { /* best effort */ }
+            },
+            clearCompletionQuery() {
+                try {
+                    const url = new URL(window.location.href);
+                    if (!url.searchParams.has('open_completion')) return;
+                    url.searchParams.delete('open_completion');
+                    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+                } catch (error) {
+                    // History APIs can be unavailable in restricted webviews.
+                }
+            },
+            closeCompletion() {
+                this.clearCompletionState();
+                this.clearCompletionQuery();
+                this.open = false;
+                this.consentChecked = false;
+                this.consentGiven = false;
+                this.action = '';
+                this.scheduleId = '';
+                this.returnTo = '';
+            },
             init() {
                 this.$nextTick(() => {
                     const canvas = document.getElementById('completion-signature-pad');
-                    if (!canvas) return;
-                    this.pad = canvas;
-                    this.ctx = canvas.getContext('2d');
-                    this.ctx.lineWidth = 2;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.strokeStyle = '#111827';
-                    canvas.addEventListener('pointerdown', (event) => { this.drawing = true; canvas.setPointerCapture(event.pointerId); this.ctx.beginPath(); this.ctx.moveTo(...this.point(event)); });
-                    canvas.addEventListener('pointermove', (event) => { if (!this.drawing) return; this.ctx.lineTo(...this.point(event)); this.ctx.stroke(); });
-                    ['pointerup', 'pointercancel', 'pointerleave'].forEach((name) => canvas.addEventListener(name, () => { if (this.drawing) this.form.signature_data = this.pad.toDataURL('image/png'); this.drawing = false; }));
+                    if (canvas && !this.pad) {
+                        this.pad = canvas;
+                        this.ctx = canvas.getContext('2d');
+                        this.ctx.lineWidth = 2;
+                        this.ctx.lineCap = 'round';
+                        this.ctx.strokeStyle = '#111827';
+                        canvas.addEventListener('pointerdown', (event) => { this.drawing = true; canvas.setPointerCapture(event.pointerId); this.ctx.beginPath(); this.ctx.moveTo(...this.point(event)); });
+                        canvas.addEventListener('pointermove', (event) => { if (!this.drawing) return; this.ctx.lineTo(...this.point(event)); this.ctx.stroke(); });
+                        ['pointerup', 'pointercancel', 'pointerleave'].forEach((name) => canvas.addEventListener(name, () => {
+                            if (this.drawing) {
+                                this.form.signature_data = this.pad.toDataURL('image/png');
+                                this.rememberCompletionState();
+                            }
+                            this.drawing = false;
+                        }));
+                    }
+
+                    const savedId = normaliseId(this.completionSavedId);
+                    if (savedId) {
+                        this.clearCompletionState(savedId);
+                        this.clearCompletionQuery();
+                    }
+
+                    const initial = !savedId && this.initialCompletion?.id && this.initialCompletion?.action
+                        ? this.initialCompletion
+                        : (!savedId ? this.readActiveDraft() : null);
+                    if (initial?.id && initial?.action) {
+                        this.openCompletion(initial.id, initial.action, initial.form || {}, initial.return_to || '');
+                    }
                 });
             },
             point(event) { const rect = this.pad.getBoundingClientRect(); return [(event.clientX - rect.left) * (this.pad.width / rect.width), (event.clientY - rect.top) * (this.pad.height / rect.height)]; },
-            clearSignature() { if (this.ctx) this.ctx.clearRect(0, 0, this.pad.width, this.pad.height); this.form.signature_data = ''; },
-            openCompletion(id, action, form) {
-                this.action = action;
-                this.form = { ...this.form, ...(form || {}) };
+            clearSignature() {
+                if (this.ctx) this.ctx.clearRect(0, 0, this.pad.width, this.pad.height);
+                this.form.signature_data = '';
+                this.rememberCompletionState();
+            },
+            openCompletion(id, action, form, returnTo = '') {
+                const nextId = normaliseId(id);
+                if (!nextId) return;
+
+                const draft = this.readDraft(nextId);
+                this.scheduleId = nextId;
+                this.action = action || draft?.action || '';
+                this.returnTo = returnTo || draft?.return_to || '';
+                this.form = { ...emptyForm(), ...(form || {}), ...(draft?.form || {}) };
                 this.consentChecked = false;
                 this.consentGiven = false;
                 this.open = true;
+                this.rememberCompletionState();
                 this.$nextTick(() => {
                     if (!this.ctx) return;
                     this.ctx.clearRect(0, 0, this.pad.width, this.pad.height);
-                    if (this.form.signature_data) { const image = new Image(); image.onload = () => this.ctx.drawImage(image, 0, 0, this.pad.width, this.pad.height); image.src = this.form.signature_data; }
+                    if (this.form.signature_data) {
+                        const image = new Image();
+                        image.onload = () => this.ctx.drawImage(image, 0, 0, this.pad.width, this.pad.height);
+                        image.src = this.form.signature_data;
+                    }
                 });
             },
         };

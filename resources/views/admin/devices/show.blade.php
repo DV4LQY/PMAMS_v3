@@ -19,7 +19,8 @@
     $editReturnPath = parse_url($deviceUrl, PHP_URL_PATH);
     $editComputerName = old('computer_name', $device->computer_name ?? data_get($device->specs, 'computer_name', ''));
     $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
-    $editLastMaintenanceDate = old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '');
+    $effectiveLastMaintenanceDate = $device->effectiveLastMaintenanceDate();
+    $editLastMaintenanceDate = old('last_maintenance_date', $effectiveLastMaintenanceDate?->format('Y-m-d') ?? '');
     $editCondition = strtolower((string) old('condition', $device->condition ?? 'serviceable'));
     $reissueReturnPath = parse_url($deviceUrl, PHP_URL_PATH) . '?reissue_open=1';
     $reissueStaffOffice = $device->currentAssignment?->office ?: $device->currentAssignment?->staff?->office;
@@ -194,7 +195,9 @@
                 setValue('specs[memory]', specs.memory);
                 setValue('specs[processor]', specs.processor);
                 setValue('specs[storage]', specs.storage);
-                form.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '', bubbles: true }));
+                // Dispatch on the window so the nested storage editor receives
+                // the saved value even when the modal is initialized lazily.
+                window.dispatchEvent(new CustomEvent('pmams-storage-sync', { detail: specs.storage ?? '' }));
                 setValue('specs[form_factor]', specs.form_factor);
                 setValue('os_version', this.addOsVersion);
                 setValue('os_license', device.os_license);
@@ -820,7 +823,7 @@
                 <div>
                     <div class="text-sm text-gray-500">Last Maintenance</div>
                     <div class="font-medium text-gray-900">
-                        {{ $device->last_maintenance_date ? $device->last_maintenance_date->format('M d, Y') : 'Not yet checked' }}
+                        {{ $effectiveLastMaintenanceDate?->format('M d, Y') ?? 'Not yet checked' }}
                     </div>
                 </div>
                     </div>
@@ -855,15 +858,36 @@
                     <div class="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
                         @if($currentStaff)
                             <div class="font-medium text-gray-900">
-                                {{ $currentStaff->last_name }},
-                                {{ $currentStaff->first_name }}
+                                <a
+                                    href="{{ route('admin.staff.devices.index', $currentStaff) }}"
+                                    class="text-blue-700 hover:underline dark:text-blue-400"
+                                    title="View equipment assigned to {{ $currentStaff->last_name }}, {{ $currentStaff->first_name }}"
+                                >
+                                    {{ $currentStaff->last_name }}, {{ $currentStaff->first_name }}
+                                </a>
                             </div>
 
                             <div class="mt-1 text-sm text-gray-500">
-                                {{ $currentOffice?->name ?? 'No office' }}
+                                @if($currentOffice)
+                                    <a
+                                        href="{{ route('admin.staff.index', $currentOffice) }}"
+                                        class="text-blue-700 hover:underline dark:text-blue-400"
+                                        title="View staff in {{ $currentOffice->name }}"
+                                    >
+                                        {{ $currentOffice->name }}
+                                    </a>
+                                @else
+                                    No office
+                                @endif
                                 @if($assignmentLocation)
                                     /
-                                    {{ $assignmentLocation->code ? $assignmentLocation->code . ' - ' : '' }}{{ $assignmentLocation->name }}
+                                    <a
+                                        href="{{ route('admin.offices.index', $assignmentLocation) }}"
+                                        class="text-blue-700 hover:underline dark:text-blue-400"
+                                        title="View offices in {{ $assignmentLocation->name }}"
+                                    >
+                                        {{ $assignmentLocation->code ? $assignmentLocation->code . ' - ' : '' }}{{ $assignmentLocation->name }}
+                                    </a>
                                 @endif
                             </div>
                         @else
@@ -872,7 +896,17 @@
                             </div>
 
                             <div class="mt-1 text-sm text-gray-500">
-                                {{ $assignmentLocation ? (($assignmentLocation->code ? $assignmentLocation->code . ' - ' : '') . $assignmentLocation->name) : 'No location selected' }}
+                                @if($assignmentLocation)
+                                    <a
+                                        href="{{ route('admin.offices.index', $assignmentLocation) }}"
+                                        class="text-blue-700 hover:underline dark:text-blue-400"
+                                        title="View offices in {{ $assignmentLocation->name }}"
+                                    >
+                                        {{ $assignmentLocation->code ? $assignmentLocation->code . ' - ' : '' }}{{ $assignmentLocation->name }}
+                                    </a>
+                                @else
+                                    No location selected
+                                @endif
                             </div>
                         @endif
 
@@ -965,6 +999,8 @@
         id="edit-device-modal"
         x-show="editOpen"
         x-cloak
+        role="dialog"
+        aria-modal="true"
         @keydown.escape.window="editOpen = false"
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
     >
@@ -991,6 +1027,7 @@
                 action="{{ route('admin.devices.update', $device) }}"
                 enctype="multipart/form-data"
                 class="space-y-4"
+                data-equipment-edit-form
                 x-ref="editEquipmentForm"
                 x-on:submit="cleanUnitPrices($event.target)"
             >
@@ -1002,6 +1039,7 @@
 
                 <div class="max-h-[75vh] overflow-y-auto px-6 py-5">
                     @include('admin.devices._add-equipment-fields', [
+                        'formDevice' => $device,
                         'lockEquipmentType' => true,
                     ])
                 </div>
@@ -1010,6 +1048,7 @@
                     <button
                         type="button"
                         data-native-modal-close="edit-device-modal"
+                        data-equipment-edit-cancel
                         x-on:click="editOpen = false"
                         class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                     >
@@ -1300,7 +1339,7 @@
                                 name="last_maintenance_date"
                                 type="date"
                                 max="{{ now()->format('Y-m-d') }}"
-                                value="{{ old('last_maintenance_date', $device->last_maintenance_date ? $device->last_maintenance_date->format('Y-m-d') : '') }}"
+                                value="{{ old('last_maintenance_date', $effectiveLastMaintenanceDate?->format('Y-m-d') ?? '') }}"
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                             >
                         </div>
