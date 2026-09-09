@@ -736,6 +736,7 @@
                     : ($d->deployedOffice?->location ?? $d->deployedLocation);
                 $displayLocationName = $displayLocation?->name ?: ($currentAssignment ? '-' : ($d->location_deployed ?: '-'));
                 $displayOfficeName = $displayOffice?->name ?: '-';
+                $displayDateAcquired = $d->effectiveDateAcquired();
                 $displayLastMaintenanceDate = $d->effectiveLastMaintenanceDate();
             @endphp
 
@@ -782,7 +783,7 @@
                     <div>
                         <div class="text-gray-500 dark:text-gray-400">Acquired</div>
                         <div class="text-gray-900 dark:text-white">
-                            {{ $d->date_acquired ? $d->date_acquired->format('M d, Y') : '-' }}
+                            {{ $displayDateAcquired?->format('M d, Y') ?? '-' }}
                         </div>
                     </div>
 
@@ -880,8 +881,8 @@
                             location_deployed_id: @js($d->location_deployed_id ?? ''),
                             office_deployed_id: @js($d->office_deployed_id ?? ''),
                             mac_address: @js($d->mac_address ?? ''),
-                            unit_price: @js($d->unit_price ?? ''),
-                            date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
+                            unit_price: @js($d->effectiveUnitPrice() ?? ''),
+                            date_acquired: @js($displayDateAcquired?->format('Y-m-d') ?? ''),
                             last_maintenance_date: @js($displayLastMaintenanceDate?->format('Y-m-d') ?? ''),
                             maintenance_remarks: @js(''),
                             status: @js($d->status ?? 'available'),
@@ -959,6 +960,7 @@
                                 : ($d->deployedOffice?->location ?? $d->deployedLocation);
                             $displayLocationName = $displayLocation?->name ?: ($currentAssignment ? '-' : ($d->location_deployed ?: '-'));
                             $displayOfficeName = $displayOffice?->name ?: '-';
+                            $displayDateAcquired = $d->effectiveDateAcquired();
                             $displayLastMaintenanceDate = $d->effectiveLastMaintenanceDate();
                         @endphp
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
@@ -987,7 +989,7 @@
                                 <div class="text-xs text-gray-500 dark:text-gray-400">Office: {{ $displayOfficeName }}</div>
                             </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                                {{ $d->date_acquired ? $d->date_acquired->format('M d, Y') : '-' }}
+                                {{ $displayDateAcquired?->format('M d, Y') ?? '-' }}
                             </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 @if($displayLastMaintenanceDate)
@@ -1055,8 +1057,8 @@
                                             location_deployed_id: @js($d->location_deployed_id ?? ''),
                                             office_deployed_id: @js($d->office_deployed_id ?? ''),
                                             mac_address: @js($d->mac_address ?? ''),
-                                            unit_price: @js($d->unit_price ?? ''),
-                                            date_acquired: @js($d->date_acquired ? $d->date_acquired->format('Y-m-d') : ''),
+                                            unit_price: @js($d->effectiveUnitPrice() ?? ''),
+                                            date_acquired: @js($displayDateAcquired?->format('Y-m-d') ?? ''),
                                             last_maintenance_date: @js($displayLastMaintenanceDate?->format('Y-m-d') ?? ''),
                                             maintenance_remarks: @js(''),
                                             status: @js($d->status ?? 'available'),

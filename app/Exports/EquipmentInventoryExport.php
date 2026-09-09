@@ -82,6 +82,8 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
         $staff = $assignment?->staff;
         $office = $assignment?->office ?: $staff?->office;
         $location = $assignment?->location ?? $office?->location;
+        $effectiveUnitPrice = $device->effectiveUnitPrice();
+        $effectiveDateAcquired = $device->effectiveDateAcquired();
 
         return [
             // Keep linked peripherals aligned with their parent group while
@@ -108,8 +110,8 @@ class EquipmentInventoryExport implements FromQuery, ShouldAutoSize, WithEvents,
             $device->os_license,
             $device->ms_office_version,
             $device->ms_office_license,
-            $device->unit_price !== null ? (float) $device->unit_price : null,
-            $device->date_acquired?->format('Y-m-d'),
+            $effectiveUnitPrice !== null ? (float) $effectiveUnitPrice : null,
+            $effectiveDateAcquired?->format('Y-m-d'),
             ucfirst((string) $device->status),
             ucfirst((string) $device->condition),
             $device->effectiveLastMaintenanceDate()?->format('Y-m-d'),

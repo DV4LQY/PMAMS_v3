@@ -39,6 +39,10 @@
                 if (!response.ok) throw new Error('Unable to search property numbers.');
                 const data = await response.json();
                 this.results = Array.isArray(data.results) ? data.results : [];
+                const exactMatch = this.results.find((result) =>
+                    String(result.property_number || '').toLowerCase() === this.query.toLowerCase()
+                );
+                if (exactMatch) this.applyParentDefaults(exactMatch);
             } catch (error) {
                 if (error.name !== 'AbortError') this.results = [];
             } finally {
@@ -49,10 +53,41 @@
             clearTimeout(this.timer);
             this.timer = setTimeout(() => this.search(), 250);
         },
+        applyParentDefaults(result) {
+            const form = this.$refs.partPropertyInput?.closest('form');
+            if (!form) return;
+
+            const setField = (name, value) => {
+                const input = form.querySelector(`[name='${name}']`);
+                if (!input) return;
+                input.value = value ?? '';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+
+            const unitPriceInput = form.querySelector('[name=unit_price]');
+            const rawUnitPrice = result.unit_price === null || result.unit_price === undefined
+                ? ''
+                : String(result.unit_price).replace(/,/g, '');
+            const formatUnitPrice = (value) => {
+                const parts = String(value ?? '').replace(/[^0-9.]/g, '').split('.');
+                let whole = parts.shift() || '';
+                const decimals = parts.length ? '.' + parts.join('').slice(0, 2) : '';
+                whole = whole.replace(/^0+(?=\d)/, '');
+                return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + decimals;
+            };
+            const unitPrice = unitPriceInput?.type === 'number'
+                ? rawUnitPrice
+                : formatUnitPrice(rawUnitPrice);
+
+            setField('unit_price', unitPrice);
+            setField('date_acquired', result.date_acquired || '');
+        },
         select(result) {
             this.$refs.partPropertyInput.value = result.property_number;
             this.$refs.partPropertyInput.dispatchEvent(new Event('input', { bubbles: true }));
             this.$refs.partPropertyInput.dispatchEvent(new Event('change', { bubbles: true }));
+            this.applyParentDefaults(result);
             this.open = false;
         }
     }"

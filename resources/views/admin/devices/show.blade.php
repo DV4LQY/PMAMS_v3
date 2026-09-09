@@ -18,7 +18,9 @@
     $deviceUrl = route('admin.devices.show', $device);
     $editReturnPath = parse_url($deviceUrl, PHP_URL_PATH);
     $editComputerName = old('computer_name', $device->computer_name ?? data_get($device->specs, 'computer_name', ''));
-    $editDateAcquired = old('date_acquired', $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '');
+    $effectiveDateAcquired = $device->effectiveDateAcquired();
+    $effectiveUnitPrice = $device->effectiveUnitPrice();
+    $editDateAcquired = old('date_acquired', $effectiveDateAcquired?->format('Y-m-d') ?? '');
     $effectiveLastMaintenanceDate = $device->effectiveLastMaintenanceDate();
     $editLastMaintenanceDate = old('last_maintenance_date', $effectiveLastMaintenanceDate?->format('Y-m-d') ?? '');
     $editCondition = strtolower((string) old('condition', $device->condition ?? 'serviceable'));
@@ -53,7 +55,7 @@
             location_deployed_id: @json(old('location_deployed_id', $device->location_deployed_id)),
             office_deployed_id: @json(old('office_deployed_id', $device->office_deployed_id)),
             mac_address: @json(old('mac_address', $device->mac_address)),
-            unit_price: @json(old('unit_price', $device->unit_price)),
+            unit_price: @json(old('unit_price', $effectiveUnitPrice)),
             date_acquired: @json($editDateAcquired),
             last_maintenance_date: @json($editLastMaintenanceDate),
             // Do not preload checklist-generated remarks into the edit form.
@@ -802,14 +804,14 @@
                 <div>
                     <div class="text-sm text-gray-500">Unit Price</div>
                     <div class="font-medium text-gray-900">
-                        {{ $device->unit_price ? number_format($device->unit_price, 2) : '-' }}
+                        {{ $effectiveUnitPrice !== null && $effectiveUnitPrice !== '' ? number_format((float) $effectiveUnitPrice, 2) : '-' }}
                     </div>
                 </div>
 
                 <div>
                     <div class="text-sm text-gray-500">Date Acquired</div>
                     <div class="font-medium text-gray-900">
-                        {{ $device->date_acquired ? $device->date_acquired->format('Y-m-d') : '-' }}
+                        {{ $effectiveDateAcquired?->format('Y-m-d') ?? '-' }}
                     </div>
                 </div>
 

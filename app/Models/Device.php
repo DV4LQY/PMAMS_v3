@@ -317,4 +317,114 @@ class Device extends Model
 
         return true;
     }
+
+    /**
+     * Return the acquisition date that should be displayed for this record.
+     *
+     * A peripheral belongs to its standalone parent property for acquisition
+     * details as well as maintenance history.  Resolve the parent only when
+     * the relationship is present so unlinked equipment keeps its own value.
+     */
+    public function effectiveDateAcquired(?self $parent = null): ?Carbon
+    {
+        if (filled($this->part_of_property_number)) {
+            $parent ??= $this->resolvedParentPropertyForInheritance();
+
+            if ($parent) {
+                return $this->asAcquisitionDate($parent->date_acquired);
+            }
+        }
+
+        return $this->asAcquisitionDate($this->date_acquired);
+    }
+
+    /**
+     * Return the unit price that should be displayed for this record.
+     *
+     * A linked child mirrors the parent's amount, including a null amount.
+     * Unlinked equipment continues to use its own stored unit price.
+     */
+    public function effectiveUnitPrice(?self $parent = null): mixed
+    {
+        if (filled($this->part_of_property_number)) {
+            $parent ??= $this->resolvedParentPropertyForInheritance();
+
+            if ($parent) {
+                return $parent->unit_price;
+            }
+        }
+
+        return $this->unit_price;
+    }
+
+    /**
+     * Keep a linked child's acquisition fields synchronized with its parent.
+     * Returns true when either persisted value changed.
+     */
+    public function syncInheritedAcquisitionFromParent(?self $parent = null): bool
+    {
+        if (blank($this->part_of_property_number)) {
+            return false;
+        }
+
+        $parent ??= $this->resolvedParentPropertyForInheritance();
+        if (! $parent) {
+            return false;
+        }
+
+        $parentDate = $this->asAcquisitionDate($parent->date_acquired);
+        $childDate = $this->asAcquisitionDate($this->date_acquired);
+        $updates = [];
+
+        if (($childDate?->toDateString()) !== ($parentDate?->toDateString())) {
+            $updates['date_acquired'] = $parentDate?->toDateString();
+        }
+
+        $parentPrice = $parent->unit_price;
+        $childPrice = $this->unit_price;
+        $pricesMatch = ($parentPrice === null || $parentPrice === '') && ($childPrice === null || $childPrice === '')
+            ? true
+            : ($parentPrice !== null && $childPrice !== null && (float) $parentPrice === (float) $childPrice);
+
+        if (! $pricesMatch) {
+            $updates['unit_price'] = $parentPrice;
+        }
+
+        if ($updates === []) {
+            return false;
+        }
+
+        $this->update($updates);
+
+        return true;
+    }
+
+    /**
+     * Resolve the current parent while avoiding a stale eager-loaded relation
+     * after a part_of_property_number value has been changed in memory.
+     */
+    private function resolvedParentPropertyForInheritance(?self $parent = null): ?self
+    {
+        if ($parent) {
+            return $parent;
+        }
+
+        if ($this->relationLoaded('parentProperty')) {
+            $loadedParent = $this->getRelation('parentProperty');
+            if ($loadedParent && (string) $loadedParent->property_number === (string) $this->part_of_property_number) {
+                return $loadedParent;
+            }
+        }
+
+        return $this->parentProperty()->first();
+    }
+
+    private function asAcquisitionDate(mixed $value): ?Carbon
+    {
+        if (! filled($value)) {
+            return null;
+        }
+
+        return $value instanceof Carbon ? $value->copy() : Carbon::parse($value);
+    }
 }

@@ -317,10 +317,8 @@ class MaintenanceAttentionService
         }
 
         $ageYears = 0;
-        if ($device->date_acquired) {
-            $acquired = $device->date_acquired instanceof Carbon
-                ? $device->date_acquired
-                : Carbon::parse($device->date_acquired);
+        $acquired = $device->effectiveDateAcquired();
+        if ($acquired) {
             $ageYears = max(0, $acquired->diffInYears(Carbon::now()));
 
             if ($ageYears >= self::OLD_EQUIPMENT_AGE_YEARS) {

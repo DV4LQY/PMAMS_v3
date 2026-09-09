@@ -167,6 +167,9 @@ class DeviceController extends Controller
             ->first(fn ($type) => strtolower((string) $type->name) === $requestedAddType)
             ?->id;
         $addParentPropertyNumber = $request->string('add_parent')->toString();
+        $addParent = $this->standaloneParentForInheritance($addParentPropertyNumber);
+        $addParentDateAcquired = $this->parentAcquisitionDate($addParent);
+        $addParentUnitPrice = $addParent?->unit_price;
         $returnTo = trim((string) $request->input('return_to', ''));
         if ($returnTo !== '' && (! str_starts_with($returnTo, '/') || str_starts_with($returnTo, '//'))) {
             $returnTo = '';
@@ -191,6 +194,8 @@ class DeviceController extends Controller
             'openAddEquipment',
             'addTypeId',
             'addParentPropertyNumber',
+            'addParentDateAcquired',
+            'addParentUnitPrice',
             'returnTo',
             'loadEquipment'
         ));
@@ -394,7 +399,17 @@ class DeviceController extends Controller
         $excludeId = $request->integer('exclude_id') ?: null;
 
         $devices = Device::query()
-            ->select(['id', 'device_type_id', 'property_number', 'part_of_property_number', 'serial_number', 'brand', 'model'])
+            ->select([
+                'id',
+                'device_type_id',
+                'property_number',
+                'part_of_property_number',
+                'serial_number',
+                'brand',
+                'model',
+                'unit_price',
+                'date_acquired',
+            ])
             ->with('type:id,name')
             ->whereNull('part_of_property_number')
             ->whereHas('type', fn ($query) => $query->whereIn('name', ['Desktop', 'Laptop']))
@@ -425,6 +440,8 @@ class DeviceController extends Controller
                     'property_number' => $device->property_number,
                     'type' => $typeName,
                     'serial_number' => $device->serial_number,
+                    'unit_price' => $device->unit_price,
+                    'date_acquired' => $device->date_acquired?->format('Y-m-d'),
                     'label' => collect([
                         $device->property_number,
                         $typeName,
@@ -547,7 +564,11 @@ class DeviceController extends Controller
             }
         }
 
-        $device->update(['part_of_property_number' => $parent->property_number]);
+        $device->update([
+            'part_of_property_number' => $parent->property_number,
+            'date_acquired' => $this->parentAcquisitionDate($parent),
+            'unit_price' => $parent->unit_price,
+        ]);
         // A child linked after a checklist was saved should immediately show
         // the parent's latest maintenance date in inventory and edit views.
         $device->syncLastMaintenanceDateFromParent($parent);
@@ -649,6 +670,8 @@ class DeviceController extends Controller
         $data['status'] = $data['status'] ?? 'available';
 
         $data = $this->cleanDeviceDataByType($data);
+        $parent = $this->standaloneParentForInheritance($data['part_of_property_number'] ?? null);
+        $this->applyParentAcquisitionDefaults($data, $parent);
 
         if ($photoPath = $this->storeEquipmentPhoto($request)) {
             $data['photo_path'] = $photoPath;
@@ -667,6 +690,12 @@ class DeviceController extends Controller
         }
 
         $device = Device::create($data);
+        if ($parent) {
+            // Re-apply after creation so the persisted child remains aligned
+            // with the parent even if a cast or database default changed a
+            // submitted value.
+            $device->syncInheritedAcquisitionFromParent($parent);
+        }
         $device->load('type');
 
         $summary = [
@@ -954,6 +983,11 @@ class DeviceController extends Controller
         $data['status'] = $data['status'] ?? $device->status ?? 'available';
 
         $data = $this->cleanDeviceDataByType($data);
+        $parent = $this->standaloneParentForInheritance(
+            $data['part_of_property_number'] ?? null,
+            (int) $device->id
+        );
+        $this->applyParentAcquisitionDefaults($data, $parent);
         $oldPhotoPath = $device->photo_path;
 
         if ($photoPath = $this->storeEquipmentPhoto($request)) {
@@ -1004,6 +1038,14 @@ class DeviceController extends Controller
         ];
 
         $device->update($data);
+        if ($parent) {
+            $device->syncInheritedAcquisitionFromParent($parent);
+        }
+        // When a parent acquisition field changes, propagate it to every
+        // linked peripheral so existing records remain synchronized too.
+        $device->linkedPeripherals()->get()->each(function (Device $peripheral) use ($device): void {
+            $peripheral->syncInheritedAcquisitionFromParent($device);
+        });
         if (filled($device->part_of_property_number)) {
             $device->load('parentProperty.latestMaintenanceRecord');
             $device->syncLastMaintenanceDateFromParent();
@@ -2271,6 +2313,18 @@ class DeviceController extends Controller
         $device->specs = $specs ?: null;
         $device->save();
 
+        if (filled($device->part_of_property_number)) {
+            $device->syncInheritedAcquisitionFromParent(
+                $this->standaloneParentForInheritance($device->part_of_property_number, (int) $device->id)
+            );
+        } else {
+            // A parent row may appear after its peripherals in the workbook;
+            // synchronize those children once the parent has been persisted.
+            $device->linkedPeripherals()->get()->each(function (Device $peripheral) use ($device): void {
+                $peripheral->syncInheritedAcquisitionFromParent($device);
+            });
+        }
+
         $wasIssued = false;
         $assignmentWarning = null;
         if ($this->importStaffDetailsPresent($row)) {
@@ -3345,6 +3399,11 @@ class DeviceController extends Controller
         }
 
         $data = $this->cleanDeviceDataByType($data);
+        $parent = $this->standaloneParentForInheritance(
+            $data['part_of_property_number'] ?? null,
+            (int) $device->id
+        );
+        $this->applyParentAcquisitionDefaults($data, $parent);
 
         $before = [
             'property_number' => $device->property_number,
@@ -3374,6 +3433,12 @@ class DeviceController extends Controller
         ];
 
         $device->update($data);
+        if ($parent) {
+            $device->syncInheritedAcquisitionFromParent($parent);
+        }
+        $device->linkedPeripherals()->get()->each(function (Device $peripheral) use ($device): void {
+            $peripheral->syncInheritedAcquisitionFromParent($device);
+        });
         $device->load('type');
 
         $summary = [
@@ -3690,6 +3755,48 @@ class DeviceController extends Controller
         if ($path) {
             Storage::disk('public')->delete($path);
         }
+    }
+
+    /**
+     * Resolve a standalone parent property used by a linked peripheral.
+     * Form requests validate the relationship, but keeping this lookup in
+     * the controller makes inheritance authoritative for every write path.
+     */
+    private function standaloneParentForInheritance(?string $propertyNumber, ?int $excludeId = null): ?Device
+    {
+        $propertyNumber = trim((string) $propertyNumber);
+        if ($propertyNumber === '') {
+            return null;
+        }
+
+        return Device::query()
+            ->where('property_number', $propertyNumber)
+            ->whereNull('part_of_property_number')
+            ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
+            ->first();
+    }
+
+    /**
+     * Apply the two fields that are owned by the parent property. A linked
+     * child cannot persist a conflicting acquisition date or unit price.
+     */
+    private function applyParentAcquisitionDefaults(array &$data, ?Device $parent): void
+    {
+        if (! $parent) {
+            return;
+        }
+
+        $data['date_acquired'] = $parent->date_acquired
+            ? Carbon::parse($parent->date_acquired)->toDateString()
+            : null;
+        $data['unit_price'] = $parent->unit_price;
+    }
+
+    private function parentAcquisitionDate(?Device $parent): ?string
+    {
+        return $parent?->date_acquired
+            ? Carbon::parse($parent->date_acquired)->toDateString()
+            : null;
     }
 
     private function cleanDeviceDataByType(array $data): array

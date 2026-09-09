@@ -182,11 +182,13 @@
             };
 
             $dateValue = function ($device) {
-                return $device?->date_acquired ? $device->date_acquired->format('m/d/Y') : '';
+                return $device?->effectiveDateAcquired()?->format('m/d/Y') ?? '';
             };
 
             $priceValue = function ($device) {
-                return $device?->unit_price ? (float) $device->unit_price : '';
+                $value = $device?->effectiveUnitPrice();
+
+                return $value !== null && $value !== '' ? (float) $value : '';
             };
 
             $brandModel = function ($device) {

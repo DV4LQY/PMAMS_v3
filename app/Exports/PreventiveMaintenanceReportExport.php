@@ -24,6 +24,7 @@ class PreventiveMaintenanceReportExport implements FromView, WithEvents
         $assignments = DeviceAssignment::query()
             ->with([
                 'device.type',
+                'device.parentProperty',
                 'staff.office.college',
                 'office.location',
                 'location',

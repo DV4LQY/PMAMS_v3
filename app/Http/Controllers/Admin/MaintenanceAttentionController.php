@@ -15,10 +15,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
-use Symfony\Component\Process\Process;
-use Throwable;
 
 class MaintenanceAttentionController extends Controller
 {
@@ -76,17 +73,11 @@ class MaintenanceAttentionController extends Controller
         );
         $aiMetadata = null;
         $aiTrainedAt = null;
-        $aiTrainingSource = null;
         $metadataPath = (string) config('maintenance.attention_ai.metadata');
         if (is_file($metadataPath)) {
             try {
                 $metadata = json_decode((string) file_get_contents($metadataPath), true, 512, JSON_THROW_ON_ERROR);
                 $aiMetadata = is_array($metadata) ? $metadata : null;
-                $aiTrainingSource = match (strtolower(trim((string) ($aiMetadata['trained_trigger'] ?? '')))) {
-                    'manual' => 'Manual',
-                    'scheduled' => 'Scheduled',
-                    default => null,
-                };
 
                 if (is_array($aiMetadata) && filled($aiMetadata['trained_at'] ?? null)) {
                     $aiTrainedAt = CarbonImmutable::parse((string) $aiMetadata['trained_at'])
@@ -254,8 +245,7 @@ class MaintenanceAttentionController extends Controller
             'loaded',
             'mode',
             'aiMetadata',
-            'aiTrainedAt',
-            'aiTrainingSource'
+            'aiTrainedAt'
         ));
     }
 
@@ -885,96 +875,5 @@ class MaintenanceAttentionController extends Controller
         return redirect()
             ->route('admin.maintenance-attention.index', ['reset' => 1])
             ->with('status', 'Maintenance attention recommendation mode updated.');
-    }
-
-    /**
-     * Run the same offline training command used by the scheduler, but from
-     * the report page. The existing report permissions protect this endpoint;
-     * no role-specific restriction is added so every user who can open the
-     * report can request a refresh.
-     */
-    public function trainModel(Request $request)
-    {
-        $minimum = max(2, (int) config('maintenance.attention_ai.min_samples', 20));
-        $query = $request->query();
-        unset($query['page']);
-
-        try {
-            // Do not run training inside the long-lived web worker. On
-            // Windows, a PHP/Apache worker that was started before a Winsock
-            // repair can keep the broken networking-provider state even
-            // though Python works from a new terminal. A fresh PHP CLI
-            // process gives manual training the same clean runtime used by a
-            // successful `php artisan maintenance:train-model` command.
-            $phpBinary = PHP_OS_FAMILY === 'Windows'
-                ? PHP_BINDIR . DIRECTORY_SEPARATOR . 'php.exe'
-                : PHP_BINARY;
-
-            if (! is_file($phpBinary)) {
-                $phpBinary = PHP_BINARY;
-            }
-
-            $process = new Process([
-                $phpBinary,
-                base_path('artisan'),
-                'maintenance:train-model',
-                '--min-samples=' . $minimum,
-                '--trigger=manual',
-                '--no-interaction',
-            ], base_path());
-            $process->setTimeout(max(
-                60,
-                (int) config('maintenance.attention_ai.training_timeout', 60) + 30
-            ));
-            $process->run();
-
-            if (! $process->isSuccessful()) {
-                $commandOutput = trim($process->getOutput() . PHP_EOL . $process->getErrorOutput());
-
-                report(new \RuntimeException('Manual maintenance-model training failed: ' . trim($commandOutput)));
-
-                return redirect()
-                    ->route('admin.maintenance-attention.index', $query)
-                    ->with('error', $this->manualTrainingErrorMessage($commandOutput));
-            }
-        } catch (Throwable $exception) {
-            report($exception);
-
-            return redirect()
-                ->route('admin.maintenance-attention.index', $query)
-                ->with('error', $this->manualTrainingErrorMessage($exception->getMessage()));
-        }
-
-        return redirect()
-            ->route('admin.maintenance-attention.index', $query)
-            ->with('status', 'Maintenance model trained manually at ' . now()->format('M j, Y g:i A') . '.');
-    }
-
-    /**
-     * Turn artisan output into one safe, practical message for the report
-     * page. The full command output is still recorded in the application log
-     * for an administrator, but users do not need to guess why a train run
-     * failed.
-     */
-    private function manualTrainingErrorMessage(string $output): string
-    {
-        $output = trim((string) preg_replace('/\s+/', ' ', $output));
-
-        if ($output === '') {
-            return 'Manual model training was not completed. Check the application log for details.';
-        }
-
-        if (str_contains(strtolower($output), 'access is denied')) {
-            return 'Manual model training could not start the configured Python runtime because Windows denied access. '
-                . 'Set MAINTENANCE_AI_PYTHON to a runnable Python installation that the web server can access, then run the training again.';
-        }
-
-        if (str_contains(strtolower($output), 'winerror 10106')
-            || str_contains(strtolower($output), 'networking providers could not initialize')) {
-            return 'Manual model training could not initialize the Windows networking providers required by Python (WinError 10106). '
-                . 'Run `netsh winsock reset` in an Administrator Command Prompt, restart Windows, then train the model again.';
-        }
-
-        return 'Manual model training was not completed: ' . Str::limit($output, 260, '…');
     }
 }

@@ -74,6 +74,7 @@
         <button onclick="window.print()">Print</button>
     </div>
 
+
     <div class="qr-container">
         @foreach($devices as $device)
             <div class="qr-card">

@@ -415,6 +415,7 @@ class ReportController extends Controller
                 'currentAssignment.office.location',
                 'currentAssignment.location',
                 'latestMaintenanceRecord.checkedBy',
+                'parentProperty',
             ])
             ->when($typeId, fn ($query) => $query->where('device_type_id', $typeId))
             ->when($locationId, function ($query) use ($locationId) {

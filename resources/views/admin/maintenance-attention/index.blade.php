@@ -10,6 +10,9 @@
 
 @section('content')
 <div class="space-y-6">
+    @if(session('status'))
+        <div class="text-sm font-medium text-emerald-700 dark:text-emerald-300" role="status">{{ session('status') }}</div>
+    @endif
     <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/20">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -50,18 +53,6 @@
                 </a>
             </div>
         @endif
-        @php
-            $attentionTrainQuery = request()->except('page');
-        @endphp
-        <div class="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-amber-200/70 pt-4 dark:border-amber-900/50">
-            <form method="POST" action="{{ route('admin.maintenance-attention.train', $attentionTrainQuery) }}" data-no-spa="true">
-                @csrf
-                <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300" title="Train the local maintenance-attention model now using current inventory and checklist history">
-                    Train model now
-                </button>
-            </form>
-            <span class="text-xs text-amber-900/70 dark:text-amber-200/70">Manual training uses the same rules and history as the scheduled job.</span>
-        </div>
         @if(auth()->user()?->isSuperAdmin())
             <form method="POST" action="{{ route('admin.maintenance-attention.mode') }}" class="mt-4 flex flex-wrap items-end gap-3 rounded-xl border border-amber-200/80 bg-white/60 p-3 dark:border-amber-900/50 dark:bg-gray-900/30">
                 @csrf
@@ -94,7 +85,7 @@
                     <span class="rounded-full bg-gray-200 px-3 py-1 font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">Model artifact not available</span>
                 @endif
                 <span class="rounded-full bg-indigo-100 px-3 py-1 font-semibold text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200">
-                    Last trained{{ $aiTrainingSource ? ' (' . $aiTrainingSource . ')' : '' }}:
+                    Last auto-trained:
                     {{ $aiTrainedAt ? $aiTrainedAt->format('M j, Y g:i A') : 'Not trained yet' }}
                 </span>
             </div>

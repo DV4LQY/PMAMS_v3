@@ -29,6 +29,7 @@
                 $staffName = $staff
                     ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? ''))
                     : ($assignment?->location ? 'Location assignment' : '-');
+                $effectiveUnitPrice = $device->effectiveUnitPrice();
             @endphp
             <tr>
                 <td>{{ $device->type?->name ?? '-' }}</td>
@@ -37,7 +38,7 @@
                 <td>{{ trim(($device->brand ?? '') . ' ' . ($device->model ?? '')) ?: '-' }}</td>
                 <td>{{ $device->status ?: '-' }}</td>
                 <td>{{ $device->condition ?: '-' }}</td>
-                <td>{{ $device->unit_price !== null ? number_format((float) $device->unit_price, 2) : '-' }}</td>
+                <td>{{ $effectiveUnitPrice !== null && $effectiveUnitPrice !== '' ? number_format((float) $effectiveUnitPrice, 2) : '-' }}</td>
                 <td>{{ $college?->name ?? '-' }}</td>
                 <td>{{ $office?->name ?? '-' }}</td>
                 <td>{{ $staffName ?: '-' }}</td>

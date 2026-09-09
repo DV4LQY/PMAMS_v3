@@ -40,6 +40,13 @@
             isDesktopType(typeId) {
                 return this.getTypeName(typeId ?? this.addTypeId) === 'desktop';
             },
+            init() {
+                this.$nextTick(() => {
+                    this.$el.querySelectorAll('.unit-price-input').forEach((input) => {
+                        input.value = this.formatUnitPriceValue(input.value);
+                    });
+                });
+            },
             formatUnitPriceValue(value) {
                 value = String(value ?? '').replace(/[^0-9.]/g, '');
                 const parts = value.split('.');

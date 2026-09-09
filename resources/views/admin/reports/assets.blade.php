@@ -148,6 +148,7 @@
                             $staffName = $staff
                                 ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? ''))
                                 : ($assignment?->location ? 'Location assignment' : '-');
+                            $effectiveUnitPrice = $device->effectiveUnitPrice();
                         @endphp
 
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
@@ -163,7 +164,7 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ trim(($device->brand ?? '') . ' ' . ($device->model ?? '')) ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300 capitalize">{{ $device->status ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300 capitalize">{{ $device->condition ?: '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $device->unit_price ? number_format((float) $device->unit_price, 2) : '-' }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $effectiveUnitPrice !== null && $effectiveUnitPrice !== '' ? number_format((float) $effectiveUnitPrice, 2) : '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $college?->name ?? '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office?->name ?? '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $staffName ?: '-' }}</td>
