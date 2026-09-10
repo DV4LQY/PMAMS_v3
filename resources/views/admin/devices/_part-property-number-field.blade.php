@@ -1,4 +1,8 @@
-@php($partPropertyValue = $value ?? old('part_of_property_number'))
+@php
+    $partPropertyValue = $value ?? old('part_of_property_number');
+    $lockPartPropertyNumber = $lockPartPropertyNumber
+        ?? filled(($formDevice ?? null)?->part_of_property_number);
+@endphp
 
 <div x-data="{
         query: '',
@@ -8,6 +12,7 @@
         timer: null,
         abort: null,
         visible: false,
+        locked: @js($lockPartPropertyNumber),
         init() {
             this.refreshVisibility();
         },
@@ -22,6 +27,8 @@
         },
         searchUrl: '{{ route('admin.devices.lookup.property') }}',
         async search() {
+            if (this.locked) return;
+
             this.query = this.$refs.partPropertyInput.value.trim();
             if (this.abort) this.abort.abort();
             this.open = true;
@@ -84,6 +91,8 @@
             setField('date_acquired', result.date_acquired || '');
         },
         select(result) {
+            if (this.locked) return;
+
             this.$refs.partPropertyInput.value = result.property_number;
             this.$refs.partPropertyInput.dispatchEvent(new Event('input', { bubbles: true }));
             this.$refs.partPropertyInput.dispatchEvent(new Event('change', { bubbles: true }));
@@ -97,7 +106,7 @@
     @change.window="if ($event.target.matches('[data-equipment-type-select], #device_type_select')) refreshVisibility()"
 >
     <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-        Part of Property Number <span class="font-normal text-gray-500">(optional)</span>
+        Linked to Property Number
     </label>
     <div class="mt-1">
         <input
@@ -111,10 +120,15 @@
             placeholder="e.g. PN-2026-0001"
             autocomplete="off"
             :disabled="!visible"
+            @if($lockPartPropertyNumber) readonly @endif
+            :readonly="locked"
+            :aria-readonly="locked ? 'true' : 'false'"
+            :class="locked ? 'cursor-not-allowed bg-gray-100/70 dark:bg-gray-800/70' : ''"
             @input="if ($event.isTrusted) queueSearch()"
         >
     </div>
-    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Link a Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other item to the main system-unit property number.</p>
+    <p x-show="locked" x-cloak class="mt-1 text-xs text-gray-500 dark:text-gray-400">This parent link is locked. Use the Link/Change link action to reassign it.</p>
+    <p x-show="!locked" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Link a Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other item to the main system-unit property number.</p>
     @error('part_of_property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
 
     <div x-show="open" x-cloak @click.outside="open = false" class="absolute inset-x-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">

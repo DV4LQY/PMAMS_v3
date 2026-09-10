@@ -1636,9 +1636,14 @@ class DeviceController extends Controller
                 continue;
             }
 
-            if ($this->importValueIsEmpty($this->importValue($row, [
+            $propertyNumberIsEmpty = $this->importValueIsEmpty($this->importValue($row, [
                 'property_number', 'property_no', 'asset_number', 'asset_no',
-            ]))) {
+            ]));
+            $parentPropertyNumberIsEmpty = $this->importValueIsEmpty($this->importValue($row, [
+                'part_of_property_number', 'parent_property_number', 'parent_property_no',
+            ]));
+
+            if ($propertyNumberIsEmpty && $parentPropertyNumberIsEmpty) {
                 $result['skipped']++;
                 $equipmentType = trim((string) $this->importValue($row, ['equipment_type', 'device_type', 'type']));
                 $this->addImportRowWarning(
@@ -3278,8 +3283,9 @@ class DeviceController extends Controller
 
     /**
      * Generate a readable property number for a linked peripheral that has no
-     * child number of its own. The parent remains in part_of_property_number;
-     * this generated value keeps each child record unique.
+     * child number of its own. Every equipment type uses a canonical
+     * TYPE-parent format when it is valid and available; collisions or
+     * overlong values fall back to the existing unique temporary sequence.
      */
     private function generateLinkedPropertyNumber(
         string $parentPropertyNumber,
@@ -3287,6 +3293,23 @@ class DeviceController extends Controller
         ?string $equipmentTypeName = null
     ): string {
         $equipmentTypeName ??= DeviceType::whereKey($deviceTypeId)->value('name');
+
+        $candidate = Device::linkedPropertyNumberForParent($equipmentTypeName, $parentPropertyNumber);
+        $candidateKey = strtolower(trim((string) $candidate));
+        $generatedKeys = array_map(
+            fn (string $number): string => strtolower(trim($number)),
+            $this->generatedPropertyNumbers
+        );
+
+        if ($candidate
+            && ! Device::withTrashed()
+                ->whereRaw('LOWER(TRIM(property_number)) = ?', [$candidateKey])
+                ->exists()
+            && ! in_array($candidateKey, $generatedKeys, true)) {
+            $this->generatedPropertyNumbers[] = $candidate;
+
+            return $candidate;
+        }
 
         return $this->generateAutoPropertyNumber($equipmentTypeName);
     }

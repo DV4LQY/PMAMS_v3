@@ -219,6 +219,45 @@ class Device extends Model
         return $this->belongsTo(self::class, 'part_of_property_number', 'property_number');
     }
 
+    /**
+     * Return the canonical property number for generated equipment linked to
+     * a standalone parent computer.
+     *
+     * The parent property number is retained verbatim so the relationship is
+     * easy to recognize and remains within the devices table's 50-character
+     * limit. Invalid or overlong values return null so the caller can use a
+     * collision-safe temporary number instead.
+     */
+    public static function linkedPropertyNumberForParent(
+        ?string $equipmentType,
+        ?string $parentPropertyNumber
+    ): ?string {
+        $parentPropertyNumber = trim((string) $parentPropertyNumber);
+
+        if ($parentPropertyNumber === ''
+            || ! preg_match('/^[A-Za-z0-9][A-Za-z0-9\-\/]*$/', $parentPropertyNumber)) {
+            return null;
+        }
+
+        $typeKey = strtolower(trim((string) $equipmentType));
+        $typeSegment = $typeKey === 'network device'
+            ? 'NET'
+            : strtoupper(preg_replace('/[^A-Za-z0-9]+/', '', trim((string) $equipmentType)) ?: 'EQUIPMENT');
+        $typeSegment = substr($typeSegment, 0, 30);
+        $candidate = $typeSegment . '-' . $parentPropertyNumber;
+
+        return strlen($candidate) <= 50 ? $candidate : null;
+    }
+
+    /**
+     * Backward-compatible Monitor-specific alias for existing generation and
+     * desktop-monitor repair workflows.
+     */
+    public static function monitorPropertyNumberForParent(?string $parentPropertyNumber): ?string
+    {
+        return self::linkedPropertyNumberForParent('Monitor', $parentPropertyNumber);
+    }
+
     public function maintenanceRecords(): HasMany
     {
         return $this->hasMany(DeviceMaintenanceRecord::class);

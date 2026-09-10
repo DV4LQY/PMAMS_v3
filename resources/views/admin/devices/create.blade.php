@@ -51,7 +51,7 @@
                 @error('property_number')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
-                <div class="text-xs text-gray-500 mt-1">Leave blank when using a parent property number below.</div>
+                <div class="text-xs text-gray-500 mt-1">Leave blank to auto-generate a type-based number; linked equipment uses the selected parent property number when available.</div>
             </div>
 
             @include('admin.devices._part-property-number-field')

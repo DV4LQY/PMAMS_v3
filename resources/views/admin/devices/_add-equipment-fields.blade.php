@@ -5,6 +5,8 @@
     // page. When an edit model is supplied, seed every field from the saved
     // record so generated and linked property numbers are visible immediately.
     $formDevice = $formDevice ?? null;
+    $lockPartPropertyNumber = $lockPartPropertyNumber
+        ?? filled($formDevice?->part_of_property_number);
     $addParentDateAcquired = $addParentDateAcquired ?? null;
     $addParentUnitPrice = $addParentUnitPrice ?? null;
     $formDeviceSpecs = is_array($formDevice?->specs) ? $formDevice->specs : [];
@@ -56,7 +58,7 @@
             placeholder="e.g. PN-2026-0001"
         >
         @error('property_number')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank to generate an EQUIPMENTTYPE-TempID-YYYYMMDD-#### number, or use a parent property number for a linked peripheral.</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank to auto-generate a type-based number. Linked equipment uses EQUIPMENTTYPE-{parent property number} when available; standalone equipment uses EQUIPMENTTYPE-TempID-YYYYMMDD-####.</p>
         @if($formDevice?->property_number)
             <p class="mt-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
                 Current property number: <span class="font-semibold">{{ $formDevice->property_number }}</span>
@@ -72,6 +74,7 @@
             timer: null,
             abort: null,
             visible: false,
+            locked: @js($lockPartPropertyNumber),
             init() {
                 this.refreshVisibility();
             },
@@ -86,6 +89,8 @@
             },
             searchUrl: '{{ route('admin.devices.lookup.property') }}',
             async search() {
+                if (this.locked) return;
+
                 this.query = this.$refs.partPropertyInput.value.trim();
                 if (this.abort) this.abort.abort();
                 this.open = true;
@@ -151,6 +156,8 @@
                 setField('date_acquired', result.date_acquired || '');
             },
             select(result) {
+                if (this.locked) return;
+
                 this.$refs.partPropertyInput.value = result.property_number;
                 this.$refs.partPropertyInput.dispatchEvent(new Event('input', { bubbles: true }));
                 this.$refs.partPropertyInput.dispatchEvent(new Event('change', { bubbles: true }));
@@ -165,7 +172,7 @@
         @change.window="if ($event.target.matches('[data-equipment-type-select], #device_type_select')) refreshVisibility()"
     >
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Part of Property Number <span class="font-normal text-gray-500">(optional)</span>
+            Linked to Property Number
         </label>
         <div class="mt-1">
             <input
@@ -179,11 +186,16 @@
             placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Scanner/Network Device/Other)"
             autocomplete="off"
             :disabled="!visible"
+            @if($lockPartPropertyNumber) readonly @endif
+            :readonly="locked"
+            :aria-readonly="locked ? 'true' : 'false'"
+            :class="locked ? 'cursor-not-allowed bg-gray-100/70 dark:bg-gray-800/70' : ''"
                 @input="if ($event.isTrusted) queueSearch()"
                 @focus="if ($refs.partPropertyInput.value.trim()) queueSearch()"
             >
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this for Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other equipment belonging to another property-number group.</p>
+        <p x-show="locked" x-cloak class="mt-1 text-xs text-gray-500 dark:text-gray-400">This parent link is locked. Use the Link/Change link action to reassign it.</p>
+        <p x-show="!locked" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use this for Printer, Monitor, AVR, UPS, Scanner, Network Device, or Other equipment belonging to another property-number group.</p>
         @if($formDevice?->part_of_property_number)
             <p class="mt-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
                 Currently linked to parent property #: <span class="font-semibold">{{ $formDevice->part_of_property_number }}</span>
