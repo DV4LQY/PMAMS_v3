@@ -15,7 +15,7 @@
 @section('content')
 <style>
     /* Mobile checklist cards: keep the desktop table intact, but remove the
-       980px horizontal scroll requirement on small screens. */
+       wide-table horizontal scroll requirement on small screens. */
     @media (max-width: 767px) {
         .checklist-progress {
             position: sticky;
@@ -78,7 +78,8 @@
         .checklist-items-table tbody td:nth-child(1),
         .checklist-items-table tbody td:nth-child(2),
         .checklist-items-table tbody td:nth-child(6),
-        .checklist-items-table tbody td:nth-child(7) {
+        .checklist-items-table tbody td:nth-child(7),
+        .checklist-items-table tbody td:nth-child(8) {
             grid-column: 1 / -1;
         }
 
@@ -127,7 +128,8 @@
         .checklist-items-table tbody td:nth-child(4)::before,
         .checklist-items-table tbody td:nth-child(5)::before,
         .checklist-items-table tbody td:nth-child(6)::before,
-        .checklist-items-table tbody td:nth-child(7)::before {
+        .checklist-items-table tbody td:nth-child(7)::before,
+        .checklist-items-table tbody td:nth-child(8)::before {
             display: block;
             font-size: .7rem;
             font-weight: 700;
@@ -140,7 +142,8 @@
         .dark .checklist-items-table tbody td:nth-child(4)::before,
         .dark .checklist-items-table tbody td:nth-child(5)::before,
         .dark .checklist-items-table tbody td:nth-child(6)::before,
-        .dark .checklist-items-table tbody td:nth-child(7)::before {
+        .dark .checklist-items-table tbody td:nth-child(7)::before,
+        .dark .checklist-items-table tbody td:nth-child(8)::before {
             color: #94a3b8;
         }
 
@@ -149,6 +152,7 @@
         .checklist-items-table tbody td:nth-child(5)::before { content: 'Not Available'; }
         .checklist-items-table tbody td:nth-child(6)::before { content: 'Condition'; }
         .checklist-items-table tbody td:nth-child(7)::before { content: 'Status'; }
+        .checklist-items-table tbody td:nth-child(8)::before { content: 'Assigned Staff'; }
 
         .checklist-items-table tbody td:nth-child(3) span.h-8.w-8,
         .checklist-items-table tbody td:nth-child(4) span.h-8.w-8,
@@ -200,6 +204,64 @@
     $checklistReturnPath = parse_url(route('admin.devices.checklist.form', $device), PHP_URL_PATH)
         . '?open_link=1&peripheral_type=' . rawurlencode($requestedPeripheralType ?: 'monitor')
         . '&allow_linked=' . ($requestedAllowLinked ? '1' : '0');
+    $issuanceSectionKeys = ['system unit', 'monitor', 'avr/ups', 'printer'];
+    $canChangeIssuance = (bool) auth()->user()?->canAction('issuance', 'edit');
+    $issuanceDevices = collect([$device])
+        ->merge($device->linkedPeripherals)
+        ->filter(function ($candidate) use ($device) {
+            $candidateType = strtolower((string) ($candidate->type?->name ?? ''));
+
+            return (int) $candidate->id === (int) $device->id
+                || in_array($candidateType, ['monitor', 'avr/ups', 'avr', 'ups', 'printer'], true);
+        })
+        ->keyBy('id');
+    $issuanceDevicePayload = function ($assignmentDevice) use ($checklistPath) {
+        $currentAssignment = $assignmentDevice->currentAssignment;
+        $assignedStaff = $currentAssignment?->staff;
+        $assignedOffice = $currentAssignment?->office ?: $assignedStaff?->office;
+        $assignedLocation = $currentAssignment?->location ?: $assignedOffice?->location;
+        $assignedStaffName = $assignedStaff
+            ? trim(($assignedStaff->last_name ?? '') . ', ' . ($assignedStaff->first_name ?? ''))
+            : null;
+        $returnPath = $checklistPath . '?issuance_open=1&issuance_device=' . (int) $assignmentDevice->id;
+
+        return [
+            'id' => (int) $assignmentDevice->id,
+            'type' => $assignmentDevice->type?->name ?? 'Equipment',
+            'propertyNumber' => (string) $assignmentDevice->property_number,
+            'assignedStaffName' => $assignedStaffName ?: null,
+            'hasAssignment' => (bool) $currentAssignment,
+            'assignedOfficeName' => $assignedOffice?->name,
+            'assignedLocationName' => $assignedLocation
+                ? trim(($assignedLocation->code ? $assignedLocation->code . ' - ' : '') . $assignedLocation->name)
+                : null,
+            'assignedStaffUrl' => $assignedStaff
+                ? route('admin.staff.devices.index', $assignedStaff)
+                : null,
+            'assignedOfficeUrl' => $assignedOffice
+                ? route('admin.staff.index', $assignedOffice)
+                : null,
+            'assignedLocationUrl' => $assignedLocation
+                ? route('admin.offices.index', $assignedLocation)
+                : null,
+            'actionUrl' => route('admin.devices.reissue', $assignmentDevice),
+            'addStaffUrl' => $assignedOffice
+                ? route('admin.staff.index', [
+                    'office' => $assignedOffice->id,
+                    'open_add' => 1,
+                    'return_to' => $returnPath,
+                ])
+                : null,
+        ];
+    };
+    $requestedIssuanceDeviceId = request()->integer('issuance_device');
+    $initialIssuanceDevice = null;
+    if ($canChangeIssuance && request()->boolean('issuance_open') && $requestedIssuanceDeviceId) {
+        $requestedIssuanceDevice = $issuanceDevices->get($requestedIssuanceDeviceId);
+        if ($requestedIssuanceDevice) {
+            $initialIssuanceDevice = $issuanceDevicePayload($requestedIssuanceDevice);
+        }
+    }
     $pmPlanSchedule = $pmPlanProgress['schedule'] ?? null;
     $pmPlanProgressStats = $pmPlanProgress['progress'] ?? null;
     $pmPlanCompletion = $pmPlanProgress['completion'] ?? null;
@@ -233,7 +295,7 @@
                     Preventive Maintenance Checklist
                 </h1>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Choose OK or Not OK for each hardware item. Monitor, UPS/AVR and Printer may also be marked Not Available.
+                    Choose OK, Not OK, or Not Available for each hardware item. Monitor, Keyboard, Mouse, UPS/AVR, and Printer may be marked Not Available.
                 </p>
             </div>
 
@@ -551,6 +613,12 @@
                 if (form.elements['hardware[printer_printout]']?.value === 'Not Available') {
                     unavailableEquipment.push('Printer');
                 }
+                if (form.elements['hardware[keyboard_keys]']?.value === 'Not Available') {
+                    unavailableEquipment.push('Keyboard');
+                }
+                if (form.elements['hardware[mouse_buttons]']?.value === 'Not Available') {
+                    unavailableEquipment.push('Mouse');
+                }
 
                 return unavailableEquipment;
             },
@@ -733,7 +801,7 @@
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40">
                 <div>
                     <h2 class="font-semibold text-gray-900 dark:text-white">Checklist items</h2>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one result per row. Not OK rows require a condition; status is available for OK rows or after an Unserviceable condition is selected.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one result per row. Not OK rows require a condition; status is available for OK rows or after an Unserviceable condition is selected. Assigned Staff is shown for System Unit and linked peripherals.</p>
                 </div>
                 <div class="flex flex-wrap gap-2 text-[11px] font-semibold">
                     <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">OK</span>
@@ -742,7 +810,7 @@
                 </div>
             </div>
             <div class="overflow-x-auto">
-            <table class="checklist-items-table min-w-[980px] w-full text-sm">
+            <table class="checklist-items-table min-w-[1120px] w-full text-sm">
                 <thead class="sticky top-0 z-10 bg-gray-50 text-left dark:bg-gray-900/95">
                     <tr>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Section</th>
@@ -752,6 +820,7 @@
                         <th class="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Not Available</th>
                         <th class="px-3 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Condition</th>
                         <th class="px-3 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Status</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Assigned Staff</th>
                     </tr>
                 </thead>
 
@@ -977,6 +1046,70 @@
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
                                 @endif
                             </td>
+
+                            <td class="px-4 py-3 align-top text-left text-xs text-gray-600 dark:text-gray-300">
+                                @if(in_array($sectionKey, $issuanceSectionKeys, true))
+                                    @if($sectionDevices->isEmpty())
+                                        <span class="text-gray-400 dark:text-gray-500">Not linked</span>
+                                    @else
+                                        <div class="space-y-2">
+                                            @foreach($sectionDevices as $sectionDevice)
+                                                @php
+                                                    $currentAssignment = $sectionDevice->currentAssignment;
+                                                    $issuanceDevice = $issuanceDevicePayload($sectionDevice);
+                                                @endphp
+                                                <div class="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 dark:border-gray-700 dark:bg-gray-900/40">
+                                                    <div class="font-medium text-gray-500 dark:text-gray-400">
+                                                        {{ $issuanceDevice['type'] }} · {{ $issuanceDevice['propertyNumber'] }}
+                                                    </div>
+                                                    @if($issuanceDevice['assignedStaffName'])
+                                                        <a
+                                                            href="{{ $issuanceDevice['assignedStaffUrl'] }}"
+                                                            wire:navigate
+                                                            class="mt-0.5 inline-flex font-semibold text-indigo-700 hover:underline dark:text-indigo-300"
+                                                            title="View equipment assigned to {{ $issuanceDevice['assignedStaffName'] }}"
+                                                        >
+                                                            {{ $issuanceDevice['assignedStaffName'] }}
+                                                        </a>
+                                                    @elseif($currentAssignment)
+                                                        <span class="mt-0.5 inline-flex font-semibold text-gray-700 dark:text-gray-200">Location assignment</span>
+                                                    @else
+                                                        <span class="mt-0.5 inline-flex font-semibold text-gray-500 dark:text-gray-400">Not assigned</span>
+                                                    @endif
+                                                    @if($issuanceDevice['assignedOfficeName'] || $issuanceDevice['assignedLocationName'])
+                                                        <div class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                                                            @if($issuanceDevice['assignedOfficeUrl'])
+                                                                <a href="{{ $issuanceDevice['assignedOfficeUrl'] }}" wire:navigate class="hover:underline">{{ $issuanceDevice['assignedOfficeName'] }}</a>
+                                                            @elseif($issuanceDevice['assignedOfficeName'])
+                                                                {{ $issuanceDevice['assignedOfficeName'] }}
+                                                            @endif
+                                                            @if($issuanceDevice['assignedOfficeName'] && $issuanceDevice['assignedLocationName'])
+                                                                <span aria-hidden="true"> / </span>
+                                                            @endif
+                                                            @if($issuanceDevice['assignedLocationUrl'])
+                                                                <a href="{{ $issuanceDevice['assignedLocationUrl'] }}" wire:navigate class="hover:underline">{{ $issuanceDevice['assignedLocationName'] }}</a>
+                                                            @elseif($issuanceDevice['assignedLocationName'])
+                                                                {{ $issuanceDevice['assignedLocationName'] }}
+                                                            @endif
+                                                        </div>
+                                                    @endif
+                                                    @if($canChangeIssuance)
+                                                        <button
+                                                            type="button"
+                                                            class="mt-1 inline-flex items-center rounded-md bg-cyan-100 px-2 py-1 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-200 dark:hover:bg-cyan-900/60"
+                                                            x-on:click.prevent="$dispatch('open-checklist-issuance', @js($issuanceDevice))"
+                                                        >
+                                                            {{ $currentAssignment ? 'Change issuance' : 'Assign staff' }}
+                                                        </button>
+                                                    @endif
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                @else
+                                    <span class="text-gray-300 dark:text-gray-600">—</span>
+                                @endif
+                            </td>
                         </tr>
                     @endforeach
 
@@ -1019,6 +1152,8 @@
                             </td>
                             <td class="px-4 py-3 text-center text-gray-300 dark:text-gray-600">—</td>
                             <td class="px-3 py-3 text-center text-gray-300 dark:text-gray-600">—</td>
+                            <td class="px-3 py-3 text-center text-gray-300 dark:text-gray-600">—</td>
+                            <td class="px-4 py-3 text-left text-gray-300 dark:text-gray-600">—</td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -1467,6 +1602,226 @@
                         </button>
                     </div>
                     <p x-show="linkError" x-cloak class="text-sm text-red-600 dark:text-red-400" x-text="linkError"></p>
+                </form>
+            </x-modal>
+        </div>
+    @endif
+
+    @if($canChangeIssuance)
+        <div
+            x-data="{
+                issuanceOpen: @json((bool) $initialIssuanceDevice),
+                issuanceDevice: @js($initialIssuanceDevice),
+                issuanceStaffLookupUrl: @js(route('admin.devices.lookup.staff')),
+                issuanceStaffQuery: '',
+                issuanceStaffId: '',
+                issuanceStaffResults: [],
+                issuanceStaffLoading: false,
+                issuanceStaffHasSearched: false,
+                issuanceStaffTimer: null,
+                issuanceStaffAbort: null,
+                issuanceRemarks: '',
+                issuanceSubmitting: false,
+                issuanceError: '',
+                openIssuance(device) {
+                    this.issuanceDevice = device;
+                    this.issuanceStaffQuery = '';
+                    this.issuanceStaffId = '';
+                    this.issuanceStaffResults = [];
+                    this.issuanceStaffLoading = false;
+                    this.issuanceStaffHasSearched = false;
+                    this.issuanceRemarks = '';
+                    this.issuanceSubmitting = false;
+                    this.issuanceError = '';
+                    this.issuanceOpen = true;
+                    this.removeIssuanceQuery();
+                    this.$nextTick(() => this.$refs.issuanceStaffSearch?.focus());
+                },
+                resetIssuance() {
+                    clearTimeout(this.issuanceStaffTimer);
+                    if (this.issuanceStaffAbort) this.issuanceStaffAbort.abort();
+                    this.issuanceOpen = false;
+                    this.issuanceDevice = null;
+                    this.issuanceStaffQuery = '';
+                    this.issuanceStaffId = '';
+                    this.issuanceStaffResults = [];
+                    this.issuanceStaffLoading = false;
+                    this.issuanceStaffHasSearched = false;
+                    this.issuanceRemarks = '';
+                    this.issuanceSubmitting = false;
+                    this.issuanceError = '';
+                    this.removeIssuanceQuery();
+                },
+                removeIssuanceQuery() {
+                    const target = new URL(window.location.href);
+                    target.searchParams.delete('issuance_open');
+                    target.searchParams.delete('issuance_device');
+                    window.history.replaceState({}, '', `${target.pathname}${target.search}`);
+                },
+                selectIssuanceStaff(staff) {
+                    this.issuanceStaffId = staff.id;
+                    this.issuanceStaffQuery = [staff.name, staff.position, staff.office]
+                        .filter(Boolean)
+                        .join(' - ');
+                    this.issuanceStaffResults = [];
+                },
+                queueIssuanceStaffLookup() {
+                    clearTimeout(this.issuanceStaffTimer);
+                    this.issuanceStaffTimer = setTimeout(() => this.fetchIssuanceStaff(), 250);
+                },
+                async fetchIssuanceStaff() {
+                    const query = this.issuanceStaffQuery.trim();
+
+                    if (query.length < 2) {
+                        if (this.issuanceStaffAbort) this.issuanceStaffAbort.abort();
+                        this.issuanceStaffResults = [];
+                        this.issuanceStaffHasSearched = false;
+                        this.issuanceStaffLoading = false;
+                        return;
+                    }
+
+                    if (this.issuanceStaffAbort) this.issuanceStaffAbort.abort();
+
+                    this.issuanceStaffAbort = new AbortController();
+                    this.issuanceStaffLoading = true;
+                    this.issuanceStaffHasSearched = true;
+                    this.issuanceError = '';
+
+                    try {
+                        const url = new URL(this.issuanceStaffLookupUrl, window.location.origin);
+                        url.searchParams.set('q', query);
+
+                        const response = await fetch(url, {
+                            headers: { 'Accept': 'application/json' },
+                            signal: this.issuanceStaffAbort.signal,
+                        });
+
+                        if (!response.ok) throw new Error('Unable to search staff.');
+
+                        const data = await response.json();
+                        this.issuanceStaffResults = Array.isArray(data.results) ? data.results : [];
+                    } catch (error) {
+                        if (error.name !== 'AbortError') {
+                            this.issuanceStaffResults = [];
+                            this.issuanceError = error.message || 'Unable to search staff.';
+                        }
+                    } finally {
+                        this.issuanceStaffLoading = false;
+                    }
+                },
+                rememberChecklistState() {
+                    const form = document.getElementById('maintenance-checklist-form');
+                    if (!form) return;
+
+                    const fields = Array.from(form.elements || [])
+                        .filter((control) => control.name && control.type !== 'file' && !['_token', '_method'].includes(control.name))
+                        .map((control) => ({
+                            name: control.name,
+                            type: control.type || control.tagName?.toLowerCase(),
+                            value: control.value ?? '',
+                            checked: control.type === 'radio' || control.type === 'checkbox' ? control.checked : undefined,
+                        }));
+
+                    try {
+                        window.sessionStorage.setItem(`pmams-checklist-state:${window.location.pathname}`, JSON.stringify({ fields }));
+                    } catch (error) {
+                        // Draft preservation is best effort only.
+                    }
+                },
+                submitIssuance(event) {
+                    if (!this.issuanceDevice || !this.issuanceStaffId || this.issuanceSubmitting) {
+                        event.preventDefault();
+                        return;
+                    }
+
+                    this.rememberChecklistState();
+                    this.issuanceSubmitting = true;
+                }
+            }"
+            x-init="if (issuanceOpen && issuanceDevice) { removeIssuanceQuery(); $nextTick(() => $refs.issuanceStaffSearch?.focus()); }"
+            x-on:open-checklist-issuance.window="openIssuance($event.detail)"
+            x-on:pmams-modal-close.window="if ($event.detail.id === 'checklist-issuance-modal') resetIssuance()"
+        >
+            <x-modal id="checklist-issuance-modal" show="issuanceOpen" title="Assign or Change Equipment Issuance" maxWidth="max-w-lg">
+                <form
+                    method="POST"
+                    x-bind:action="issuanceDevice?.actionUrl || '#'"
+                    x-on:submit="submitIssuance($event)"
+                    class="space-y-4"
+                >
+                    @csrf
+
+                    <div class="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900 dark:border-cyan-900/50 dark:bg-cyan-900/20 dark:text-cyan-100">
+                        <div class="font-semibold">
+                            <span x-text="issuanceDevice?.type || 'Equipment'"></span>
+                            <span x-text="issuanceDevice?.propertyNumber ? ` · ${issuanceDevice.propertyNumber}` : ''"></span>
+                        </div>
+                        <div class="mt-1" x-show="issuanceDevice?.assignedStaffName">
+                            Currently assigned to <span class="font-semibold" x-text="issuanceDevice?.assignedStaffName"></span>.
+                        </div>
+                        <div class="mt-1" x-show="!issuanceDevice?.assignedStaffName && issuanceDevice?.hasAssignment">
+                            This equipment has a location assignment. Select the staff member who will receive it.
+                        </div>
+                        <div class="mt-1" x-show="!issuanceDevice?.hasAssignment">
+                            This equipment is not currently assigned. Select the staff member who will receive it.
+                        </div>
+                        <div class="mt-1">The equipment location follows the selected staff member's registered office.</div>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between gap-3">
+                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search registered staff</label>
+                            <a
+                                x-show="issuanceDevice?.addStaffUrl"
+                                x-bind:href="issuanceDevice?.addStaffUrl || '#'"
+                                data-no-spa="true"
+                                x-on:click="rememberChecklistState()"
+                                class="inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                            >
+                                + Add Staff
+                            </a>
+                        </div>
+                        <input
+                            type="text"
+                            x-ref="issuanceStaffSearch"
+                            x-model="issuanceStaffQuery"
+                            x-on:input="issuanceStaffId = ''; queueIssuanceStaffLookup()"
+                            placeholder="Search name, email, or office"
+                            autocomplete="off"
+                            class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        >
+                        <input type="hidden" name="staff_id" x-model="issuanceStaffId">
+                        <div class="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700" x-show="!issuanceStaffId">
+                            <template x-if="issuanceStaffLoading">
+                                <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Searching staff...</div>
+                            </template>
+                            <template x-if="!issuanceStaffLoading && !issuanceStaffHasSearched && issuanceStaffResults.length === 0">
+                                <div class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Type at least 2 characters of the staff name, email, or office.</div>
+                            </template>
+                            <template x-for="staff in issuanceStaffResults" :key="staff.id">
+                                <button type="button" x-on:click="selectIssuanceStaff(staff)" class="block w-full px-3 py-2 text-left text-sm hover:bg-cyan-50 dark:hover:bg-gray-700">
+                                    <span class="font-medium text-gray-900 dark:text-white" x-text="staff.name"></span>
+                                    <span class="block text-xs text-gray-500" x-text="[staff.position, staff.office].filter(Boolean).join(' - ')"></span>
+                                    <span class="block text-xs text-gray-400" x-show="staff.email" x-text="staff.email"></span>
+                                </button>
+                            </template>
+                            <div x-show="!issuanceStaffLoading && issuanceStaffHasSearched && issuanceStaffResults.length === 0" class="px-3 py-3 text-sm text-gray-500">No registered staff found.</div>
+                        </div>
+                        <div x-show="issuanceStaffId" class="mt-2 rounded-lg bg-cyan-50 px-3 py-2 text-sm text-cyan-900 dark:bg-cyan-900/20 dark:text-cyan-100">Selected: <span class="font-medium" x-text="issuanceStaffQuery"></span></div>
+                        <p x-show="issuanceError" x-cloak class="mt-1 text-sm text-red-600 dark:text-red-400" x-text="issuanceError"></p>
+                    </div>
+
+                    <div>
+                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Issuance remarks <span class="font-normal text-gray-500">(optional)</span></label>
+                        <textarea name="issuance_remarks" x-model="issuanceRemarks" rows="3" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Reason or activity log remarks (optional)"></textarea>
+                    </div>
+
+                    <div class="flex justify-end gap-2 border-t border-gray-200 pt-4">
+                        <button type="button" x-on:click="resetIssuance()" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
+                        <button type="submit" x-bind:disabled="!issuanceStaffId || issuanceSubmitting" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">
+                            <span x-text="issuanceSubmitting ? 'Saving…' : (issuanceDevice?.hasAssignment ? 'Save issuance change' : 'Assign staff')"></span>
+                        </button>
+                    </div>
                 </form>
             </x-modal>
         </div>

@@ -782,6 +782,10 @@ class DeviceController extends Controller
         $data = $request->validate([
             'staff_id' => ['required', 'exists:staff,id'],
             'remarks' => ['nullable', 'string', 'max:1000'],
+            // Checklist's inline issuance form uses a namespaced field so a
+            // validation redirect cannot repopulate the checklist's own
+            // remarks textarea with issuance-only text.
+            'issuance_remarks' => ['nullable', 'string', 'max:1000'],
         ], [
             'staff_id.required' => 'Please select a registered end user.',
             'staff_id.exists' => 'The selected end user could not be found.',
@@ -807,7 +811,7 @@ class DeviceController extends Controller
             return back()->withErrors(['staff_id' => 'This equipment is already assigned to the selected end user.'])->withInput();
         }
 
-        $reissueRemarks = trim((string) ($data['remarks'] ?? ''));
+        $reissueRemarks = trim((string) ($data['issuance_remarks'] ?? $data['remarks'] ?? ''));
 
         if ($assignment) {
             $assignment->update([

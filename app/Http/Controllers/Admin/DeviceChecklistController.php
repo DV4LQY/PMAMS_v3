@@ -21,6 +21,9 @@ class DeviceChecklistController extends Controller
         $device->load([
             'type',
             'linkedPeripherals.type',
+            'linkedPeripherals.currentAssignment.staff.office.location',
+            'linkedPeripherals.currentAssignment.office.location',
+            'linkedPeripherals.currentAssignment.location',
             'currentAssignment.staff.office.location',
             'currentAssignment.office.location',
             'currentAssignment.location',
@@ -281,6 +284,8 @@ class DeviceChecklistController extends Controller
         $monitorUnavailable = ($hardwareResponses['monitor_display'] ?? null) === 'Not Available';
         $avrUpsUnavailable = ($hardwareResponses['avr_ups_power_recovery'] ?? null) === 'Not Available';
         $printerUnavailable = ($hardwareResponses['printer_printout'] ?? null) === 'Not Available';
+        $keyboardUnavailable = ($hardwareResponses['keyboard_keys'] ?? null) === 'Not Available';
+        $mouseUnavailable = ($hardwareResponses['mouse_buttons'] ?? null) === 'Not Available';
         $defectiveSections = collect($this->checklistItems())
             ->filter(fn (array $item, string $key) => ($hardwareResponses[$key] ?? null) === 'Not OK')
             ->pluck('group')
@@ -298,7 +303,9 @@ class DeviceChecklistController extends Controller
         $notAvailableRemarks = $this->formatNotAvailableRemarks(
             $monitorUnavailable,
             $avrUpsUnavailable,
-            $printerUnavailable
+            $printerUnavailable,
+            $keyboardUnavailable,
+            $mouseUnavailable
         );
         if ($remarks === '') {
             $notOkRemarks = count($defectiveSections) > 0
@@ -312,7 +319,12 @@ class DeviceChecklistController extends Controller
         }
 
         if ($correctiveAction === ''
-            && ($defectiveSections !== [] || $monitorUnavailable || $avrUpsUnavailable || $printerUnavailable)) {
+            && ($defectiveSections !== []
+                || $monitorUnavailable
+                || $avrUpsUnavailable
+                || $printerUnavailable
+                || $keyboardUnavailable
+                || $mouseUnavailable)) {
             $correctiveAction = 'office is advised to procure the equipment';
         }
 
@@ -602,10 +614,12 @@ class DeviceChecklistController extends Controller
             'keyboard_keys' => [
                 'group' => 'Keyboard',
                 'label' => 'Check for keys',
+                'not_available' => true,
             ],
             'mouse_buttons' => [
                 'group' => 'Mouse',
                 'label' => 'Check mouse left/right buttons',
+                'not_available' => true,
             ],
             'avr_ups_power_recovery' => [
                 'group' => 'AVR/UPS',
@@ -699,7 +713,9 @@ class DeviceChecklistController extends Controller
     private function formatNotAvailableRemarks(
         bool $monitorUnavailable,
         bool $avrUpsUnavailable,
-        bool $printerUnavailable
+        bool $printerUnavailable,
+        bool $keyboardUnavailable,
+        bool $mouseUnavailable
     ): ?string
     {
         $equipment = [];
@@ -711,6 +727,12 @@ class DeviceChecklistController extends Controller
         }
         if ($printerUnavailable) {
             $equipment[] = 'Printer';
+        }
+        if ($keyboardUnavailable) {
+            $equipment[] = 'Keyboard';
+        }
+        if ($mouseUnavailable) {
+            $equipment[] = 'Mouse';
         }
 
         return $equipment === [] ? null : 'not available ' . implode(', ', $equipment);
