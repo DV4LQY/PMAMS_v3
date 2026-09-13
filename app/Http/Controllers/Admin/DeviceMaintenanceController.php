@@ -43,6 +43,24 @@ class DeviceMaintenanceController extends Controller
      */
     public function markChecked(Request $request, Device $device)
     {
+        $device->loadMissing([
+            'currentAssignment.staff.office.location',
+            'currentAssignment.office.location',
+            'currentAssignment.location',
+        ]);
+
+        if (! $this->hasAssignedStaffLocation($device)) {
+            return redirect()
+                ->route('admin.devices.show', [
+                    'device' => $device,
+                    'reissue_open' => 1,
+                ])
+                ->with(
+                    'warning',
+                    'Assign this equipment to a staff member with a registered office and location before marking it checked.'
+                );
+        }
+
         $data = $request->validate([
             'maintenance_date' => ['nullable', 'date'],
             'maintenance_type' => ['nullable', 'string', 'max:255'],
@@ -101,5 +119,15 @@ class DeviceMaintenanceController extends Controller
             ->get();
 
         return view('admin.devices.maintenance-history', compact('device', 'records', 'assignments', 'activityLogs'));
+    }
+
+    private function hasAssignedStaffLocation(Device $device): bool
+    {
+        $assignment = $device->currentAssignment;
+        $staff = $assignment?->staff;
+        $office = $assignment?->office ?: $staff?->office;
+        $location = $assignment?->location ?: $office?->location;
+
+        return (bool) $staff && (bool) $location;
     }
 }

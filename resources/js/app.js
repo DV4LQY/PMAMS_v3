@@ -484,6 +484,197 @@ import './bootstrap';
     }
 })();
 
+// Keep the maintenance checklist page at the last vertical scroll position
+// when the browser reloads it or Livewire swaps the page through SPA
+// navigation. The offset is scoped to the checklist route and tab, so it
+// cannot leak between equipment records or browser sessions.
+(function setupMaintenanceChecklistScrollState() {
+    if (window.__pmamsChecklistScrollReady) return;
+    window.__pmamsChecklistScrollReady = true;
+
+    const formSelector = '#maintenance-checklist-form';
+    let restoring = false;
+    let skipRestore = false;
+    let navigationStarted = false;
+    let saveTimer = 0;
+
+    const isChecklistPath = () => /\/admin\/devices\/[^/]+\/maintenance-checklist\/?$/.test(window.location.pathname);
+    const isChecklistPage = () => Boolean(document.querySelector(formSelector)) && isChecklistPath();
+    let lastChecklistPath = isChecklistPath() ? window.location.pathname : null;
+
+    const getStorage = () => {
+        try { return window.sessionStorage; } catch (error) { return null; }
+    };
+
+    const rememberChecklistPath = () => {
+        if (isChecklistPath()) lastChecklistPath = window.location.pathname;
+    };
+
+    const getKey = () => `pmams-checklist-scroll:${lastChecklistPath || window.location.pathname}`;
+
+    const save = () => {
+        rememberChecklistPath();
+
+        const form = document.querySelector(formSelector);
+        if (restoring || !form || !lastChecklistPath) return;
+
+        const storage = getStorage();
+        if (!storage) return;
+
+        const offset = Math.max(0, Number(window.scrollY
+            ?? document.scrollingElement?.scrollTop
+            ?? 0));
+
+        try { storage.setItem(getKey(), String(Number.isFinite(offset) ? offset : 0)); }
+        catch (error) { /* session storage can be unavailable in restricted browsers */ }
+    };
+
+    const scheduleSave = () => {
+        if (saveTimer || restoring || navigationStarted) return;
+
+        saveTimer = window.setTimeout(() => {
+            saveTimer = 0;
+            save();
+        }, 100);
+    };
+
+    const cancelScheduledSave = () => {
+        if (!saveTimer) return;
+
+        window.clearTimeout(saveTimer);
+        saveTimer = 0;
+    };
+
+    const prepareForNavigation = () => {
+        if (navigationStarted) return;
+
+        // Capture the old page before Livewire/browser navigation resets its
+        // scroll position, then ignore the transition's synthetic scroll-to-
+        // top event so it cannot overwrite the saved offset with zero.
+        save();
+        cancelScheduledSave();
+        navigationStarted = true;
+    };
+
+    const clear = () => {
+        const storage = getStorage();
+        if (!storage) return;
+
+        try { storage.removeItem(getKey()); } catch (error) { /* best effort */ }
+    };
+
+    const read = () => {
+        const storage = getStorage();
+        if (!storage) return null;
+
+        try {
+            const rawValue = storage.getItem(getKey());
+            if (rawValue === null) return null;
+
+            const value = Number(rawValue);
+            return Number.isFinite(value) && value >= 0 ? value : null;
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const restore = () => {
+        rememberChecklistPath();
+        if (skipRestore || window.location.hash || !isChecklistPage()) return;
+
+        const offset = read();
+        if (offset === null) return;
+
+        const apply = () => {
+            if (skipRestore || window.location.hash || !isChecklistPage()) return;
+
+            restoring = true;
+            try {
+                const maxOffset = Math.max(
+                    0,
+                    document.documentElement.scrollHeight - window.innerHeight,
+                );
+                window.scrollTo({ top: Math.min(offset, maxOffset), left: 0, behavior: 'auto' });
+            } finally {
+                restoring = false;
+            }
+        };
+
+        // Run once after the incoming page is painted and once shortly after
+        // that in case Alpine/Livewire expands a dependent checklist row.
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(() => {
+                apply();
+                window.setTimeout(apply, 80);
+            });
+        } else {
+            window.setTimeout(apply, 0);
+        }
+    };
+
+    const restoreWhenReady = (attempt = 0) => {
+        if (skipRestore || window.location.hash || !isChecklistPath()) {
+            return;
+        }
+
+        if (document.querySelector(formSelector) || attempt >= 40) {
+            restore();
+            return;
+        }
+
+        window.setTimeout(() => restoreWhenReady(attempt + 1), 25);
+    };
+
+    window.addEventListener('scroll', scheduleSave, { passive: true });
+
+    document.addEventListener('submit', (event) => {
+        if (event.target?.id !== 'maintenance-checklist-form') return;
+
+        // A completed submission redirects to another page (or a new plan
+        // state); do not jump that response back to an unfinished offset.
+        skipRestore = true;
+        clear();
+    }, true);
+
+    document.addEventListener('livewire:navigating', () => {
+        if (!skipRestore) prepareForNavigation();
+    });
+
+    // `livewire:navigate` fires before Livewire prepares the transition. Save
+    // here as well because some versions reset the old document's scroll
+    // offset before emitting the later `navigating` hook.
+    document.addEventListener('livewire:navigate', () => {
+        if (!skipRestore) prepareForNavigation();
+    });
+
+    document.addEventListener('livewire:navigated', () => {
+        navigationStarted = false;
+        skipRestore = false;
+        if (!isChecklistPath()) lastChecklistPath = null;
+        restoreWhenReady();
+        // Some Livewire responses emit `navigated` before the page component
+        // has finished inserting its form. A delayed retry covers that short
+        // gap without polling while the user is on another route.
+        window.setTimeout(restoreWhenReady, 250);
+    });
+
+    window.addEventListener('pagehide', () => {
+        if (!skipRestore) save();
+    });
+
+    window.addEventListener('pageshow', () => {
+        navigationStarted = false;
+        skipRestore = false;
+        restoreWhenReady();
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', restoreWhenReady, { once: true });
+    } else {
+        restoreWhenReady();
+    }
+})();
+
 // Keep unfinished Add and Edit Equipment forms through a browser reload, while
 // discarding them when the user leaves the page or explicitly closes/cancels
 // the form. Session storage is tab-scoped. File inputs, CSRF fields, and

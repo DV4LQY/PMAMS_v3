@@ -1690,6 +1690,21 @@
         const initializeCrudManagerTrees = () => {
             if (!window.Alpine) return;
 
+            const syncStaffTransferLocations = (element, data) => {
+                if (!element.matches('[x-data="staffManager"]') || !data) return;
+
+                const raw = element.getAttribute('data-staff-transfer-locations');
+                if (!raw) return;
+
+                try {
+                    const locations = JSON.parse(raw);
+                    if (Array.isArray(locations)) data.transferLocations = locations;
+                } catch (error) {
+                    // Keep the existing list when a navigated page has no
+                    // usable transfer payload.
+                }
+            };
+
             // Livewire navigation can insert a page root after Alpine has
             // already started. In that case Alpine does not automatically
             // initialize the newly inserted x-data tree, so the edit/delete
@@ -1701,7 +1716,14 @@
                     && typeof data.openEdit === 'function'
                     && typeof data.openDelete === 'function';
 
-                if (managerReady) return;
+                if (managerReady) {
+                    // A staff directory can be navigated between offices
+                    // without recreating its Alpine tree. Refresh the
+                    // destination list from the new page markup so the
+                    // transfer modal never keeps another office's data.
+                    syncStaffTransferLocations(element, data);
+                    return;
+                }
 
                 if (data && typeof window.Alpine.destroyTree === 'function') {
                     window.Alpine.destroyTree(element);
@@ -1789,6 +1811,7 @@
                     addOpen: false,
                     returnTo: '',
                     editOpen: false,
+                    transferOpen: false,
                     deleteOpen: false,
                     bulkEnabled: false,
                     commonPositions,
@@ -1804,6 +1827,19 @@
                         firstNameError: '', lastNameError: '', positionError: '', emailError: '', phoneError: '',
                     },
                     deleteStaffId: null,
+                    transferLocations: (() => {
+                        try {
+                            const root = document.querySelector('[x-data="staffManager"]');
+                            const locations = JSON.parse(root?.getAttribute('data-staff-transfer-locations') || '[]');
+                            return Array.isArray(locations) ? locations : [];
+                        } catch (error) {
+                            return [];
+                        }
+                    })(),
+                    transferStaff: { id: null, name: '', activeAssignments: 0, isOfficeHead: false },
+                    transferLocationId: '',
+                    transferOfficeId: '',
+                    preserveAssignments: false,
 
                     resolvePosition(value) {
                         if (!value) return { position: '', positionOther: '' };
@@ -1868,6 +1904,32 @@
                         this.deleteOpen = true;
                         this.$nextTick(() => this.$refs.confirmDeleteBtn && this.$refs.confirmDeleteBtn.focus());
                     },
+
+                    officesForTransfer() {
+                        const location = this.transferLocations.find((item) => String(item.id) === String(this.transferLocationId));
+
+                        return location?.offices || [];
+                    },
+
+                    openTransfer(staff) {
+                        this.transferStaff = {
+                            id: staff?.id ?? null,
+                            name: staff?.name ?? '',
+                            activeAssignments: Number(staff?.active_assignments ?? 0),
+                            isOfficeHead: !!staff?.is_office_head,
+                        };
+                        this.transferLocationId = '';
+                        this.transferOfficeId = '';
+                        this.preserveAssignments = false;
+                        this.transferOpen = true;
+                    },
+
+                    closeTransfer() {
+                        this.transferOpen = false;
+                        this.transferLocationId = '';
+                        this.transferOfficeId = '';
+                        this.preserveAssignments = false;
+                    },
                 }));
                 window.__pmamsStaffManagerFallbackRegistered = true;
             }
@@ -1925,6 +1987,39 @@
                 });
             }, true);
             window.__pmamsCrudEditDelegationRegistered = true;
+        }
+
+        // Transfer buttons carry their payload as data attributes so they
+        // remain valid in both full-page and Livewire SPA responses. Delegate
+        // the action from document because a navigated staff root may be
+        // initialized by the persistent fallback manager instead of the
+        // page-local script.
+        if (!window.__pmamsStaffTransferDelegationRegistered) {
+            document.addEventListener('click', (event) => {
+                const trigger = event.target.closest?.('[data-staff-transfer-id]');
+                if (!trigger) return;
+
+                const root = trigger.closest('[x-data="staffManager"]');
+                if (!root) return;
+
+                let data = root._x_dataStack?.[0];
+                if ((!data || typeof data.openTransfer !== 'function') && window.Alpine) {
+                    window.Alpine.initTree(root);
+                    data = root._x_dataStack?.[0];
+                }
+
+                if (!data || typeof data.openTransfer !== 'function') return;
+
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                data.openTransfer({
+                    id: Number(trigger.getAttribute('data-staff-transfer-id')),
+                    name: trigger.getAttribute('data-staff-transfer-name') || '',
+                    active_assignments: Number(trigger.getAttribute('data-staff-transfer-assignments') || 0),
+                    is_office_head: trigger.getAttribute('data-staff-transfer-office-head') === '1',
+                });
+            }, true);
+            window.__pmamsStaffTransferDelegationRegistered = true;
         }
     })();
 
@@ -2068,7 +2163,10 @@
             if (!clear) return;
 
             const hasValue = field.value.trim() !== '';
-            clear.classList.toggle('hidden', !hasValue);
+            // Use the native hidden state instead of the Tailwind `hidden`
+            // utility. The clear button is also `inline-flex`, and utility
+            // ordering can otherwise leave it visible when the field is empty.
+            clear.hidden = !hasValue;
             clear.setAttribute('aria-hidden', hasValue ? 'false' : 'true');
             clear.tabIndex = hasValue ? 0 : -1;
         };
@@ -2123,6 +2221,7 @@
         window.__pmamsInlineSearchControlsReady = true;
 
         const fieldSelector = 'input[data-pmams-inline-search], input[type="search"]:not([data-pmams-search])';
+        const wrapperFor = (field) => field.closest('[data-pmams-inline-search-wrapper]') || field.parentElement;
         const icon = (kind) => {
             const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             svg.setAttribute('fill', 'none');
@@ -2151,15 +2250,18 @@
             return svg;
         };
         const syncField = (field) => {
-            const clear = field.parentElement?.querySelector('[data-pmams-inline-search-clear]');
+            const wrapper = wrapperFor(field);
+            const clear = wrapper?.querySelector('[data-pmams-inline-search-clear]');
             if (!clear) return;
             const hasValue = field.value.trim() !== '';
             const blocked = field.disabled || field.readOnly;
-            clear.classList.toggle('hidden', !hasValue || blocked);
+            // Keep the clear control out of the layout when empty/disabled;
+            // this avoids the `hidden` + `inline-flex` utility conflict.
+            clear.hidden = !hasValue || blocked;
             clear.setAttribute('aria-hidden', hasValue && !blocked ? 'false' : 'true');
             clear.tabIndex = hasValue && !blocked ? 0 : -1;
 
-            const trigger = field.parentElement?.querySelector('[data-pmams-inline-search-trigger]');
+            const trigger = wrapper?.querySelector('[data-pmams-inline-search-trigger]');
             if (trigger) {
                 trigger.disabled = blocked;
                 trigger.classList.toggle('cursor-not-allowed', blocked);
@@ -2174,7 +2276,24 @@
             if (!parent) return;
 
             field.dataset.pmamsInlineSearchReady = 'true';
-            parent.classList.add('relative');
+            // Keep the action buttons anchored to the input itself. Autocomplete
+            // fields commonly place a results panel in the same parent; using
+            // that parent as the positioning context moves the icons into the
+            // middle of the results list as it grows.
+            const wrapper = document.createElement('div');
+            wrapper.className = 'relative min-w-0';
+            wrapper.dataset.pmamsInlineSearchWrapper = 'true';
+            parent.insertBefore(wrapper, field);
+            // Preserve the input's vertical spacing on the wrapper. Keeping
+            // `mt-*` on the input would make the positioning context taller
+            // than the input and shift the icons a few pixels upward.
+            Array.from(field.classList)
+                .filter((className) => /^(?:-)?mt-/.test(className))
+                .forEach((className) => {
+                    field.classList.remove(className);
+                    wrapper.classList.add(className);
+                });
+            wrapper.append(field);
             field.classList.add('pr-20');
 
             const actions = document.createElement('div');
@@ -2197,7 +2316,7 @@
             trigger.append(icon('search'));
 
             actions.append(clear, trigger);
-            parent.append(actions);
+            wrapper.append(actions);
             syncField(field);
         };
         const enhanceAll = (root = document) => {
@@ -2212,7 +2331,7 @@
         document.addEventListener('click', (event) => {
             const clear = event.target.closest?.('[data-pmams-inline-search-clear]');
             if (clear) {
-                const field = clear.parentElement?.parentElement?.querySelector(fieldSelector);
+                const field = clear.closest('[data-pmams-inline-search-wrapper]')?.querySelector(fieldSelector);
                 if (!(field instanceof HTMLInputElement)) return;
                 if (field.disabled || field.readOnly) return;
                 event.preventDefault();
@@ -2224,7 +2343,7 @@
 
             const trigger = event.target.closest?.('[data-pmams-inline-search-trigger]');
             if (!trigger) return;
-            const field = trigger.parentElement?.parentElement?.querySelector(fieldSelector);
+            const field = trigger.closest('[data-pmams-inline-search-wrapper]')?.querySelector(fieldSelector);
             if (!(field instanceof HTMLInputElement)) return;
             if (field.disabled || field.readOnly) return;
             event.preventDefault();

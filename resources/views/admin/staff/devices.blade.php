@@ -560,9 +560,21 @@
                     The current office-head designation will be cleared during the transfer. Assign the staff member as the destination office representative separately if needed.
                 </div>
 
-                <div class="flex gap-2 pt-2">
-                    <button type="submit" class="rounded-lg bg-amber-500 px-4 py-2 font-semibold text-white hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500">Transfer staff</button>
-                    <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600" @click="closeTransfer()">Cancel</button>
+                <div class="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
+                    <button
+                        type="button"
+                        class="inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-semibold leading-5 text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-900 sm:w-auto"
+                        @click="closeTransfer()"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold leading-5 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-600 dark:hover:bg-amber-500 dark:focus:ring-offset-gray-900 sm:w-auto"
+                        :disabled="!transferLocationId || !transferOfficeId || (transferStaff.activeAssignments > 0 && !preserveAssignments)"
+                    >
+                        Transfer staff
+                    </button>
                 </div>
             </form>
         </x-modal>

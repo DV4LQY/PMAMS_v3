@@ -64,6 +64,15 @@
             FILTER_VALIDATE_BOOLEAN
         );
         $officeHeadTitle = $office->responsibleTitle();
+        $transferLocationData = $transferLocations->map(fn ($location) => [
+            'id' => $location->id,
+            'name' => $location->name,
+            'code' => $location->code,
+            'offices' => $location->offices->map(fn ($destinationOffice) => [
+                'id' => $destinationOffice->id,
+                'name' => $destinationOffice->name,
+            ])->values(),
+        ])->values();
 
         [$addSinglePosition, $addSinglePositionOther] = $resolvePosition(old('position'));
         [$editPosition, $editPositionOther] = $resolvePosition(old('position'));
@@ -104,15 +113,7 @@
                 deleteOpen: false,
                 bulkEnabled: {{ old('staff') !== null ? 'true' : 'false' }},
 
-                transferLocations: @js($transferLocations->map(fn ($location) => [
-                    'id' => $location->id,
-                    'name' => $location->name,
-                    'code' => $location->code,
-                    'offices' => $location->offices->map(fn ($destinationOffice) => [
-                        'id' => $destinationOffice->id,
-                        'name' => $destinationOffice->name,
-                    ])->values(),
-                ])->values()),
+                transferLocations: @js($transferLocationData),
 
                 commonPositions: @json($commonPositions),
 
@@ -297,7 +298,11 @@
             window.setTimeout(initializeStaffManagerTree, 0);
         });
     </script>
-    <div x-data="staffManager" class="space-y-5">
+    <div
+        x-data="staffManager"
+        data-staff-transfer-locations='@json($transferLocationData)'
+        class="space-y-5"
+    >
         {{-- Breadcrumb --}}
         <div class="text-sm text-gray-500 leading-6 break-words">
             <a class="text-blue-600 hover:underline" href="{{ route('admin.colleges.index') }}">Colleges</a>
@@ -394,12 +399,10 @@
                                 variant="purple"
                                 label="Transfer staff"
                                 class="h-10 w-10"
-                                @click="openTransfer({
-                                    id: {{ $s->id }},
-                                    name: @js($s->display_name),
-                                    active_assignments: {{ (int) ($s->active_assignments_count ?? 0) }},
-                                    is_office_head: {{ $s->is_office_head ? 'true' : 'false' }}
-                                })"
+                                data-staff-transfer-id="{{ $s->id }}"
+                                data-staff-transfer-name="{{ $s->display_name }}"
+                                data-staff-transfer-assignments="{{ (int) ($s->active_assignments_count ?? 0) }}"
+                                data-staff-transfer-office-head="{{ $s->is_office_head ? '1' : '0' }}"
                             />
                         @endif
 
@@ -516,12 +519,10 @@
                                                 icon="issue"
                                                 variant="purple"
                                                 label="Transfer staff"
-                                                @click="openTransfer({
-                                                    id: {{ $s->id }},
-                                                    name: @js($s->display_name),
-                                                    active_assignments: {{ (int) ($s->active_assignments_count ?? 0) }},
-                                                    is_office_head: {{ $s->is_office_head ? 'true' : 'false' }}
-                                                })"
+                                                data-staff-transfer-id="{{ $s->id }}"
+                                                data-staff-transfer-name="{{ $s->display_name }}"
+                                                data-staff-transfer-assignments="{{ (int) ($s->active_assignments_count ?? 0) }}"
+                                                data-staff-transfer-office-head="{{ $s->is_office_head ? '1' : '0' }}"
                                             />
                                         @endif
 
@@ -683,9 +684,21 @@
                     The current office-head designation will be cleared during the transfer. Assign the staff member as the destination office representative separately if needed.
                 </div>
 
-                <div class="flex gap-2 pt-2">
-                    <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">Transfer staff</button>
-                    <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200" @click="closeTransfer()">Cancel</button>
+                <div class="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
+                    <button
+                        type="button"
+                        class="inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-semibold leading-5 text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 dark:focus:ring-offset-gray-900 sm:w-auto"
+                        @click="closeTransfer()"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold leading-5 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-offset-gray-900 sm:w-auto"
+                        :disabled="!transferStaff.id || !transferLocationId || !transferOfficeId || (transferStaff.activeAssignments > 0 && !preserveAssignments)"
+                    >
+                        Transfer staff
+                    </button>
                 </div>
             </form>
         </x-modal>
