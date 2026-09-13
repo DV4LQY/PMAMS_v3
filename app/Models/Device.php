@@ -280,6 +280,22 @@ class Device extends Model
     }
 
     /**
+     * Return the latest inventory create/update audit entry for this device.
+     *
+     * Activity logs use the model's basename ("Device") as their subject
+     * type. Restricting this relationship to inventory mutations keeps the
+     * Add/Edit form metadata from being replaced by an issuance, checklist,
+     * or other operational event.
+     */
+    public function latestAuditLog(): HasOne
+    {
+        return $this->hasOne(ActivityLog::class, 'subject_id')
+            ->where('subject_type', 'Device')
+            ->whereIn('action', ['created', 'updated'])
+            ->latestOfMany('created_at');
+    }
+
+    /**
      * Return the newest maintenance date known for this equipment itself.
      *
      * The denormalized device column is retained for fast inventory reads,

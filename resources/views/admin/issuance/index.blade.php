@@ -21,6 +21,7 @@
     }
 
     .issuance-filter-form > input,
+    .issuance-filter-form > [data-pmams-search-wrapper],
     .issuance-filter-form > select {
         min-width: 0;
         width: 100%;
@@ -53,16 +54,7 @@
     }
 </style>
 
-<div
-    x-data="{
-        submitTimer: null,
-        submitFilters() {
-            clearTimeout(this.submitTimer);
-            this.submitTimer = setTimeout(() => this.$refs.filterForm.requestSubmit(), 450);
-        }
-    }"
-    class="space-y-5"
->
+<div x-data="{}" class="space-y-5">
     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -100,16 +92,13 @@
             method="GET"
             class="issuance-filter-form"
         >
-            <input
+            <x-search-field
                 name="q"
-                data-pmams-search
-                value="{{ $q }}"
-                x-on:input="submitFilters()"
-                x-on:keydown.enter.prevent="$refs.filterForm.requestSubmit()"
-                placeholder="Auto search staff, office, property #..."
-                autocomplete="off"
-                class="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
-            >
+                :value="$q"
+                placeholder="Search staff, office, property #..."
+                ariaLabel="Search issuance"
+                inputClass="w-full rounded-lg border border-gray-300 px-3 py-2 pr-20 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
+            />
 
             <select
                 name="type_id"
@@ -158,7 +147,6 @@
                 max="2100"
                 value="{{ $selectedYear }}"
                 placeholder="Year"
-                x-on:input="submitFilters()"
                 x-on:keydown.enter.prevent="$refs.filterForm.requestSubmit()"
                 class="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
             >
@@ -191,7 +179,7 @@
         </form>
 
         <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Search applies automatically after typing. The report stays unloaded until a filter is applied or Reset is pressed.
+            Press Enter or select the search icon to apply the keyword. Other filters submit when changed. The report stays unloaded until a filter is applied or Reset is pressed.
         </p>
     </div>
 

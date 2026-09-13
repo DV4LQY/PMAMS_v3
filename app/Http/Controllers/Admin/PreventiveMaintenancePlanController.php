@@ -14,6 +14,7 @@ use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -21,12 +22,20 @@ class PreventiveMaintenancePlanController extends Controller
 {
     public function index(Request $request)
     {
+        $q = $request->string('q')->toString();
+        if (strlen($q) > 255) {
+            $q = substr($q, 0, 255);
+        }
         $locationId = $request->integer('location_id') ?: null;
         $officeId = $request->integer('office_id') ?: null;
         $monthFrom = $request->query('month_from');
         $monthTo = $request->query('month_to');
         $monthFromStart = $this->monthStartOrNull($monthFrom);
         $monthToStart = $this->monthStartOrNull($monthTo);
+        $planStatus = strtolower(trim($request->string('plan_status')->toString()));
+        if (! in_array($planStatus, ['', 'completed', 'rescheduled'], true)) {
+            $planStatus = '';
+        }
 
         // Keep the office selector dependent on the selected location, just
         // like Equipment. A stale office query parameter must never filter a
@@ -67,7 +76,7 @@ class PreventiveMaintenancePlanController extends Controller
             $selectedAssignedUserId = null;
         }
 
-        $schedules = $this->visibleSchedules($request)
+        $scheduleQuery = $this->applyScheduleSearch($this->visibleSchedules($request), $q)
             ->when($locationId, fn ($query) => $query->where('location_id', $locationId))
             ->when($officeId, fn ($query) => $query->where('office_id', $officeId))
             ->when($selectedAssignedUserId, function ($query, $assignedUserId) {
@@ -89,13 +98,37 @@ class PreventiveMaintenancePlanController extends Controller
             ])
             ->orderByDesc('scheduled_date')
             ->orderBy('location_id')
-            ->orderBy('office_id')
-            ->paginate(10)
-            ->withQueryString();
+            ->orderBy('office_id');
 
-        $schedules->setCollection(
-            $schedules->getCollection()->map(fn (MaintenancePlanSchedule $schedule) => $this->scheduleRow($schedule))
-        );
+        if ($planStatus !== '') {
+            // Completion is derived from the current checklist cycle, so it
+            // cannot be expressed as a simple schedule column predicate.
+            // Build the same row payload used by the table, filter it, then
+            // paginate the filtered collection so totals and page links stay
+            // accurate for Completed/Rescheduled views.
+            $filteredRows = $scheduleQuery->get()
+                ->map(fn (MaintenancePlanSchedule $schedule) => $this->scheduleRow($schedule))
+                ->filter(fn (array $row): bool => $this->matchesPlanStatus($row, $planStatus))
+                ->values();
+            $currentPage = LengthAwarePaginator::resolveCurrentPage('page');
+
+            $schedules = new LengthAwarePaginator(
+                $filteredRows->forPage($currentPage, 10)->values(),
+                $filteredRows->count(),
+                10,
+                $currentPage,
+                [
+                    'path' => $request->url(),
+                    'pageName' => 'page',
+                    'query' => $request->query(),
+                ]
+            );
+        } else {
+            $schedules = $scheduleQuery->paginate(10)->withQueryString();
+            $schedules->setCollection(
+                $schedules->getCollection()->map(fn (MaintenancePlanSchedule $schedule) => $this->scheduleRow($schedule))
+            );
+        }
 
         $completionReturnTo = $this->safeLocalReturnPath($request->query('return_to'));
         $openCompletion = null;
@@ -126,8 +159,10 @@ class PreventiveMaintenancePlanController extends Controller
             'selectedLocationId' => $locationId,
             'selectedOfficeId' => $officeId,
             'selectedAssignedUserId' => $selectedAssignedUserId,
+            'q' => $q,
             'monthFrom' => $monthFrom,
             'monthTo' => $monthTo,
+            'planStatus' => $planStatus,
             'openCompletion' => $openCompletion,
             'completionSavedId' => $completionSavedId,
         ]);
@@ -508,6 +543,7 @@ class PreventiveMaintenancePlanController extends Controller
             'schedule_ids' => ['nullable', 'array'],
             'schedule_ids.*' => ['integer', 'distinct'],
             'select_all' => ['nullable', 'boolean'],
+            'q' => ['nullable', 'string', 'max:255'],
             'location_id' => ['nullable', 'integer', 'exists:locations,id'],
             'office_id' => ['nullable', 'integer', 'exists:offices,id'],
             'assigned_user_id' => [
@@ -519,6 +555,7 @@ class PreventiveMaintenancePlanController extends Controller
             ],
             'month_from' => ['nullable', 'date_format:Y-m'],
             'month_to' => ['nullable', 'date_format:Y-m'],
+            'plan_status' => ['nullable', Rule::in(['completed', 'rescheduled'])],
         ]);
 
         $selectAll = (bool) ($data['select_all'] ?? false);
@@ -533,7 +570,7 @@ class PreventiveMaintenancePlanController extends Controller
         $assignedUserId = $canFilterAssignedAdmin
             ? (($data['assigned_user_id'] ?? null) ?: null)
             : null;
-        $query = MaintenancePlanSchedule::query()
+        $query = $this->applyScheduleSearch(MaintenancePlanSchedule::query(), (string) ($data['q'] ?? ''))
             ->when($data['location_id'] ?? null, fn ($builder, $id) => $builder->where('location_id', $id))
             ->when($data['office_id'] ?? null, fn ($builder, $id) => $builder->where('office_id', $id))
             ->when($assignedUserId, function ($builder, $id) {
@@ -551,6 +588,14 @@ class PreventiveMaintenancePlanController extends Controller
         }
 
         $schedules = $query->with(['location', 'office', 'latestOverride', 'completion'])->get();
+        $planStatus = strtolower(trim((string) ($data['plan_status'] ?? '')));
+        if ($planStatus !== '') {
+            $schedules = $schedules
+                ->map(fn (MaintenancePlanSchedule $schedule) => $this->scheduleRow($schedule))
+                ->filter(fn (array $row): bool => $this->matchesPlanStatus($row, $planStatus))
+                ->map(fn (array $row): MaintenancePlanSchedule => $row['schedule'])
+                ->values();
+        }
         if ($schedules->isEmpty()) {
             return back()->with('warning', 'No active PM Plans matched the selected records or filters.');
         }
@@ -985,6 +1030,51 @@ class PreventiveMaintenancePlanController extends Controller
         return MaintenancePlanSchedule::query()->visibleTo($request->user());
     }
 
+    /**
+     * Apply the PM Plan text search one term at a time, matching Equipment's
+     * token behaviour while keeping each schedule query scoped to the fields
+     * shown or actionable on this page.
+     */
+    private function applyScheduleSearch($query, string $value)
+    {
+        $tokens = collect(preg_split('/\s+/', strtolower(trim($value)), -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $token) => trim($token))
+            ->filter(fn (string $token) => $token !== '')
+            ->take(5)
+            ->values();
+
+        foreach ($tokens as $token) {
+            $like = "%{$token}%";
+
+            $query->where(function ($match) use ($like): void {
+                $match
+                    ->where('title', 'like', $like)
+                    ->orWhere('notes', 'like', $like)
+                    ->orWhereHas('location', function ($location) use ($like): void {
+                        $location->where('name', 'like', $like)
+                            ->orWhere('code', 'like', $like);
+                    })
+                    ->orWhereHas('office', function ($office) use ($like): void {
+                        $office->where('name', 'like', $like)
+                            ->orWhereHas('location', function ($location) use ($like): void {
+                                $location->where('name', 'like', $like)
+                                    ->orWhere('code', 'like', $like);
+                            });
+                    })
+                    ->orWhereHas('assignedUser', function ($user) use ($like): void {
+                        $user->where('name', 'like', $like)
+                            ->orWhere('email', 'like', $like);
+                    })
+                    ->orWhereHas('assignedUsers', function ($user) use ($like): void {
+                        $user->where('name', 'like', $like)
+                            ->orWhere('email', 'like', $like);
+                    });
+            });
+        }
+
+        return $query;
+    }
+
     private function authorizeSchedule(MaintenancePlanSchedule $schedule, ?User $user): void
     {
         // Custodians manage PM Plan records across locations, including the
@@ -1116,6 +1206,21 @@ class PreventiveMaintenancePlanController extends Controller
             'is_complete' => $progress['is_complete'],
             'completion' => $this->currentCompletion($schedule),
         ];
+    }
+
+    /**
+     * Match the status options exposed by the Published schedules filter.
+     * Completed follows the table/dashboard definition (every active target
+     * device has a checklist record in the current cycle); Rescheduled means
+     * the schedule has an active/latest override.
+     */
+    private function matchesPlanStatus(array $row, string $planStatus): bool
+    {
+        return match ($planStatus) {
+            'completed' => (bool) ($row['is_complete'] ?? false),
+            'rescheduled' => filled($row['schedule']?->latestOverride),
+            default => true,
+        };
     }
 
     /**

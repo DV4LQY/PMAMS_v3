@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Exports\AllAssetsExport;
+use App\Exports\LinkedEquipmentMaintenanceExport;
 use App\Http\Controllers\Controller;
 use App\Models\Location;
 use App\Models\Device;
@@ -11,6 +12,7 @@ use App\Models\DeviceType;
 use App\Models\Office;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Maatwebsite\Excel\Facades\Excel;
@@ -55,6 +57,63 @@ class ReportController extends Controller
         $filename = 'all-assets-' . now()->format('Y-m-d-His') . '.xlsx';
 
         return Excel::download(new AllAssetsExport($request->query()), $filename);
+    }
+
+    /**
+     * Show linked equipment with its effective (inherited) maintenance date.
+     *
+     * A linked peripheral normally inherits the date from its standalone
+     * parent checklist, so this report is intentionally device-based rather
+     * than one-row-per-maintenance-record. That keeps one stable row per
+     * current linked equipment while still allowing year/month filtering.
+     */
+    public function linkedEquipment(Request $request)
+    {
+        $loadReport = $this->shouldLoadReport($request, [
+            'year',
+            'month',
+            'location_id',
+            'location',
+            'office_id',
+            'q',
+        ]);
+        $filters = self::linkedEquipmentFilters($request);
+
+        $devices = $loadReport
+            ? self::linkedEquipmentQuery($filters)
+                ->orderByRaw('COALESCE(part_of_property_number, property_number)')
+                ->orderBy('property_number')
+                ->paginate(25)
+                ->withQueryString()
+            : $this->emptyReportPaginator($request);
+
+        $locationId = $filters['location_id'];
+
+        return view('admin.reports.linked-equipment', [
+            'devices' => $devices,
+            'loadReport' => $loadReport,
+            'filters' => $filters,
+            'year' => $filters['year'],
+            'month' => $filters['month'],
+            'locationId' => $locationId,
+            'officeId' => $filters['office_id'],
+            'q' => $filters['q'],
+            'locations' => Location::query()->orderBy('name')->get(['id', 'name', 'code']),
+            'offices' => $locationId
+                ? Office::query()->where('location_id', $locationId)->orderBy('name')->get(['id', 'location_id', 'name'])
+                : collect(),
+        ]);
+    }
+
+    /** Download the same linked-equipment result set as a formatted workbook. */
+    public function linkedEquipmentExport(Request $request)
+    {
+        $filters = self::linkedEquipmentFilters($request);
+        $year = $filters['year'] ?: 'all-years';
+        $month = $filters['month'] ? str_pad((string) $filters['month'], 2, '0', STR_PAD_LEFT) : 'all-months';
+        $filename = "linked-equipment-maintenance-{$year}-{$month}-" . now()->format('Y-m-d-His') . '.xlsx';
+
+        return Excel::download(new LinkedEquipmentMaintenanceExport($filters), $filename);
     }
 
     public function accounts(Request $request)
@@ -299,6 +358,342 @@ class ReportController extends Controller
             'q' => $request->string('q')->toString(),
             'generatedAt' => now(),
         ], $this->filterOptions(($request->integer('location_id') ?: $request->integer('college_id')) ?: null)));
+    }
+
+    /**
+     * Normalize the linked-equipment report filters in one place so the HTML
+     * report and its Excel export always use the same scope.
+     *
+     * The office filter is only valid under its selected Location. Clearing
+     * the Location therefore also clears a stale office id, matching the
+     * dependent filter behavior used by Equipment and other reports.
+     */
+    public static function linkedEquipmentFilters(Request|array $request): array
+    {
+        $input = $request instanceof Request ? $request->query() : $request;
+
+        $year = is_scalar($input['year'] ?? null) ? (int) $input['year'] : 0;
+        $year = $year >= 2000 && $year <= 2100 ? $year : null;
+
+        $month = is_scalar($input['month'] ?? null) ? (int) $input['month'] : 0;
+        $month = $month >= 1 && $month <= 12 ? $month : null;
+
+        $locationId = is_scalar($input['location_id'] ?? null) ? (int) $input['location_id'] : 0;
+        if (! $locationId && is_scalar($input['location'] ?? null)) {
+            $locationId = (int) $input['location'];
+        }
+        if (! $locationId && is_scalar($input['college_id'] ?? null)) {
+            $locationId = (int) $input['college_id'];
+        }
+        $locationId = $locationId > 0 ? $locationId : null;
+
+        $officeId = is_scalar($input['office_id'] ?? null) ? (int) $input['office_id'] : 0;
+        $officeId = $officeId > 0 ? $officeId : null;
+
+        if (! $locationId) {
+            $officeId = null;
+        } elseif ($officeId && ! Office::query()
+            ->whereKey($officeId)
+            ->where('location_id', $locationId)
+            ->exists()) {
+            $officeId = null;
+        }
+
+        $q = is_scalar($input['q'] ?? null) ? trim((string) $input['q']) : '';
+        if (mb_strlen($q) > 255) {
+            $q = mb_substr($q, 0, 255);
+        }
+
+        return [
+            'year' => $year,
+            'month' => $month,
+            'location_id' => $locationId,
+            'office_id' => $officeId,
+            'q' => $q,
+        ];
+    }
+
+    /**
+     * Build the current linked-equipment inventory query.
+     *
+     * Linked peripherals inherit a parent's checklist date into their own
+     * last_maintenance_date. Parent history remains a fallback for older rows
+     * that pre-date that synchronization, so date filters remain useful for
+     * both current and legacy equipment.
+     */
+    public static function linkedEquipmentQuery(Request|array $request): Builder
+    {
+        $filters = self::linkedEquipmentFilters($request);
+        $year = $filters['year'];
+        $month = $filters['month'];
+        $locationId = $filters['location_id'];
+        $officeId = $filters['office_id'];
+        $terms = self::linkedEquipmentSearchTerms($filters['q']);
+
+        $query = Device::query()
+            ->whereNotNull('part_of_property_number')
+            ->where('part_of_property_number', '<>', '')
+            ->with([
+                'type',
+                'deployedLocation',
+                'deployedOffice.location',
+                'currentAssignment.staff.office.location',
+                'currentAssignment.office.location',
+                'currentAssignment.location',
+                'latestMaintenanceRecord',
+                'parentProperty.type',
+                'parentProperty.deployedLocation',
+                'parentProperty.deployedOffice.location',
+                'parentProperty.currentAssignment.staff.office.location',
+                'parentProperty.currentAssignment.office.location',
+                'parentProperty.currentAssignment.location',
+                'parentProperty.latestMaintenanceRecord',
+            ]);
+
+        if ($year || $month) {
+            $query->where(function (Builder $dateScope) use ($year, $month): void {
+                $dateScope
+                    ->where(function (Builder $deviceDate) use ($year, $month): void {
+                        self::applyMaintenanceDateParts($deviceDate, $year, $month, 'last_maintenance_date');
+                    })
+                    ->orWhereHas('maintenanceRecords', function (Builder $recordQuery) use ($year, $month): void {
+                        self::applyMaintenanceDateParts($recordQuery, $year, $month, 'maintenance_date');
+                    })
+                    ->orWhereHas('parentProperty', function (Builder $parentQuery) use ($year, $month): void {
+                        $parentQuery
+                            ->where(function (Builder $parentDate) use ($year, $month): void {
+                                self::applyMaintenanceDateParts($parentDate, $year, $month, 'last_maintenance_date');
+                            })
+                            ->orWhereHas('maintenanceRecords', function (Builder $recordQuery) use ($year, $month): void {
+                                self::applyMaintenanceDateParts($recordQuery, $year, $month, 'maintenance_date');
+                            });
+                    });
+            });
+        }
+
+        if ($locationId) {
+            $query->where(function (Builder $locationScope) use ($locationId): void {
+                $locationScope
+                    ->whereHas('currentAssignment', function (Builder $assignmentQuery) use ($locationId): void {
+                        self::whereAssignmentMatchesLocation($assignmentQuery, $locationId);
+                    })
+                    ->orWhereHas('parentProperty.currentAssignment', function (Builder $assignmentQuery) use ($locationId): void {
+                        self::whereAssignmentMatchesLocation($assignmentQuery, $locationId);
+                    })
+                    ->orWhereHas('deployedLocation', fn (Builder $locationQuery) => $locationQuery->whereKey($locationId))
+                    ->orWhereHas('deployedOffice', fn (Builder $officeQuery) => $officeQuery->where('location_id', $locationId))
+                    ->orWhereHas('parentProperty.deployedLocation', fn (Builder $locationQuery) => $locationQuery->whereKey($locationId))
+                    ->orWhereHas('parentProperty.deployedOffice', fn (Builder $officeQuery) => $officeQuery->where('location_id', $locationId));
+            });
+        }
+
+        if ($officeId) {
+            $query->where(function (Builder $officeScope) use ($officeId): void {
+                $officeScope
+                    ->whereHas('currentAssignment', function (Builder $assignmentQuery) use ($officeId): void {
+                        self::whereAssignmentMatchesOffice($assignmentQuery, $officeId);
+                    })
+                    ->orWhereHas('parentProperty.currentAssignment', function (Builder $assignmentQuery) use ($officeId): void {
+                        self::whereAssignmentMatchesOffice($assignmentQuery, $officeId);
+                    })
+                    ->orWhere('office_deployed_id', $officeId)
+                    ->orWhereHas('parentProperty', fn (Builder $parentQuery) => $parentQuery->where('office_deployed_id', $officeId));
+            });
+        }
+
+        foreach ($terms as $term) {
+            $like = "%{$term}%";
+
+            $query->where(function (Builder $searchScope) use ($like): void {
+                $searchScope
+                    ->where('property_number', 'like', $like)
+                    ->orWhere('part_of_property_number', 'like', $like)
+                    ->orWhere('serial_number', 'like', $like)
+                    ->orWhere('computer_name', 'like', $like)
+                    ->orWhere('brand', 'like', $like)
+                    ->orWhere('model', 'like', $like)
+                    ->orWhere('network_device_type', 'like', $like)
+                    ->orWhere('location_deployed', 'like', $like)
+                    ->orWhere('mac_address', 'like', $like)
+                    ->orWhere('maintenance_remarks', 'like', $like)
+                    ->orWhereHas('type', fn (Builder $typeQuery) => $typeQuery->where('name', 'like', $like))
+                    ->orWhereHas('deployedLocation', function (Builder $locationQuery) use ($like): void {
+                        $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                    })
+                    ->orWhereHas('deployedOffice', function (Builder $officeQuery) use ($like): void {
+                        $officeQuery->where('name', 'like', $like)
+                            ->orWhereHas('location', function (Builder $locationQuery) use ($like): void {
+                                $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                            });
+                    })
+                    ->orWhereHas('currentAssignment', function (Builder $assignmentQuery) use ($like): void {
+                        self::whereAssignmentMatchesSearch($assignmentQuery, $like);
+                    })
+                    ->orWhereHas('maintenanceRecords', function (Builder $recordQuery) use ($like): void {
+                        $recordQuery->where('remarks', 'like', $like)
+                            ->orWhere('corrective_action', 'like', $like);
+                    })
+                    ->orWhereHas('parentProperty', function (Builder $parentQuery) use ($like): void {
+                        $parentQuery
+                            ->where('property_number', 'like', $like)
+                            ->orWhere('serial_number', 'like', $like)
+                            ->orWhere('computer_name', 'like', $like)
+                            ->orWhere('brand', 'like', $like)
+                            ->orWhere('model', 'like', $like)
+                            ->orWhere('network_device_type', 'like', $like)
+                            ->orWhere('location_deployed', 'like', $like)
+                            ->orWhere('mac_address', 'like', $like)
+                            ->orWhere('maintenance_remarks', 'like', $like)
+                            ->orWhereHas('type', fn (Builder $typeQuery) => $typeQuery->where('name', 'like', $like))
+                            ->orWhereHas('deployedLocation', function (Builder $locationQuery) use ($like): void {
+                                $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                            })
+                            ->orWhereHas('deployedOffice', function (Builder $officeQuery) use ($like): void {
+                                $officeQuery->where('name', 'like', $like)
+                                    ->orWhereHas('location', function (Builder $locationQuery) use ($like): void {
+                                        $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                                    });
+                            })
+                            ->orWhereHas('currentAssignment', function (Builder $assignmentQuery) use ($like): void {
+                                self::whereAssignmentMatchesSearch($assignmentQuery, $like);
+                            })
+                            ->orWhereHas('maintenanceRecords', function (Builder $recordQuery) use ($like): void {
+                                $recordQuery->where('remarks', 'like', $like)
+                                    ->orWhere('corrective_action', 'like', $like);
+                            });
+                    });
+            });
+        }
+
+        return $query;
+    }
+
+    /** Build the values shown for one linked-equipment report row. */
+    public static function linkedEquipmentRow(Device $device): array
+    {
+        $parent = $device->parentProperty;
+        $childAssignment = $device->currentAssignment;
+        $parentAssignment = $parent?->currentAssignment;
+        $childStaff = $childAssignment?->staff;
+        $parentStaff = $parentAssignment?->staff;
+        $staff = $childStaff ?: $parentStaff;
+
+        $office = $childAssignment?->office
+            ?: $childStaff?->office
+            ?: $parentAssignment?->office
+            ?: $parentStaff?->office
+            ?: $device->deployedOffice
+            ?: $parent?->deployedOffice;
+
+        $location = $childAssignment?->location
+            ?: $childAssignment?->office?->location
+            ?: $childStaff?->office?->location
+            ?: $parentAssignment?->location
+            ?: $parentAssignment?->office?->location
+            ?: $parentStaff?->office?->location
+            ?: $device->deployedLocation
+            ?: $device->deployedOffice?->location
+            ?: $parent?->deployedLocation
+            ?: $parent?->deployedOffice?->location;
+
+        $staffName = $staff
+            ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? ''))
+            : ($childAssignment?->location || $parentAssignment?->location ? 'Location assignment' : null);
+
+        $maintenanceDate = $device->effectiveLastMaintenanceDate();
+        $maintenanceRemarks = filled($device->maintenance_remarks)
+            ? $device->maintenance_remarks
+            : ($device->latestMaintenanceRecord?->remarks
+                ?: $parent?->maintenance_remarks
+                ?: $parent?->latestMaintenanceRecord?->remarks);
+
+        return [
+            'device' => $device,
+            'parent' => $parent,
+            'property_number' => $device->property_number,
+            'parent_property_number' => $device->part_of_property_number ?: $parent?->property_number,
+            'equipment_type' => $device->type?->name,
+            'serial_number' => $device->serial_number,
+            'brand_model' => trim(($device->brand ?? '') . ' ' . ($device->model ?? '')),
+            'maintenance_date' => $maintenanceDate,
+            'maintenance_source' => $parent ? 'Parent checklist (inherited)' : 'Equipment record',
+            'staff_name' => $staffName,
+            'office_name' => $office?->name,
+            'location_name' => $location?->name,
+            'condition' => $device->condition,
+            'status' => $device->status,
+            'maintenance_remarks' => $maintenanceRemarks,
+        ];
+    }
+
+    private static function linkedEquipmentSearchTerms(string $query): array
+    {
+        return collect(preg_split('/\s+/', strtolower(trim($query)), -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $term) => trim($term))
+            ->filter(fn (string $term) => $term !== '')
+            ->take(5)
+            ->values()
+            ->all();
+    }
+
+    private static function applyMaintenanceDateParts(Builder $query, ?int $year, ?int $month, string $column): void
+    {
+        if ($year) {
+            $query->whereYear($column, $year);
+        }
+
+        if ($month) {
+            $query->whereMonth($column, $month);
+        }
+    }
+
+    private static function whereAssignmentMatchesLocation(Builder $query, int $locationId): void
+    {
+        $query->where(function (Builder $scope) use ($locationId): void {
+            $scope
+                ->where('location_id', $locationId)
+                ->orWhereHas('office', fn (Builder $officeQuery) => $officeQuery->where('location_id', $locationId))
+                ->orWhereHas('staff.office', fn (Builder $officeQuery) => $officeQuery->where('location_id', $locationId));
+        });
+    }
+
+    private static function whereAssignmentMatchesOffice(Builder $query, int $officeId): void
+    {
+        $query->where(function (Builder $scope) use ($officeId): void {
+            $scope
+                ->where('office_id', $officeId)
+                ->orWhereHas('staff', fn (Builder $staffQuery) => $staffQuery->where('office_id', $officeId));
+        });
+    }
+
+    private static function whereAssignmentMatchesSearch(Builder $query, string $like): void
+    {
+        $query->where(function (Builder $scope) use ($like): void {
+            $scope
+                ->whereHas('location', function (Builder $locationQuery) use ($like): void {
+                    $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                })
+                ->orWhereHas('office', function (Builder $officeQuery) use ($like): void {
+                    $officeQuery->where('name', 'like', $like)
+                        ->orWhereHas('location', function (Builder $locationQuery) use ($like): void {
+                            $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                        });
+                })
+                ->orWhereHas('staff', function (Builder $staffQuery) use ($like): void {
+                    $staffQuery
+                        ->where(function (Builder $nameQuery) use ($like): void {
+                            $nameQuery->where('first_name', 'like', $like)->orWhere('last_name', 'like', $like);
+                        })
+                        ->orWhere('email', 'like', $like)
+                        ->orWhere('position', 'like', $like)
+                        ->orWhereHas('office', function (Builder $officeQuery) use ($like): void {
+                            $officeQuery->where('name', 'like', $like)
+                                ->orWhereHas('location', function (Builder $locationQuery) use ($like): void {
+                                    $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                                });
+                        });
+                });
+        });
     }
 
     private function checkedEquipmentQuery(Request $request)

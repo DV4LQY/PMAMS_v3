@@ -547,6 +547,7 @@
                     <input type="hidden" name="form_context" value="add_equipment">
                     <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                         @include('admin.devices._add-equipment-fields')
+                        @include('admin.devices._audit-meta', ['auditMode' => 'create'])
                     </div>
                     <div class="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-6 py-4">
                         <button type="button" data-native-modal-close="dashboard-add-equipment-modal" data-equipment-add-cancel @click="addDeviceOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Cancel</button>

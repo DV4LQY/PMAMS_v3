@@ -189,6 +189,13 @@
             background-color: #1f2937 !important;
         }
 
+        /* Signature drawings must stay on a white surface so the dark ink
+           remains legible even while the rest of the admin UI is dark. */
+        html.dark canvas[data-pmams-signature-pad],
+        html[data-pmams-theme="dark"] canvas[data-pmams-signature-pad] {
+            background-color: #ffffff !important;
+        }
+
         html.dark .bg-gray-50 {
             background-color: #111827 !important;
         }
@@ -303,6 +310,15 @@
         html[data-pmams-theme="dark"] .bg-gray-50 { background-color: #111827 !important; }
         html[data-pmams-theme="dark"] .bg-gray-100 { background-color: #374151 !important; }
         html[data-pmams-theme="dark"] .bg-gray-200 { background-color: #4b5563 !important; }
+
+        /* Keep the signature pad white after the stronger rounded-control
+           remapping above, including when the persisted data-theme marker is
+           present during a Livewire navigation. */
+        html.dark canvas.rounded-lg.bg-white[data-pmams-signature-pad],
+        html[data-pmams-theme="dark"] canvas.rounded-lg.bg-white[data-pmams-signature-pad] {
+            background-color: #ffffff !important;
+        }
+
         html[data-pmams-theme="dark"] .admin-header {
             background: rgba(31, 41, 55, 0.9) !important;
             border-bottom-color: #374151 !important;
@@ -2031,6 +2047,213 @@
         // Run immediately for a full load; Livewire will run this again after
         // a SPA navigation replaces the page controls.
         restoreFields();
+    })();
+</script>
+
+<script>
+    // Keep page-level search controls consistent: an inline clear button sits
+    // beside the search icon, and clearing submits the same GET form with all
+    // other filters intact. Autocomplete inputs are intentionally not marked
+    // with data-pmams-search, so their live lookup behavior is unchanged.
+    (function setupPmamsSearchControls() {
+        if (window.__pmamsSearchControlsReady) return;
+        window.__pmamsSearchControlsReady = true;
+
+        const fieldSelector = 'input[data-pmams-search]';
+        const fieldFor = (button) => button.closest('[data-pmams-search-wrapper]')?.querySelector(fieldSelector);
+        const syncField = (field) => {
+            if (!(field instanceof HTMLInputElement)) return;
+            const wrapper = field.closest('[data-pmams-search-wrapper]');
+            const clear = wrapper?.querySelector('[data-pmams-search-clear]');
+            if (!clear) return;
+
+            const hasValue = field.value.trim() !== '';
+            clear.classList.toggle('hidden', !hasValue);
+            clear.setAttribute('aria-hidden', hasValue ? 'false' : 'true');
+            clear.tabIndex = hasValue ? 0 : -1;
+        };
+        const syncAll = (root = document) => {
+            root.querySelectorAll?.(fieldSelector).forEach(syncField);
+        };
+
+        document.addEventListener('input', (event) => {
+            const field = event.target.closest?.(fieldSelector);
+            if (field) syncField(field);
+        }, true);
+
+        document.addEventListener('click', (event) => {
+            const clear = event.target.closest?.('[data-pmams-search-clear]');
+            if (!clear) return;
+
+            const field = fieldFor(clear);
+            if (!(field instanceof HTMLInputElement)) return;
+
+            event.preventDefault();
+            field.value = '';
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+
+            const form = field.form;
+            if (!form || clear.dataset.pmamsSubmit === 'false') return;
+
+            const submitter = field.closest('[data-pmams-search-wrapper]')?.querySelector('[data-pmams-search-submit]');
+            if (typeof form.requestSubmit === 'function') {
+                try {
+                    form.requestSubmit(submitter instanceof HTMLButtonElement ? submitter : undefined);
+                    return;
+                } catch (error) {
+                    // Fall through to the native submit for older/embedded browsers.
+                }
+            }
+            form.submit();
+        }, true);
+
+        document.addEventListener('livewire:navigated', () => syncAll());
+        document.addEventListener('DOMContentLoaded', () => syncAll(), { once: true });
+        syncAll();
+    })();
+</script>
+
+<script>
+    // Autocomplete inputs (for example staff, parent-equipment, and available
+    // equipment lookups) keep their live lookup handlers, but use the same
+    // compact clear/search affordance as page-level filters. The trigger emits
+    // the existing input event instead of submitting an enclosing POST form.
+    (function setupPmamsInlineSearchControls() {
+        if (window.__pmamsInlineSearchControlsReady) return;
+        window.__pmamsInlineSearchControlsReady = true;
+
+        const fieldSelector = 'input[data-pmams-inline-search], input[type="search"]:not([data-pmams-search])';
+        const icon = (kind) => {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', 'currentColor');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('stroke-width', '2');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.setAttribute('class', kind === 'clear' ? 'h-4 w-4' : 'h-5 w-5');
+
+            if (kind === 'clear') {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('stroke-linecap', 'round');
+                path.setAttribute('d', 'M6 6l12 12M18 6 6 18');
+                svg.append(path);
+            } else {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', '11');
+                circle.setAttribute('cy', '11');
+                circle.setAttribute('r', '6.5');
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('stroke-linecap', 'round');
+                path.setAttribute('d', 'm16 16 4 4');
+                svg.append(circle, path);
+            }
+
+            return svg;
+        };
+        const syncField = (field) => {
+            const clear = field.parentElement?.querySelector('[data-pmams-inline-search-clear]');
+            if (!clear) return;
+            const hasValue = field.value.trim() !== '';
+            const blocked = field.disabled || field.readOnly;
+            clear.classList.toggle('hidden', !hasValue || blocked);
+            clear.setAttribute('aria-hidden', hasValue && !blocked ? 'false' : 'true');
+            clear.tabIndex = hasValue && !blocked ? 0 : -1;
+
+            const trigger = field.parentElement?.querySelector('[data-pmams-inline-search-trigger]');
+            if (trigger) {
+                trigger.disabled = blocked;
+                trigger.classList.toggle('cursor-not-allowed', blocked);
+                trigger.classList.toggle('opacity-50', blocked);
+            }
+        };
+        const enhanceField = (field) => {
+            if (!(field instanceof HTMLInputElement) || field.dataset.pmamsInlineSearchReady === 'true') return;
+            if (field.closest('[data-pmams-search-wrapper]')) return;
+
+            const parent = field.parentElement;
+            if (!parent) return;
+
+            field.dataset.pmamsInlineSearchReady = 'true';
+            parent.classList.add('relative');
+            field.classList.add('pr-20');
+
+            const actions = document.createElement('div');
+            actions.className = 'pointer-events-none absolute inset-y-0 right-0 flex items-center gap-0.5 pr-1';
+
+            const clear = document.createElement('button');
+            clear.type = 'button';
+            clear.dataset.pmamsInlineSearchClear = 'true';
+            clear.className = 'pointer-events-auto inline-flex h-9 w-8 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white';
+            clear.setAttribute('aria-label', `Clear ${field.getAttribute('aria-label') || 'search'}`);
+            clear.title = 'Clear search';
+            clear.append(icon('clear'));
+
+            const trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.dataset.pmamsInlineSearchTrigger = 'true';
+            trigger.className = 'pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-500 transition hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300';
+            trigger.setAttribute('aria-label', field.getAttribute('aria-label') || 'Search');
+            trigger.title = field.getAttribute('aria-label') || 'Search';
+            trigger.append(icon('search'));
+
+            actions.append(clear, trigger);
+            parent.append(actions);
+            syncField(field);
+        };
+        const enhanceAll = (root = document) => {
+            root.querySelectorAll?.(fieldSelector).forEach(enhanceField);
+        };
+
+        document.addEventListener('input', (event) => {
+            const field = event.target.closest?.(fieldSelector);
+            if (field) syncField(field);
+        }, true);
+
+        document.addEventListener('click', (event) => {
+            const clear = event.target.closest?.('[data-pmams-inline-search-clear]');
+            if (clear) {
+                const field = clear.parentElement?.parentElement?.querySelector(fieldSelector);
+                if (!(field instanceof HTMLInputElement)) return;
+                if (field.disabled || field.readOnly) return;
+                event.preventDefault();
+                field.value = '';
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+                field.focus({ preventScroll: true });
+                return;
+            }
+
+            const trigger = event.target.closest?.('[data-pmams-inline-search-trigger]');
+            if (!trigger) return;
+            const field = trigger.parentElement?.parentElement?.querySelector(fieldSelector);
+            if (!(field instanceof HTMLInputElement)) return;
+            if (field.disabled || field.readOnly) return;
+            event.preventDefault();
+            field.focus({ preventScroll: true });
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        }, true);
+
+        document.addEventListener('livewire:navigated', () => enhanceAll());
+        document.addEventListener('DOMContentLoaded', () => enhanceAll(), { once: true });
+        enhanceAll();
+
+        if (document.body && typeof MutationObserver === 'function') {
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && mutation.target.matches?.(fieldSelector)) {
+                        syncField(mutation.target);
+                    }
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === Node.ELEMENT_NODE) enhanceAll(node);
+                    });
+                });
+            });
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['disabled', 'readonly'],
+            });
+        }
     })();
 </script>
 

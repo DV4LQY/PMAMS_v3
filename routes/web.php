@@ -190,6 +190,8 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
             Route::get('/', [ReportController::class, 'index'])->name('index');
             Route::get('/assets', [ReportController::class, 'assets'])->name('assets');
             Route::get('/assets/export', [ReportController::class, 'assetsExport'])->name('assets.export');
+            Route::get('/linked-equipment', [ReportController::class, 'linkedEquipment'])->name('linkedEquipment');
+            Route::get('/linked-equipment/export', [ReportController::class, 'linkedEquipmentExport'])->name('linkedEquipment.export');
             Route::get('/issuance', [IssuanceController::class, 'index'])->name('issuance');
             Route::get('/issuance/export', [IssuanceController::class, 'export'])->name('issuance.export');
             Route::get('/accounts', [ReportController::class, 'accounts'])

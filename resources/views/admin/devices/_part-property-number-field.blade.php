@@ -111,6 +111,7 @@
     <div class="mt-1">
         <input
             x-ref="partPropertyInput"
+            data-pmams-inline-search
             name="part_of_property_number"
             value="{{ $partPropertyValue }}"
             class="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -118,6 +119,7 @@
             pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"
             title="Letters, numbers, hyphens, and slashes only"
             placeholder="e.g. PN-2026-0001"
+            aria-label="Search linked parent property number"
             autocomplete="off"
             :disabled="!visible"
             @if($lockPartPropertyNumber) readonly @endif

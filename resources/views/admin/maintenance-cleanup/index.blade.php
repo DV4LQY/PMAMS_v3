@@ -69,6 +69,7 @@
                     <tr>
                         <th class="px-3 py-2">Select</th>
                         <th class="px-3 py-2">Deleted</th>
+                        <th class="px-3 py-2">Deleted by</th>
                         <th class="px-3 py-2">Maintenance date</th>
                         <th class="px-3 py-2">Property</th>
                         <th class="px-3 py-2">Type</th>
@@ -81,6 +82,7 @@
                         <tr>
                             <td class="px-3 py-2"><input type="checkbox" data-deleted-checklist-id="{{ $record->id }}" class="h-4 w-4" onchange="syncCleanupSelection()"></td>
                             <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ $record->deleted_at?->format('M d, Y h:i A') ?? '-' }}</td>
+                            <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ $deletedBy['DeviceMaintenanceRecord'][$record->id] ?? '-' }}</td>
                             <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ $record->maintenance_date?->format('M d, Y') ?? '-' }}</td>
                             <td class="px-3 py-2 font-medium text-gray-900 dark:text-white">{{ $record->device?->property_number ?? '-' }}</td>
                             <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ $record->device?->type?->name ?? '-' }}</td>
@@ -93,7 +95,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-3 py-8 text-center text-gray-500 dark:text-gray-400">No deleted checklist history found.</td></tr>
+                        <tr><td colspan="8" class="px-3 py-8 text-center text-gray-500 dark:text-gray-400">No deleted checklist history found.</td></tr>
                     @endforelse
                 </tbody>
             </table>

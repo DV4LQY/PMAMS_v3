@@ -316,7 +316,7 @@
                 }
 
                 const nextValue = value ?? '';
-                if (input.tagName === 'SELECT' && nextValue !== ''
+                if (input.tagName === 'SELECT' && name !== 'specs[memory]' && nextValue !== ''
                     && !Array.from(input.options).some((option) => option.value === String(nextValue))) {
                     const option = document.createElement('option');
                     option.value = String(nextValue);
@@ -559,29 +559,15 @@
     {{-- Filters --}}
     <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <form x-ref="equipmentFilterForm" method="GET" data-pmams-equipment-filter class="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <div class="relative order-first min-w-0 flex-1">
-                <input
-                    name="q"
-                    data-pmams-search
-                    value="{{ $q ?? '' }}"
-                    x-on:keydown.enter.prevent="$refs.equipmentFilterForm.requestSubmit()"
-                    placeholder="Search property #, serial #, office, or location..."
-                    autocomplete="off"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 pr-11 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
-                >
-                <button
-                    type="submit"
-                    aria-label="Search equipment"
-                    title="Search equipment"
-                    class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-r-lg text-gray-500 transition hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset dark:text-gray-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
-                >
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
-                        <circle cx="11" cy="11" r="6.5"></circle>
-                        <path stroke-linecap="round" d="m16 16 4 4"></path>
-                    </svg>
-                </button>
-            </div>
-            <div class="w-full lg:w-44">
+            <x-search-field
+                name="q"
+                :value="$q ?? ''"
+                placeholder="Search property #, serial #, office, or location..."
+                ariaLabel="Search equipment"
+                wrapperClass="order-first flex-1 lg:min-w-[14rem] lg:flex-[2_1_24rem]"
+                inputClass="w-full rounded-lg border border-gray-300 px-3 py-2 pr-20 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
+            />
+            <div class="w-full min-w-0 lg:w-44">
                 <select
                     name="type"
                     onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
@@ -597,7 +583,7 @@
             </div>
 
             @if(isset($colleges))
-                <div class="w-full lg:w-44">
+                <div class="w-full min-w-0 lg:w-44">
                     <select
                     name="college"
                         id="equipment-location-filter"
@@ -616,7 +602,7 @@
             @endif
 
             @if($showOfficeFilter)
-                <div class="w-full lg:w-56">
+                <div class="w-full min-w-0 lg:w-56">
                     <select
                         name="office_id"
                         id="equipment-office-filter"
@@ -634,7 +620,7 @@
                 </div>
             @endif
 
-            <div class="w-full lg:w-44">
+            <div class="w-full min-w-0 lg:w-44">
                 <select
                     name="status"
                     onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
@@ -648,7 +634,7 @@
                 </select>
             </div>
 
-            <div class="w-full lg:w-44">
+            <div class="w-full min-w-0 lg:w-44">
                 <select
                     name="condition"
                         onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
@@ -661,7 +647,7 @@
                 </select>
             </div>
 
-            <div class="flex gap-2">
+            <div class="flex shrink-0 gap-2">
                 <a
                     href="{{ route('admin.devices.index', ['load' => 1]) }}"
                     data-pmams-equipment-reset
@@ -884,6 +870,9 @@
                             date_acquired: @js($displayDateAcquired?->format('Y-m-d') ?? ''),
                             last_maintenance_date: @js($displayLastMaintenanceDate?->format('Y-m-d') ?? ''),
                             maintenance_remarks: @js(''),
+                            audit_label: @js($d->latestAuditLog?->action === 'created' ? 'Encoded by' : 'Edited by'),
+                            audit_user: @js($d->latestAuditLog?->user_name ?? ''),
+                            audit_at: @js($d->latestAuditLog?->created_at?->format('M d, Y h:i A') ?? ''),
                             status: @js($d->status ?? 'available'),
                             condition: @js($d->condition ?? 'serviceable'),
                             os_version: @js($d->os_version ?? ''),
@@ -1060,6 +1049,9 @@
                                             date_acquired: @js($displayDateAcquired?->format('Y-m-d') ?? ''),
                                             last_maintenance_date: @js($displayLastMaintenanceDate?->format('Y-m-d') ?? ''),
                                             maintenance_remarks: @js(''),
+                                            audit_label: @js($d->latestAuditLog?->action === 'created' ? 'Encoded by' : 'Edited by'),
+                                            audit_user: @js($d->latestAuditLog?->user_name ?? ''),
+                                            audit_at: @js($d->latestAuditLog?->created_at?->format('M d, Y h:i A') ?? ''),
                                             status: @js($d->status ?? 'available'),
                                             condition: @js($d->condition ?? 'serviceable'),
                                             os_version: @js($d->os_version ?? ''),
@@ -1161,6 +1153,7 @@
             <input type="hidden" name="return_to" value="{{ $equipmentReturnTo }}">
 
             @include('admin.devices._add-equipment-fields')
+            @include('admin.devices._audit-meta', ['auditMode' => 'create'])
 
             <div class="flex justify-end gap-2 pt-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
@@ -1201,6 +1194,20 @@
                 'lockEquipmentType' => true,
                 'lockPartPropertyNumber' => true,
             ])
+
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <span x-text="editDevice.audit_label || 'Edited by'"></span>:
+                <span class="font-medium text-gray-700 dark:text-gray-300" x-text="editDevice.audit_user || 'No audit entry yet'"></span>
+                <template x-if="editDevice.audit_at">
+                    <span>
+                        <span aria-hidden="true">&middot;</span>
+                        <time x-text="editDevice.audit_at"></time>
+                    </span>
+                </template>
+                <template x-if="!editDevice.audit_at">
+                    <span class="italic">(pending save)</span>
+                </template>
+            </p>
 
             <div class="flex justify-end gap-2 pt-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
@@ -1626,9 +1633,11 @@
                 <input
                     type="text"
                     x-ref="issueStaffSearch"
+                    data-pmams-inline-search
                     x-model="issueStaffQuery"
                     x-on:input="issueStaffId = ''; issueStaffSelected = null; queueIssueStaffLookup()"
                     placeholder="Type staff name, email, office, or location..."
+                    aria-label="Search staff"
                     class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
                     autocomplete="off"
                 >
@@ -1728,9 +1737,11 @@
                 <input
                     type="text"
                     x-ref="linkParentSearch"
+                    data-pmams-inline-search
                     x-model="linkParentQuery"
                     x-on:input="queueLinkParentLookup()"
                     placeholder="Search Desktop/Laptop property number..."
+                    aria-label="Search parent equipment"
                     autocomplete="off"
                     class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                 >

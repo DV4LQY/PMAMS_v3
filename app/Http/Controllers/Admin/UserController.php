@@ -210,7 +210,16 @@ class UserController extends Controller
             ->paginate(15, ['*'], 'staff_page')
             ->withQueryString();
 
-        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedDevices', 'deletedMaintenancePlans', 'deletedLocations', 'deletedOffices', 'deletedStaff'));
+        $deletedBy = ActivityLog::deletedByFor([
+            'User' => $deletedUsers->getCollection(),
+            'Device' => $deletedDevices->getCollection(),
+            'MaintenancePlanSchedule' => $deletedMaintenancePlans->getCollection(),
+            'Location' => $deletedLocations->getCollection(),
+            'Office' => $deletedOffices->getCollection(),
+            'Staff' => $deletedStaff->getCollection(),
+        ]);
+
+        return view('admin.users.recycle-bin', compact('deletedUsers', 'deletedDevices', 'deletedMaintenancePlans', 'deletedLocations', 'deletedOffices', 'deletedStaff', 'deletedBy'));
     }
 
     public function permanentDelete(Request $request)

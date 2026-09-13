@@ -24,8 +24,23 @@
     $effectiveLastMaintenanceDate = $device->effectiveLastMaintenanceDate();
     $editLastMaintenanceDate = old('last_maintenance_date', $effectiveLastMaintenanceDate?->format('Y-m-d') ?? '');
     $editCondition = strtolower((string) old('condition', $device->condition ?? 'serviceable'));
+    $reissueReturnTo = request()->query('return_to');
+    $reissueReturnTo = is_scalar($reissueReturnTo) ? trim((string) $reissueReturnTo) : '';
     $reissueReturnPath = parse_url($deviceUrl, PHP_URL_PATH) . '?reissue_open=1';
-    $reissueStaffOffice = $device->currentAssignment?->office ?: $device->currentAssignment?->staff?->office;
+    if ($reissueReturnTo !== '') {
+        $reissueReturnPath .= '&return_to=' . rawurlencode($reissueReturnTo);
+    }
+    $reissueAssignment = $device->currentAssignment;
+    $reissueAssignedStaff = $reissueAssignment?->staff;
+    $reissueStaffOffice = $reissueAssignment?->office ?: $reissueAssignedStaff?->office;
+    $reissueAssignedLocation = $reissueAssignment?->location ?: $reissueStaffOffice?->location;
+    $hasAssignedStaffLocation = (bool) $reissueAssignedStaff && (bool) $reissueAssignedLocation;
+    $reissueModalTitle = $hasAssignedStaffLocation ? 'Reissue Equipment' : 'Assign Equipment';
+    $reissueModalDescription = $hasAssignedStaffLocation
+        ? "Select the staff member who will receive this equipment. The location follows the selected staff member's registered office."
+        : "This equipment must be assigned to a staff member with a registered office and location before it can be checked.";
+    $reissueSubmitLabel = $hasAssignedStaffLocation ? 'Save Reissue' : 'Assign Equipment';
+    $reissueActionLabel = $hasAssignedStaffLocation ? 'Reissue equipment' : 'Assign equipment';
     $reissueAddStaffUrl = $reissueStaffOffice
         ? route('admin.staff.index', [
             'office' => $reissueStaffOffice->id,
@@ -170,7 +185,7 @@
                     }
 
                     const nextValue = value ?? '';
-                    if (input.tagName === 'SELECT' && nextValue !== ''
+                    if (input.tagName === 'SELECT' && name !== 'specs[memory]' && nextValue !== ''
                         && !Array.from(input.options).some((option) => option.value === String(nextValue))) {
                         const option = document.createElement('option');
                         option.value = String(nextValue);
@@ -296,14 +311,74 @@
     let deviceCameraStream = null;
     let deviceCameraRequest = 0;
 
+    function setDevicePhotoStatus(message) {
+        ['device-photo-status', 'device-camera-status'].forEach((id) => {
+            const status = document.getElementById(id);
+            if (status) status.textContent = message || '';
+        });
+    }
+
+    function syncDevicePhotoScrollLock() {
+        const cameraModal = document.getElementById('device-camera-modal');
+        const lightbox = document.getElementById('device-photo-lightbox');
+        const overlayOpen = [cameraModal, lightbox].some((overlay) => overlay && !overlay.classList.contains('hidden'));
+        document.body?.classList.toggle('overflow-hidden', overlayOpen);
+    }
+
+    function setDeviceCameraModal(isOpen) {
+        const modal = document.getElementById('device-camera-modal');
+        if (!modal) return;
+
+        modal.classList.toggle('hidden', !isOpen);
+        modal.classList.toggle('flex', isOpen);
+        modal.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        syncDevicePhotoScrollLock();
+
+        if (isOpen) {
+            requestAnimationFrame(() => document.getElementById('device-camera-close-button')?.focus({ preventScroll: true }));
+        }
+    }
+
+    function openDevicePhotoLightbox() {
+        const image = document.getElementById('device-photo-image');
+        const modal = document.getElementById('device-photo-lightbox');
+        const lightboxImage = document.getElementById('device-photo-lightbox-image');
+        const source = image?.currentSrc || image?.src || '';
+
+        if (!image || image.classList.contains('hidden') || !source || !modal || !lightboxImage) return;
+
+        lightboxImage.src = source;
+        lightboxImage.alt = image.alt || 'Equipment photo';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        modal.setAttribute('aria-hidden', 'false');
+        syncDevicePhotoScrollLock();
+        requestAnimationFrame(() => document.getElementById('device-photo-lightbox-close')?.focus({ preventScroll: true }));
+    }
+
+    function closeDevicePhotoLightbox() {
+        const modal = document.getElementById('device-photo-lightbox');
+        const lightboxImage = document.getElementById('device-photo-lightbox-image');
+
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        modal?.setAttribute('aria-hidden', 'true');
+        lightboxImage?.removeAttribute('src');
+        syncDevicePhotoScrollLock();
+    }
+
     function renderEmptyDevicePhotoPreview() {
         const image = document.getElementById('device-photo-image');
         const emptyState = document.getElementById('device-photo-empty');
+        const zoomButton = document.getElementById('device-photo-zoom-button');
 
         image?.classList.add('hidden');
         image?.removeAttribute('src');
         emptyState?.classList.remove('hidden');
         emptyState?.classList.add('flex');
+        zoomButton?.classList.add('hidden');
+        zoomButton?.classList.remove('flex');
+        closeDevicePhotoLightbox();
     }
 
     function setDevicePhotoBusy(isBusy) {
@@ -316,12 +391,18 @@
             control.classList.toggle('opacity-60', isBusy);
             control.classList.toggle('cursor-wait', isBusy);
         });
+
+        if (captureButton) {
+            captureButton.disabled = isBusy || !deviceCameraStream;
+        }
     }
 
     function closeDeviceCamera() {
         deviceCameraRequest += 1;
         const video = document.getElementById('device-camera-video');
         const controls = document.getElementById('device-camera-controls');
+        const placeholder = document.getElementById('device-camera-placeholder');
+        const captureButton = document.getElementById('device-capture-photo-button');
 
         if (deviceCameraStream) {
             deviceCameraStream.getTracks().forEach((track) => track.stop());
@@ -336,20 +417,32 @@
         video?.classList.add('hidden');
         controls?.classList.add('hidden');
         controls?.classList.remove('flex');
+        placeholder?.classList.remove('hidden');
+        captureButton?.setAttribute('disabled', 'disabled');
+        setDeviceCameraModal(false);
     }
 
     async function openDeviceCamera() {
-        const request = ++deviceCameraRequest;
         const video = document.getElementById('device-camera-video');
         const controls = document.getElementById('device-camera-controls');
-        const status = document.getElementById('device-photo-status');
+        const placeholder = document.getElementById('device-camera-placeholder');
 
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            status.textContent = 'Camera access is not available in this browser.';
+        if (!video || !controls) {
             return;
         }
 
-        status.textContent = 'Opening camera...';
+        if (deviceCameraStream) closeDeviceCamera();
+
+        const request = ++deviceCameraRequest;
+        setDeviceCameraModal(true);
+        placeholder?.classList.remove('hidden');
+        setDevicePhotoStatus('Opening camera...');
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setDevicePhotoStatus('Camera access is not available in this browser.');
+            return;
+        }
+
         setDevicePhotoBusy(true);
 
         try {
@@ -374,13 +467,14 @@
             await video.play();
 
             video.classList.remove('hidden');
+            placeholder?.classList.add('hidden');
             controls?.classList.remove('hidden');
             controls?.classList.add('flex');
-            status.textContent = 'Camera ready.';
+            setDevicePhotoStatus('Camera ready. Center the equipment and capture when ready.');
         } catch (error) {
-            status.textContent = window.isSecureContext
+            setDevicePhotoStatus(window.isSecureContext
                 ? 'Camera permission was blocked or no camera was found.'
-                : 'Camera requires HTTPS or localhost.';
+                : 'Camera requires HTTPS or localhost.');
         } finally {
             setDevicePhotoBusy(false);
         }
@@ -392,15 +486,15 @@
         const canvas = document.getElementById('device-camera-canvas');
         const image = document.getElementById('device-photo-image');
         const emptyState = document.getElementById('device-photo-empty');
-        const status = document.getElementById('device-photo-status');
+        const zoomButton = document.getElementById('device-photo-zoom-button');
 
         if (!deviceCameraStream || !video.videoWidth || !video.videoHeight) {
-            status.textContent = 'Camera is not ready yet.';
+            setDevicePhotoStatus('Camera is not ready yet.');
             return;
         }
 
         setDevicePhotoBusy(true);
-        status.textContent = 'Saving photo...';
+        setDevicePhotoStatus('Saving photo...');
 
         try {
             const size = Math.min(video.videoWidth, video.videoHeight);
@@ -433,31 +527,32 @@
 
             const result = await response.json();
             image.src = result.photo_url + '?v=' + Date.now();
-            image.alt = 'Photo of equipment';
+            image.alt = @js('Photo of ' . $device->property_number);
             image.classList.remove('hidden');
             emptyState?.classList.add('hidden');
             emptyState?.classList.remove('flex');
-            status.textContent = result.message;
+            zoomButton?.classList.remove('hidden');
+            zoomButton?.classList.add('flex');
+            setDevicePhotoStatus(result.message);
             const clearButton = document.getElementById('device-clear-photo-button');
             clearButton?.classList.remove('hidden');
             clearButton?.classList.add('inline-flex');
             closeDeviceCamera();
         } catch (error) {
-            status.textContent = error.message || 'Photo upload failed. Please try again.';
+            setDevicePhotoStatus(error.message || 'Photo upload failed. Please try again.');
         } finally {
             setDevicePhotoBusy(false);
         }
     }
 
     async function clearDevicePhoto() {
-        if (!confirm('Delete this equipment photo?')) return;
+        if (!confirm('Delete this equipment photo? This action cannot be undone.')) return;
 
         const form = document.getElementById('device-photo-delete-form');
-        const status = document.getElementById('device-photo-status');
         const clearButton = document.getElementById('device-clear-photo-button');
 
         setDevicePhotoBusy(true);
-        status.textContent = 'Clearing photo...';
+        setDevicePhotoStatus('Deleting photo...');
 
         try {
             const response = await fetch(form.action, {
@@ -475,24 +570,36 @@
             renderEmptyDevicePhotoPreview();
             clearButton?.classList.add('hidden');
             clearButton?.classList.remove('inline-flex');
-            status.textContent = result.message;
+            setDevicePhotoStatus(result.message);
         } catch (error) {
-            status.textContent = error.message || 'Photo delete failed. Please try again.';
+            setDevicePhotoStatus(error.message || 'Photo delete failed. Please try again.');
         } finally {
             setDevicePhotoBusy(false);
         }
     }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+
+        const cameraModal = document.getElementById('device-camera-modal');
+        const lightbox = document.getElementById('device-photo-lightbox');
+        if (cameraModal && !cameraModal.classList.contains('hidden')) {
+            closeDeviceCamera();
+        } else if (lightbox && !lightbox.classList.contains('hidden')) {
+            closeDevicePhotoLightbox();
+        }
+    });
 </script>
 
 <div
     x-data="deviceEditor()"
-    class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    class="mx-auto w-full max-w-7xl"
 >
-    <div class="lg:col-span-2">
-        <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <div class="flex items-start justify-between gap-4">
+    <div>
+        <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
+                    <h1 class="break-words text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
                         {{ $device->property_number }}
                     </h1>
 
@@ -501,7 +608,7 @@
                     </p>
                 </div>
 
-                <div class="flex flex-wrap gap-2">
+                <div class="flex w-full flex-wrap justify-start gap-2 sm:w-auto sm:justify-end">
                     @if($isComputerType && auth()->user()?->canMenu('equipment'))
                         <a
                             href="{{ route('admin.devices.history', $device) }}"
@@ -525,10 +632,10 @@
                     </a>
 
                     @if(auth()->user()?->canAction('equipment', 'edit'))
-                    <button type="button" x-on:click="openReissue()" aria-label="Reissue equipment" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-cyan-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900">
+                    <button type="button" x-on:click="openReissue()" aria-label="{{ $reissueActionLabel }}" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-cyan-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900">
                         <x-action-icon-symbol icon="issue" />
-                        <span class="sr-only">Reissue equipment</span>
-                        <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Reissue equipment</span>
+                        <span class="sr-only">{{ $reissueActionLabel }}</span>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">{{ $reissueActionLabel }}</span>
                     </button>
                     @endif
 
@@ -604,27 +711,29 @@
                 </div>
             </div>
 
-            <div class="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+            <div class="mt-6 grid grid-cols-1 items-start gap-6 lg:mt-8 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-8">
                 <div>
                     <h2 class="font-semibold text-gray-900 dark:text-white">Equipment Photo</h2>
-                    <div id="device-photo-preview" class="relative mt-3 aspect-square w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
-                        <img
-                            id="device-photo-image"
-                            src="{{ $device->photo_path ? asset('storage/' . $device->photo_path) : '' }}"
-                            alt="Photo of {{ $device->property_number }}"
-                            class="{{ $device->photo_path ? '' : 'hidden' }} h-full w-full object-cover"
+                    <div id="device-photo-preview" class="relative mx-auto mt-3 aspect-square w-full max-w-sm overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900 lg:mx-0">
+                        <button
+                            id="device-photo-zoom-button"
+                            type="button"
+                            onclick="openDevicePhotoLightbox()"
+                            aria-label="Open equipment photo full screen"
+                            title="View larger photo"
+                            class="{{ $device->photo_path ? 'flex' : 'hidden' }} group relative h-full w-full cursor-zoom-in overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
                         >
+                            <img
+                                id="device-photo-image"
+                                src="{{ $device->photo_path ? asset('storage/' . $device->photo_path) : '' }}"
+                                alt="Photo of {{ $device->property_number }}"
+                                loading="lazy"
+                                class="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                            >
+                            <span class="pointer-events-none absolute inset-x-2 bottom-2 rounded-lg bg-black/65 px-3 py-2 text-center text-xs font-semibold text-white opacity-90 sm:opacity-0 sm:transition sm:group-hover:opacity-100">View larger</span>
+                        </button>
                         <div id="device-photo-empty" class="{{ $device->photo_path ? 'hidden' : 'flex' }} h-full items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400">
                             No equipment photo uploaded.
-                        </div>
-                        <video id="device-camera-video" class="absolute inset-0 z-10 hidden h-full w-full bg-black object-cover" autoplay playsinline muted></video>
-                        <canvas id="device-camera-canvas" class="hidden"></canvas>
-                        <div id="device-camera-controls" class="absolute bottom-3 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-2 rounded-xl bg-black/75 p-2">
-                            <button type="button" onclick="closeDeviceCamera()" class="rounded-lg bg-gray-800 px-3 py-2 text-xs font-medium text-white hover:bg-gray-700">Cancel</button>
-                            <button id="device-capture-photo-button" type="button" onclick="captureDevicePhoto()" class="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
-                                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.1-1.6a2 2 0 0 1 1.7-.9h2.4a2 2 0 0 1 1.7.9L16 6h1.5A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z" /></svg>
-                                Capture
-                            </button>
                         </div>
                     </div>
                     <form
@@ -646,7 +755,74 @@
                         @csrf
                         @method('DELETE')
                     </form>
-                    <div class="mt-3 flex flex-wrap justify-center gap-2">
+
+                    <div
+                        id="device-camera-modal"
+                        class="fixed inset-0 z-[90] hidden items-center justify-center bg-slate-950/85 p-3 sm:p-6"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="device-camera-title"
+                        aria-hidden="true"
+                        onclick="if (event.target === this) closeDeviceCamera()"
+                    >
+                        <div class="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+                            <div class="flex items-start justify-between gap-4 border-b border-gray-700 px-4 py-4 sm:px-5">
+                                <div class="min-w-0">
+                                    <h2 id="device-camera-title" class="text-lg font-semibold text-white">Take equipment photo</h2>
+                                    <p class="mt-1 text-xs text-gray-300">Center the equipment in the frame, then capture a clear image.</p>
+                                </div>
+                                <button
+                                    id="device-camera-close-button"
+                                    type="button"
+                                    onclick="closeDeviceCamera()"
+                                    class="shrink-0 rounded-lg px-3 py-1 text-2xl leading-none text-gray-300 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    aria-label="Close camera"
+                                >&times;</button>
+                            </div>
+                            <div class="min-h-0 overflow-y-auto p-3 sm:p-5">
+                                <div class="relative mx-auto flex aspect-[4/3] max-h-[65vh] w-full items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-gray-700">
+                                    <video id="device-camera-video" class="hidden h-full w-full object-contain" autoplay playsinline muted></video>
+                                    <div id="device-camera-placeholder" class="flex h-full items-center justify-center px-6 text-center text-sm text-gray-300">
+                                        Allow camera access to take a photo of this equipment.
+                                    </div>
+                                    <canvas id="device-camera-canvas" class="hidden"></canvas>
+                                </div>
+                                <p id="device-camera-status" class="mt-3 text-sm text-gray-300" aria-live="polite">Opening camera...</p>
+                                <div id="device-camera-controls" class="mt-4 hidden flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                    <button type="button" onclick="closeDeviceCamera()" class="w-full rounded-lg bg-gray-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 sm:w-auto">Cancel</button>
+                                    <button id="device-capture-photo-button" type="button" onclick="captureDevicePhoto()" disabled class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
+                                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.1-1.6a2 2 0 0 1 1.7-.9h2.4a2 2 0 0 1 1.7.9L16 6h1.5A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z" /></svg>
+                                        Capture photo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        id="device-photo-lightbox"
+                        class="fixed inset-0 z-[95] hidden items-center justify-center bg-slate-950/90 p-3 sm:p-6"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="device-photo-lightbox-title"
+                        aria-hidden="true"
+                        onclick="if (event.target === this) closeDevicePhotoLightbox()"
+                    >
+                        <div class="relative flex max-h-full max-w-6xl flex-col items-center justify-center gap-3">
+                            <h2 id="device-photo-lightbox-title" class="sr-only">Equipment photo</h2>
+                            <img id="device-photo-lightbox-image" src="" alt="Equipment photo" class="max-h-[calc(100dvh-4rem)] max-w-full rounded-xl object-contain shadow-2xl">
+                            <button
+                                id="device-photo-lightbox-close"
+                                type="button"
+                                onclick="closeDevicePhotoLightbox()"
+                                class="absolute right-2 top-2 rounded-full bg-black/70 px-3 py-1 text-2xl leading-none text-white hover:bg-black focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                aria-label="Close enlarged photo"
+                            >&times;</button>
+                            <p class="text-center text-xs text-gray-300">Click outside the photo or press Escape to close.</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start">
                         <button
                             id="device-take-photo-button"
                             type="button"
@@ -663,6 +839,7 @@
                             id="device-clear-photo-button"
                             type="button"
                             onclick="clearDevicePhoto()"
+                            title="Delete equipment photo"
                             class="{{ $device->photo_path ? 'inline-flex' : 'hidden' }} min-w-[8.75rem] items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-center text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-gray-800"
                         >
                             <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -671,7 +848,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l1 14h10l1-14" />
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v5M14 11v5" />
                             </svg>
-                            Clear Photo
+                            Delete Photo
                         </button>
                     </div>
                     <p id="device-photo-status" class="mt-2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></p>
@@ -679,152 +856,152 @@
 
                 <div>
                     <h2 class="font-semibold text-gray-900 dark:text-white">Equipment Specifications</h2>
-                    <div class="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div>
-                    <div class="text-sm text-gray-500">Equipment Type</div>
-                    <div class="font-medium text-gray-900">
+                    <div class="mt-4 grid min-w-0 grid-cols-1 gap-5 break-words sm:grid-cols-2 sm:gap-6">
+                <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">Equipment Type</div>
+                        <div class="font-medium text-gray-900 dark:text-white">
                         {{ $device->type?->name ?? '-' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500">Property Number</div>
-                    <div class="font-medium text-gray-900">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Property Number</div>
+                    <div class="font-medium text-gray-900 dark:text-white">
                         {{ $device->part_of_property_number ?: $device->property_number }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500">Child Property Number</div>
-                    <div class="font-medium text-gray-900">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Child Property Number</div>
+                    <div class="font-medium text-gray-900 dark:text-white">
                         {{ $device->part_of_property_number ? $device->property_number : 'Main equipment / standalone' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500">Serial Number</div>
-                    <div class="font-medium text-gray-900">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Serial Number</div>
+                    <div class="font-medium text-gray-900 dark:text-white">
                         {{ $device->serial_number ?: '-' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500 dark:text-gray-400">Computer Name</div>
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Computer Name</div>
                     <div class="font-medium text-gray-900 dark:text-white">
                         {{ $device->computer_name ?: '-' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500 dark:text-gray-400">Brand</div>
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Brand</div>
                     <div class="font-medium text-gray-900 dark:text-white">
                         {{ $device->brand ?: '-' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500">Model</div>
-                    <div class="font-medium text-gray-900">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Model</div>
+                    <div class="font-medium text-gray-900 dark:text-white">
                         {{ $device->model ?: '-' }}
                     </div>
                 </div>
 
                 @if($deviceTypeName === 'network device')
-                    <div>
-                        <div class="text-sm text-gray-500">Network Device Type</div>
-                        <div class="font-medium text-gray-900">{{ $device->network_device_type ?: '-' }}</div>
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">Network Device Type</div>
+                        <div class="font-medium text-gray-900 dark:text-white">{{ $device->network_device_type ?: '-' }}</div>
                     </div>
-                    <div>
-                        <div class="text-sm text-gray-500">Location Deployed</div>
-                        <div class="font-medium text-gray-900">{{ $device->deployedOffice ? trim($device->deployedOffice->name . ' - ' . $device->deployedOffice->location?->name . ($device->deployedOffice->location?->code ? ' (' . $device->deployedOffice->location->code . ')' : '')) : ($device->deployedLocation ? trim($device->deployedLocation->name . ($device->deployedLocation->code ? ' (' . $device->deployedLocation->code . ')' : '')) : ($device->location_deployed ?: '-')) }}</div>
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">Location Deployed</div>
+                        <div class="font-medium text-gray-900 dark:text-white">{{ $device->deployedOffice ? trim($device->deployedOffice->name . ' - ' . $device->deployedOffice->location?->name . ($device->deployedOffice->location?->code ? ' (' . $device->deployedOffice->location->code . ')' : '')) : ($device->deployedLocation ? trim($device->deployedLocation->name . ($device->deployedLocation->code ? ' (' . $device->deployedLocation->code . ')' : '')) : ($device->location_deployed ?: '-')) }}</div>
                     </div>
                 @endif
 
                 @if($isComputerType || $deviceTypeName === 'network device')
-                    <div>
-                        <div class="text-sm text-gray-500">MAC Address</div>
-                        <div class="font-medium text-gray-900">
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">MAC Address</div>
+                        <div class="font-medium text-gray-900 dark:text-white">
                             {{ $device->mac_address ?: '-' }}
                         </div>
                     </div>
 
                     @if($isComputerType)
-                    <div>
-                        <div class="text-sm text-gray-500">Memory</div>
-                        <div class="font-medium text-gray-900">
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">Memory</div>
+                        <div class="font-medium text-gray-900 dark:text-white">
                             {{ data_get($device->specs, 'memory', '-') ?: '-' }}
                         </div>
                     </div>
 
-                    <div>
-                        <div class="text-sm text-gray-500">Processor</div>
-                        <div class="font-medium text-gray-900">
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">Processor</div>
+                        <div class="font-medium text-gray-900 dark:text-white">
                             {{ data_get($device->specs, 'processor', '-') ?: '-' }}
                         </div>
                     </div>
 
-                    <div>
-                        <div class="text-sm text-gray-500">Storage</div>
-                        <div class="font-medium text-gray-900">
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">Storage</div>
+                        <div class="font-medium text-gray-900 dark:text-white">
                             {{ data_get($device->specs, 'storage', '-') ?: '-' }}
                         </div>
                     </div>
 
                     @if($isDesktopType)
-                        <div>
-                            <div class="text-sm text-gray-500 dark:text-gray-400">Form Factor</div>
+                        <div class="min-w-0">
+                            <div class="text-sm text-gray-600 dark:text-gray-400">Form Factor</div>
                             <div class="font-medium text-gray-900 dark:text-white">
                                 {{ data_get($device->specs, 'form_factor', '-') ?: '-' }}
                             </div>
                         </div>
                     @endif
 
-                    <div>
-                        <div class="text-sm text-gray-500">OS Version</div>
-                        <div class="font-medium text-gray-900">{{ $device->os_version ?: '-' }}</div>
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">OS Version</div>
+                        <div class="font-medium text-gray-900 dark:text-white">{{ $device->os_version ?: '-' }}</div>
                     </div>
 
-                    <div>
-                        <div class="text-sm text-gray-500">OS License</div>
-                        <div class="font-medium text-gray-900">{{ $device->os_license ?: '-' }}</div>
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">OS License</div>
+                        <div class="font-medium text-gray-900 dark:text-white">{{ $device->os_license ?: '-' }}</div>
                     </div>
 
-                    <div>
-                        <div class="text-sm text-gray-500">MS Office Version</div>
-                        <div class="font-medium text-gray-900">{{ $device->ms_office_version ?: '-' }}</div>
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">MS Office Version</div>
+                        <div class="font-medium text-gray-900 dark:text-white">{{ $device->ms_office_version ?: '-' }}</div>
                     </div>
 
-                    <div>
-                        <div class="text-sm text-gray-500">MS Office License</div>
-                        <div class="font-medium text-gray-900">{{ $device->ms_office_license ?: '-' }}</div>
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-600 dark:text-gray-400">MS Office License</div>
+                        <div class="font-medium text-gray-900 dark:text-white">{{ $device->ms_office_license ?: '-' }}</div>
                     </div>
                     @endif
                 @endif
 
-                <div>
-                    <div class="text-sm text-gray-500">Unit Price</div>
-                    <div class="font-medium text-gray-900">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Unit Price</div>
+                    <div class="font-medium text-gray-900 dark:text-white">
                         {{ $effectiveUnitPrice !== null && $effectiveUnitPrice !== '' ? number_format((float) $effectiveUnitPrice, 2) : '-' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500">Date Acquired</div>
-                    <div class="font-medium text-gray-900">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Date Acquired</div>
+                    <div class="font-medium text-gray-900 dark:text-white">
                         {{ $effectiveDateAcquired?->format('Y-m-d') ?? '-' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500">Condition</div>
-                    <div class="font-medium text-gray-900 capitalize">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Condition</div>
+                    <div class="font-medium text-gray-900 dark:text-white capitalize">
                         {{ $device->condition ?? 'serviceable' }}
                     </div>
                 </div>
 
-                <div>
-                    <div class="text-sm text-gray-500">Last Maintenance</div>
-                    <div class="font-medium text-gray-900">
+                <div class="min-w-0">
+                    <div class="text-sm text-gray-600 dark:text-gray-400">Last Maintenance</div>
+                    <div class="font-medium text-gray-900 dark:text-white">
                         {{ $effectiveLastMaintenanceDate?->format('M d, Y') ?? 'Not yet checked' }}
                     </div>
                 </div>
@@ -834,18 +1011,18 @@
 
             @if($device->maintenance_remarks)
                 <div class="mt-8 border-t border-gray-200 pt-6">
-                    <h2 class="font-semibold text-gray-900">
+                    <h2 class="font-semibold text-gray-900 dark:text-white">
                         Maintenance Remarks
                     </h2>
 
-                    <p class="mt-3 text-gray-700">
+                    <p class="mt-3 break-words text-gray-700 dark:text-gray-300">
                         {{ $device->maintenance_remarks }}
                     </p>
                 </div>
             @endif
 
             <div class="mt-8 border-t border-gray-200 pt-6">
-                <h2 class="font-semibold text-gray-900">
+                <h2 class="font-semibold text-gray-900 dark:text-white">
                     Current Assignment
                 </h2>
 
@@ -857,9 +1034,9 @@
                         // Reissue updates the location from the selected user's office.
                         $assignmentLocation = $currentAssignment->location;
                     @endphp
-                    <div class="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div class="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
                         @if($currentStaff)
-                            <div class="font-medium text-gray-900">
+                            <div class="font-medium text-gray-900 dark:text-white">
                                 <a
                                     href="{{ route('admin.staff.devices.index', $currentStaff) }}"
                                     class="text-blue-700 hover:underline dark:text-blue-400"
@@ -869,7 +1046,7 @@
                                 </a>
                             </div>
 
-                            <div class="mt-1 text-sm text-gray-500">
+                            <div class="mt-1 break-words text-sm text-gray-600 dark:text-gray-300">
                                 @if($currentOffice)
                                     <a
                                         href="{{ route('admin.staff.index', $currentOffice) }}"
@@ -893,11 +1070,11 @@
                                 @endif
                             </div>
                         @else
-                            <div class="font-medium text-gray-900">
+                            <div class="font-medium text-gray-900 dark:text-white">
                                 Location Assignment
                             </div>
 
-                            <div class="mt-1 text-sm text-gray-500">
+                            <div class="mt-1 break-words text-sm text-gray-600 dark:text-gray-300">
                                 @if($assignmentLocation)
                                     <a
                                         href="{{ route('admin.offices.index', $assignmentLocation) }}"
@@ -912,13 +1089,13 @@
                             </div>
                         @endif
 
-                        <div class="mt-1 text-sm text-gray-500">
+                        <div class="mt-1 text-sm text-gray-600 dark:text-gray-300">
                             Assigned:
                             {{ $currentAssignment->issued_at ? $currentAssignment->issued_at->format('M d, Y h:i A') : '-' }}
                         </div>
                     </div>
                 @else
-                    <p class="mt-3 text-gray-700">
+                    <p class="mt-3 text-gray-700 dark:text-gray-300">
                         This equipment is not currently assigned.
                     </p>
                 @endif
@@ -926,11 +1103,11 @@
 
             @if($device->notes)
                 <div class="mt-8 border-t border-gray-200 pt-6">
-                    <h2 class="font-semibold text-gray-900">
+                    <h2 class="font-semibold text-gray-900 dark:text-white">
                         Notes
                     </h2>
 
-                    <p class="mt-3 text-gray-700">
+                    <p class="mt-3 break-words text-gray-700 dark:text-gray-300">
                         {{ $device->notes }}
                     </p>
                 </div>
@@ -943,13 +1120,14 @@
         <div x-show="reissueOpen" @click.away="reissueOpen = false" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-800">
             <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Reissue Equipment</h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Assign the end user. The location updates from the selected user's registered office.</p>
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ $reissueModalTitle }}</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ $reissueModalDescription }}</p>
                 </div>
                 <button type="button" x-on:click="reissueOpen = false" class="rounded-lg px-3 py-1 text-xl text-gray-500 hover:bg-gray-100">&times;</button>
             </div>
             <form method="POST" action="{{ route('admin.devices.reissue', $device) }}" class="space-y-4 px-6 py-5">
                 @csrf
+                <input type="hidden" name="return_to" value="{{ $reissueReturnTo }}">
                 <div>
                     <div class="flex items-center justify-between gap-3">
                         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Search registered end user</label>
@@ -964,7 +1142,7 @@
                             </a>
                         @endif
                     </div>
-                    <input type="text" x-ref="reissueStaffSearch" x-model="reissueStaffQuery" x-on:input="reissueStaffId = ''; reissueStaffSelected = null; queueReissueStaffLookup()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Search name, email, or office" autocomplete="off">
+                    <input type="text" x-ref="reissueStaffSearch" data-pmams-inline-search x-model="reissueStaffQuery" x-on:input="reissueStaffId = ''; reissueStaffSelected = null; queueReissueStaffLookup()" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 pr-20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" placeholder="Search name, email, or office" aria-label="Search registered end user" autocomplete="off">
                     <input type="hidden" name="staff_id" x-model="reissueStaffId">
                     <div class="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700" x-show="!reissueStaffId">
                         <template x-if="reissueStaffLoading">
@@ -990,7 +1168,7 @@
                 </div>
                 <div class="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
                     <button type="button" x-on:click="reissueOpen = false" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200">Cancel</button>
-                    <button type="submit" :disabled="!reissueStaffId" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">Save Reissue</button>
+                    <button type="submit" :disabled="!reissueStaffId" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">{{ $reissueSubmitLabel }}</button>
                 </div>
             </form>
         </div>
@@ -1043,6 +1221,11 @@
                     @include('admin.devices._add-equipment-fields', [
                         'formDevice' => $device,
                         'lockEquipmentType' => true,
+                    ])
+
+                    @include('admin.devices._audit-meta', [
+                        'auditMode' => 'edit',
+                        'auditLog' => $device->latestAuditLog,
                     ])
                 </div>
 

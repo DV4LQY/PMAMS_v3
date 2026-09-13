@@ -262,10 +262,12 @@
                     <input
                         id="device_search"
                         type="text"
+                        data-pmams-inline-search
                         x-model="deviceQuery"
                         x-on:input="deviceId = ''; deviceSelected = null; queueDeviceLookup()"
                         x-on:focus="fetchAvailableDevices()"
                         placeholder="Search property #, serial #, equipment type, brand, or model..."
+                        aria-label="Search available equipment"
                         class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:ring-blue-900/30"
                         autocomplete="off"
                     >

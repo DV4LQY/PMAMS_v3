@@ -77,6 +77,11 @@
                 'blankMaintenanceRemarks' => true,
             ])
 
+            @include('admin.devices._audit-meta', [
+                'auditMode' => 'edit',
+                'auditLog' => $device->latestAuditLog,
+            ])
+
             @if($safeReturnTo)
                 <input type="hidden" name="return_to" value="{{ $safeReturnTo }}">
             @endif

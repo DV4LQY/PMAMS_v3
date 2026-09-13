@@ -1544,6 +1544,7 @@
                         </div>
                         <input
                             type="search"
+                            aria-label="Search linked peripheral"
                             x-model="peripheralQuery"
                             x-on:input="$nextTick(() => rememberLinkState())"
                             placeholder="Search property number, serial number, or computer name..."
@@ -1784,9 +1785,11 @@
                         <input
                             type="text"
                             x-ref="issuanceStaffSearch"
+                            data-pmams-inline-search
                             x-model="issuanceStaffQuery"
                             x-on:input="issuanceStaffId = ''; queueIssuanceStaffLookup()"
                             placeholder="Search name, email, or office"
+                            aria-label="Search registered staff"
                             autocomplete="off"
                             class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         >

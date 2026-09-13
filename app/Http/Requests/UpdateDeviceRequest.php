@@ -18,6 +18,10 @@ class UpdateDeviceRequest extends FormRequest
     {
         $routeDevice = $this->route('device');
         $deviceId = $routeDevice instanceof Device ? $routeDevice->getKey() : $routeDevice;
+        $typeName = strtolower(trim((string) DeviceType::whereKey($this->input('device_type_id'))->value('name')));
+        $isComputerType = in_array($typeName, ['desktop', 'laptop'], true);
+        $isDesktopType = $typeName === 'desktop';
+        $requiresMacAddress = $isComputerType || $typeName === 'network device';
 
         return [
             'device_type_id' => ['required', 'exists:device_types,id'],
@@ -49,15 +53,15 @@ class UpdateDeviceRequest extends FormRequest
                 'regex:' . StoreDeviceRequest::SERIAL_NUMBER_REGEX,
             ],
 
-            'computer_name' => ['nullable', 'string', 'max:100'],
+            'computer_name' => [$isComputerType ? 'required' : 'nullable', 'string', 'max:100'],
 
-            'brand'       => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
-            'model'       => ['nullable', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
+            'brand'       => ['required', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
+            'model'       => ['required', 'string', 'max:100', 'regex:' . StoreDeviceRequest::BRAND_MODEL_REGEX],
             'network_device_type' => ['nullable', 'string', 'max:50', Rule::in(['Access point', 'Router', 'Switch (managed)', 'Switch (unmanaged)'])],
             'location_deployed' => ['nullable', 'string', 'max:255'],
             'location_deployed_id' => ['nullable', 'integer', 'exists:locations,id'],
             'office_deployed_id' => ['nullable', 'integer', 'exists:offices,id'],
-            'mac_address' => ['nullable', 'string', 'regex:' . StoreDeviceRequest::MAC_ADDRESS_REGEX],
+            'mac_address' => [$requiresMacAddress ? 'required' : 'nullable', 'string', 'regex:' . StoreDeviceRequest::MAC_ADDRESS_REGEX],
 
             'unit_price'    => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'date_acquired' => ['nullable', 'date', 'before_or_equal:today'],
@@ -81,20 +85,20 @@ class UpdateDeviceRequest extends FormRequest
             | Device Specifications (JSON)
             |--------------------------------------------------------------------------
             */
-            'specs'             => ['nullable', 'array'],
-            'specs.memory'      => ['nullable', 'string', 'max:255'],
-            'specs.processor'   => ['nullable', 'string', 'max:255'],
-            'specs.storage'     => ['nullable', 'string', 'max:255'],
-            'specs.form_factor' => ['nullable', 'string', 'max:255'],
+            'specs'             => [$isComputerType ? 'required' : 'nullable', 'array'],
+            'specs.memory'      => [$isComputerType ? 'required' : 'nullable', 'string', 'max:255'],
+            'specs.processor'   => [$isComputerType ? 'required' : 'nullable', 'string', 'max:255'],
+            'specs.storage'     => [$isComputerType ? 'required' : 'nullable', 'string', 'max:255'],
+            'specs.form_factor' => [$isDesktopType ? 'required' : 'nullable', 'string', 'max:255'],
 
             /*
             |--------------------------------------------------------------------------
             | OS & MS Office (separate columns, Desktop/Laptop only)
             |--------------------------------------------------------------------------
             */
-            'os_version'        => ['nullable', 'string', 'in:Windows 7,Windows 8,Windows 10,Windows 11,Windows Server,Linux'],
+            'os_version'        => [$isComputerType ? 'required' : 'nullable', 'string', 'in:Windows 7,Windows 8,Windows 10,Windows 11,Windows Server,Linux'],
             'os_license'        => ['nullable', 'string', 'in:Cracked,OEM Licensed,Open Source'],
-            'ms_office_version' => ['nullable', 'string', 'in:Office 2007,Office 2010,Office 2013,Office 2016,Office 2019,Office 2021,Microsoft 365'],
+            'ms_office_version' => [$isComputerType ? 'required' : 'nullable', 'string', 'in:Office 2007,Office 2010,Office 2013,Office 2016,Office 2019,Office 2021,Microsoft 365'],
             'ms_office_license' => ['nullable', 'string', 'in:Cracked,OEM Licensed'],
         ];
     }
@@ -170,16 +174,27 @@ class UpdateDeviceRequest extends FormRequest
             'condition.in' => 'The condition must be serviceable, unserviceable, or condemned.',
 
             'serial_number.max' => 'The serial number must not exceed 100 characters.',
+            'brand.required' => 'Brand is required.',
+            'model.required' => 'Model is required.',
+            'computer_name.required' => 'Computer name is required for Desktop or Laptop equipment.',
+            'mac_address.required' => 'MAC address is required for Desktop, Laptop, or Network Device equipment.',
             'equipment_photo.mimes' => 'The equipment photo must be a JPG, PNG, WEBP, HEIC, or HEIF file.',
             'equipment_photo.max' => 'The equipment photo must not be larger than 10 MB.',
 
+            'specs.required' => 'Computer specifications are required for Desktop or Laptop equipment.',
+            'specs.memory.required' => 'Memory is required for Desktop or Laptop equipment.',
+            'specs.processor.required' => 'Processor is required for Desktop or Laptop equipment.',
+            'specs.storage.required' => 'Storage is required for Desktop or Laptop equipment.',
+            'specs.form_factor.required' => 'Form factor is required for Desktop equipment.',
             'specs.memory.max'      => 'The memory field must not exceed 255 characters.',
             'specs.processor.max'   => 'The processor field must not exceed 255 characters.',
             'specs.storage.max'     => 'The storage field must not exceed 255 characters.',
             'specs.form_factor.max' => 'The form factor field must not exceed 255 characters.',
 
+            'os_version.required'  => 'OS version is required for Desktop or Laptop equipment.',
             'os_version.in'        => 'Invalid OS version selected.',
             'os_license.in'        => 'OS license must be Cracked, OEM Licensed, or Open Source.',
+            'ms_office_version.required' => 'MS Office version is required for Desktop or Laptop equipment.',
             'ms_office_version.in' => 'Invalid MS Office version selected.',
             'ms_office_license.in' => 'MS Office license must be either Cracked or OEM Licensed.',
         ];

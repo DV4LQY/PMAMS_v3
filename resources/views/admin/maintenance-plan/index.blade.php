@@ -179,12 +179,19 @@
     @endif
 
     <section id="published-schedules" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Published schedules</h2>
-        
-            </div>
-            <form method="GET" action="{{ route('admin.maintenance-plan.index') }}#published-schedules" data-preserve-hash="true" class="flex flex-wrap items-center gap-2">
+        <div class="mb-4">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Published schedules</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Approved schedules with their current checklist progress and reschedule state.</p>
+        </div>
+        <form method="GET" action="{{ route('admin.maintenance-plan.index') }}#published-schedules" data-preserve-hash="true" class="flex flex-wrap items-center gap-2">
+                <x-search-field
+                    name="q"
+                    :value="$q ?? ''"
+                    placeholder="Search title, office, location, or assigned admin..."
+                    ariaLabel="Search PM Plans"
+                    wrapperClass="flex-1 sm:min-w-[18rem]"
+                    inputClass="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-20 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:ring-blue-900/40"
+                />
                 <select
                     name="location_id"
                     id="pm-plan-location-filter"
@@ -231,12 +238,22 @@
                         @endforeach
                     </select>
                 @endif
+                <select
+                    name="plan_status"
+                    id="pm-plan-status-filter"
+                    aria-label="Filter PM Plans by status"
+                    onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+                    class="w-full truncate rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-44"
+                >
+                    <option value="" @selected(($planStatus ?? '') === '')>All statuses</option>
+                    <option value="completed" @selected(($planStatus ?? '') === 'completed')>Completed</option>
+                    <option value="rescheduled" @selected(($planStatus ?? '') === 'rescheduled')>Rescheduled</option>
+                </select>
                 <input type="month" name="month_from" value="{{ $monthFrom }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month from">
                 <input type="month" name="month_to" value="{{ $monthTo }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" aria-label="Schedule month to">
                 <button class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg bg-gray-700 px-3 text-sm font-semibold text-white hover:bg-gray-800">Filter</button>
                 <a href="{{ route('admin.maintenance-plan.index') }}#published-schedules" class="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Reset</a>
-            </form>
-        </div>
+        </form>
 
         @if($canDeletePmPlan && $schedules->total() > 0)
             <div class="mb-4 flex items-center justify-between rounded-xl bg-transparent px-5 py-3 shadow-none">
@@ -250,6 +267,7 @@
             <form id="pm-plan-bulk-delete-form" method="POST" action="{{ route('admin.maintenance-plan.bulkDestroy') }}" class="mb-4 hidden flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/20" onsubmit="return submitPmPlanBulkDelete(event)">
                 @csrf
                 <input type="hidden" name="select_all" id="pm-plan-delete-select-all" value="0">
+                <input type="hidden" name="q" value="{{ $q ?? '' }}">
                 <input type="hidden" name="location_id" value="{{ $selectedLocationId }}">
                 <input type="hidden" name="office_id" value="{{ $selectedOfficeId }}">
                 @if($canFilterAssignedAdmin)
@@ -257,6 +275,7 @@
                 @endif
                 <input type="hidden" name="month_from" value="{{ $monthFrom }}">
                 <input type="hidden" name="month_to" value="{{ $monthTo }}">
+                <input type="hidden" name="plan_status" value="{{ $planStatus }}">
                 <label class="inline-flex items-center gap-2 text-xs font-semibold text-red-800 dark:text-red-200">
                     <input type="checkbox" data-pm-plan-page-master onchange="togglePmPlanPageSelection(this)" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
                     Select page
@@ -365,8 +384,15 @@
                                     <button type="button" data-open-modal="pm-plan-override-{{ $schedule->id }}" title="Override schedule" aria-label="Override schedule" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-amber-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:focus:ring-offset-gray-900">
                                             <x-action-icon-symbol icon="calendar" />
                                             <span class="sr-only">Override schedule</span>
-                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Override schedule</span>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">Override schedule</span>
                                     </button>
+                                    @if($row['completion'] && filled($row['completion']->signature_data))
+                                        <button type="button" title="View signature" aria-label="View signature" class="action-icon-button group relative inline-flex h-9 w-9 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-lg bg-indigo-600 p-0 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-indigo-500 dark:hover:bg-indigo-600 dark:focus:ring-offset-gray-900" @click="openSignature(@js($row['completion']->signature_data), @js($row['completion']->signer_name ?: 'Not recorded'), @js($row['completion']->actual_date?->format('M d, Y') ?: 'Not recorded'))">
+                                            <x-action-icon-symbol icon="eye" />
+                                            <span class="sr-only">View signature</span>
+                                            <span class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-gray-100 dark:text-gray-900" role="tooltip">View signature</span>
+                                        </button>
+                                    @endif
                                     @if($row['is_complete'])
                                         <button type="button" title="{{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}" aria-label="{{ $row['completion'] ? 'Edit completion details' : 'Record completion details' }}" class="action-icon-button group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-white dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-gray-900" @click="openCompletion({{ $schedule->id }}, @js(route('admin.maintenance-plan.complete', $schedule)), @js(['actual_date' => $row['completion']?->actual_date?->format('Y-m-d') ?? $row['latest_actual_date'] ?? now()->toDateString(), 'person_in_charge' => $row['person_in_charge'] ?? '', 'signer_name' => $row['completion']?->signer_name ?? '', 'signature_data' => $row['completion']?->signature_data ?? '', 'remarks' => $row['completion']?->remarks ?? '']))">
                                             <x-action-icon-symbol icon="clipboard" />
@@ -574,7 +600,7 @@
                     <label class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Signature <span class="font-normal text-gray-500">(optional)</span></label>
                     <input type="hidden" name="signature_data" x-model="form.signature_data">
                     <div class="rounded-xl border border-dashed border-gray-400 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-900">
-                        <canvas id="completion-signature-pad" width="520" height="170" class="h-36 w-full touch-none rounded-lg bg-white dark:bg-gray-100" aria-label="Draw signature"></canvas>
+                        <canvas id="completion-signature-pad" data-pmams-signature-pad width="520" height="170" class="h-36 w-full touch-none rounded-lg bg-white dark:bg-white" style="background-color:#ffffff" aria-label="Draw signature"></canvas>
                         <div class="mt-2 flex items-center justify-between gap-2">
                             <span class="text-xs text-gray-500 dark:text-gray-400">Sign with your mouse, finger, or stylus.</span>
                             <button type="button" @click="clearSignature()" class="rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100">Clear</button>
@@ -591,6 +617,34 @@
                 </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div x-show="signatureViewer.open" x-cloak class="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-gray-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="pm-signature-viewer-title" @keydown.escape.window="closeSignature()">
+        <div class="my-auto w-full max-w-xl rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800" @click.outside="closeSignature()">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 id="pm-signature-viewer-title" class="text-lg font-semibold text-gray-900 dark:text-white">View signature</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Saved digital signature for the office completion record.</p>
+                </div>
+                <button type="button" @click="closeSignature()" class="rounded-lg px-2 py-1 text-2xl leading-none text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close signature viewer">&times;</button>
+            </div>
+            <div class="mt-5 rounded-xl border border-gray-300 bg-white p-3" style="background-color:#ffffff">
+                <img x-show="signatureViewer.source" :src="signatureViewer.source" alt="Saved digital signature" class="mx-auto h-auto max-h-64 w-full object-contain" />
+            </div>
+            <dl class="mt-4 grid gap-2 text-sm text-gray-700 dark:text-gray-200 sm:grid-cols-2">
+                <div>
+                    <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Signed by</dt>
+                    <dd class="mt-1 font-medium" x-text="signatureViewer.signer || 'Not recorded'"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Recorded on</dt>
+                    <dd class="mt-1 font-medium" x-text="signatureViewer.recordedOn || 'Not recorded'"></dd>
+                </div>
+            </dl>
+            <div class="mt-5 flex justify-end">
+                <button type="button" @click="closeSignature()" class="rounded-xl bg-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -823,6 +877,12 @@
             pad: null,
             ctx: null,
             drawing: false,
+            signatureViewer: {
+                open: false,
+                source: '',
+                signer: '',
+                recordedOn: '',
+            },
             readDraft(id) {
                 const storage = getStorage();
                 const scheduleId = normaliseId(id);
@@ -895,6 +955,25 @@
                 this.action = '';
                 this.scheduleId = '';
                 this.returnTo = '';
+            },
+            openSignature(source, signer = '', recordedOn = '') {
+                const signature = String(source || '').trim();
+                if (!signature) return;
+
+                this.signatureViewer = {
+                    open: true,
+                    source: signature,
+                    signer: String(signer || 'Not recorded'),
+                    recordedOn: String(recordedOn || 'Not recorded'),
+                };
+            },
+            closeSignature() {
+                this.signatureViewer = {
+                    open: false,
+                    source: '',
+                    signer: '',
+                    recordedOn: '',
+                };
             },
             init() {
                 this.$nextTick(() => {

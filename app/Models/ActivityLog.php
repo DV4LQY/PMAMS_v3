@@ -160,6 +160,161 @@ class ActivityLog extends Model
         return self::TYPE_ALIASES[$type] ?? $type;
     }
 
+    /**
+     * Resolve the account responsible for deleting the supplied soft-deleted
+     * records. The result is keyed by the ActivityLog subject type and record
+     * id so recycle-bin screens can render the value without querying once per
+     * table row. Bulk deletion entries are also inspected when their payload
+     * contains the affected record ids.
+     *
+     * @param  array<string, iterable<mixed>>  $groups
+     * @return array<string, array<int, string>>
+     */
+    public static function deletedByFor(array $groups): array
+    {
+        $idsByType = [];
+        $subjectTypesByType = [];
+
+        foreach ($groups as $subjectType => $records) {
+            $subjectType = (string) $subjectType;
+            $ids = collect($records)
+                ->map(function ($record) {
+                    if (is_object($record)) {
+                        return method_exists($record, 'getKey')
+                            ? $record->getKey()
+                            : data_get($record, 'id');
+                    }
+
+                    return data_get($record, 'id', $record);
+                })
+                ->filter(fn ($id) => is_numeric($id) && (int) $id > 0)
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+
+            if ($ids->isEmpty()) {
+                continue;
+            }
+
+            $idsByType[$subjectType] = ($idsByType[$subjectType] ?? collect())
+                ->merge($ids)
+                ->unique()
+                ->values();
+
+            $subjectTypesByType[$subjectType] = [$subjectType];
+            // Older location activity rows used the former College subject
+            // name. Keep them visible under the current Location section.
+            if ($subjectType === 'Location') {
+                $subjectTypesByType[$subjectType][] = 'College';
+            }
+        }
+
+        if ($idsByType === []) {
+            return [];
+        }
+
+        $result = [];
+        $query = self::query()
+            ->select(['subject_type', 'subject_id', 'user_name', 'created_at'])
+            ->where('action', 'deleted')
+            ->whereNotNull('subject_id')
+            ->where(function ($subjectQuery) use ($idsByType, $subjectTypesByType): void {
+                foreach ($idsByType as $subjectType => $ids) {
+                    $subjectQuery->orWhere(function ($match) use ($subjectTypesByType, $subjectType, $ids): void {
+                        $match
+                            ->whereIn('subject_type', $subjectTypesByType[$subjectType])
+                            ->whereIn('subject_id', $ids->all());
+                    });
+                }
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($query as $log) {
+            $subjectType = $log->subject_type === 'College'
+                ? 'Location'
+                : (string) $log->subject_type;
+            $subjectId = (int) $log->subject_id;
+
+            if (! isset($idsByType[$subjectType])
+                || ! $idsByType[$subjectType]->contains($subjectId)
+                || isset($result[$subjectType][$subjectId])) {
+                continue;
+            }
+
+            $result[$subjectType][$subjectId] = $log->user_name ?: 'System';
+        }
+
+        $bulkRecordTypes = [
+            'User' => ['User'],
+            'Device' => ['Equipment', 'Device'],
+            'MaintenancePlanSchedule' => ['PM Plan', 'MaintenancePlanSchedule'],
+            'Location' => ['Location', 'College'],
+            'Office' => ['Office'],
+            'Staff' => ['Staff'],
+            'DeviceMaintenanceRecord' => ['Checklist', 'DeviceMaintenanceRecord'],
+        ];
+        $recordTypes = collect(array_keys($idsByType))
+            ->flatMap(fn ($subjectType) => $bulkRecordTypes[$subjectType] ?? [])
+            ->unique()
+            ->values();
+
+        if ($recordTypes->isEmpty()) {
+            return $result;
+        }
+
+        // Bulk logs have no subject_id. Filter by their small record-type
+        // discriminator, then map the ids stored in the payload to the rows
+        // currently visible in the recovery screen.
+        $bulkLogs = self::query()
+            ->select(['user_name', 'changes', 'created_at'])
+            ->where('action', 'deleted')
+            ->whereNull('subject_id')
+            ->where(function ($bulkQuery) use ($recordTypes): void {
+                foreach ($recordTypes as $recordType) {
+                    $bulkQuery->orWhere('changes->record_type', $recordType);
+                }
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $subjectTypeByRecordType = [];
+        foreach ($bulkRecordTypes as $subjectType => $types) {
+            foreach ($types as $recordType) {
+                $subjectTypeByRecordType[$recordType] = $subjectType;
+            }
+        }
+
+        foreach ($bulkLogs as $log) {
+            $changes = is_array($log->changes) ? $log->changes : [];
+            $recordType = (string) ($changes['record_type'] ?? '');
+            $subjectType = $subjectTypeByRecordType[$recordType] ?? null;
+            if ($subjectType === null || ! isset($idsByType[$subjectType])) {
+                continue;
+            }
+
+            foreach ((array) ($changes['items'] ?? []) as $item) {
+                $subjectId = data_get($item, 'id')
+                    ?? data_get($item, 'schedule_id')
+                    ?? data_get($item, 'maintenance_record_id')
+                    ?? data_get($item, 'summary.id');
+                $subjectId = is_numeric($subjectId) ? (int) $subjectId : 0;
+
+                if ($subjectId <= 0
+                    || ! $idsByType[$subjectType]->contains($subjectId)
+                    || isset($result[$subjectType][$subjectId])) {
+                    continue;
+                }
+
+                $result[$subjectType][$subjectId] = $log->user_name ?: 'System';
+            }
+        }
+
+        return $result;
+    }
+
     public function getBulkRecordTypeAttribute(): ?string
     {
         $changes = $this->getAttribute('changes') ?? [];

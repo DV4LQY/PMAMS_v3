@@ -43,15 +43,14 @@
             method="GET"
             class="grid grid-cols-1 gap-3 lg:grid-cols-5"
         >
-            <input
+            <x-search-field
                 id="asset-search"
                 name="q"
-                data-pmams-search
-                value="{{ $q }}"
+                :value="$q"
                 placeholder="Search property #, serial #, brand..."
-                autocomplete="off"
-                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-900"
-            >
+                ariaLabel="Search assets"
+                inputClass="w-full rounded-lg border border-gray-300 px-3 py-2 pr-20 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-900"
+            />
 
             <select
                 id="asset-type-filter"
@@ -107,7 +106,7 @@
         </form>
 
         <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Filters apply automatically. Press Enter while searching to filter immediately. The report stays unloaded until a filter is applied or Reset is pressed.
+            Press Enter or select the search icon to apply the keyword. Other filters submit when changed. The report stays unloaded until a filter is applied or Reset is pressed.
         </p>
     </div>
 
@@ -195,22 +194,14 @@
 <script>
     (function () {
         const form = document.getElementById('asset-filter-form');
-        const search = document.getElementById('asset-search');
         const typeFilter = document.getElementById('asset-type-filter');
         const collegeFilter = document.getElementById('asset-college-filter');
         const officeFilter = document.getElementById('asset-office-filter');
 
         if (!form) return;
 
-        let timer = null;
-
         function submitNow() {
             form.requestSubmit ? form.requestSubmit() : form.submit();
-        }
-
-        function submitDebounced() {
-            clearTimeout(timer);
-            timer = setTimeout(submitNow, 500);
         }
 
         function filterOfficeOptions() {
@@ -236,17 +227,6 @@
         }
 
         filterOfficeOptions();
-
-        if (search) {
-            search.addEventListener('input', submitDebounced);
-
-            search.addEventListener('keydown', function (event) {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    submitNow();
-                }
-            });
-        }
 
         [typeFilter, collegeFilter, officeFilter].forEach((select) => {
             if (!select) return;

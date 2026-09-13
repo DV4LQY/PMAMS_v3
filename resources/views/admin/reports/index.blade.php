@@ -37,6 +37,25 @@
             </p>
         </a>
 
+        {{-- Linked equipment maintenance --}}
+        @if(auth()->user()?->canMenu('reports'))
+        <a href="{{ route('admin.reports.linkedEquipment') }}"
+           class="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-cyan-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:hover:border-cyan-500">
+
+            <div class="text-sm font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
+                Linked Equipment
+            </div>
+
+            <h2 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">
+                Linked Equipment Maintenance List
+            </h2>
+
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Review peripherals linked to a parent property by maintenance year/month, Location, Office, or searchable equipment and staff details. Export the filtered list to Excel.
+            </p>
+        </a>
+        @endif
+
         {{-- Issuance --}}
         @if(auth()->user()?->canMenu('issuance'))
         <a href="{{ route('admin.reports.issuance') }}"

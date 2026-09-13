@@ -71,6 +71,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Email</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Role</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted by</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                 </thead>
@@ -82,6 +83,7 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $user->email }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $user->roleLabel() }}</td>
                             <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $user->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $deletedBy['User'][$user->id] ?? '-' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.users.restore', $user->id) }}">
@@ -93,7 +95,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted users found.</td></tr>
+                        <tr><td colspan="7" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted users found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -128,6 +130,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">History</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Photos</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted by</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                 </thead>
@@ -140,6 +143,7 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $device->maintenance_records_including_trashed_count }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $device->maintenance_photos_count }}</td>
                             <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $device->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $deletedBy['Device'][$device->id] ?? '-' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.devices.restore', $device->id) }}">
@@ -151,7 +155,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted equipment found.</td></tr>
+                        <tr><td colspan="8" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted equipment found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -185,6 +189,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Schedule</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Assigned Admins / Unit Heads</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted by</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                 </thead>
@@ -209,6 +214,7 @@
                                 {{ $plan->assignedUsers->pluck('name')->filter()->join(', ') ?: ($plan->assignedUser?->name ?? 'All eligible admins') }}
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $plan->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $deletedBy['MaintenancePlanSchedule'][$plan->id] ?? '-' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.maintenance-plan.restore', $plan->id) }}">
@@ -220,7 +226,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted PM Plans found.</td></tr>
+                        <tr><td colspan="7" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted PM Plans found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -254,6 +260,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Location</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Staff</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted by</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                 </thead>
@@ -265,6 +272,7 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office->location?->name ?? 'Deleted location' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office->staff_count }}</td>
                             <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $office->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $deletedBy['Office'][$office->id] ?? '-' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.offices.restore', $office->id) }}">
@@ -276,7 +284,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted offices found.</td></tr>
+                        <tr><td colspan="7" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted offices found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -310,6 +318,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Position</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Office / Location</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted by</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                 </thead>
@@ -321,6 +330,7 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $staff->position ?: '—' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $staff->office?->name ?? 'Deleted office' }}{{ $staff->office?->location?->name ? ' / ' . $staff->office->location->name : '' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $staff->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $deletedBy['Staff'][$staff->id] ?? '-' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.staff.restore', $staff->id) }}">
@@ -332,7 +342,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted staff found.</td></tr>
+                        <tr><td colspan="7" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted staff found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -366,6 +376,7 @@
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Code</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Offices</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted</th>
+                        <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Deleted by</th>
                         <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                 </thead>
@@ -377,6 +388,7 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $location->code ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $location->offices_count }}</td>
                             <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ $location->deleted_at?->format('M d, Y h:i A') }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $deletedBy['Location'][$location->id] ?? '-' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <form method="POST" action="{{ route('admin.locations.restore', $location->id) }}">
@@ -388,7 +400,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted locations found.</td></tr>
+                        <tr><td colspan="7" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">No deleted locations found.</td></tr>
                     @endforelse
                 </tbody>
             </table>

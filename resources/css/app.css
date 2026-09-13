@@ -11,3 +11,27 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* Page-level search fields use the PMAMS clear button so the browser's
+   platform-specific search cancel control does not create a duplicate icon. */
+input[data-pmams-search],
+input[data-pmams-inline-search],
+input[type='search']:not([data-pmams-search]) {
+    appearance: none;
+}
+
+input[data-pmams-search]::-webkit-search-cancel-button,
+input[data-pmams-search]::-webkit-search-decoration,
+input[data-pmams-search]::-webkit-search-results-button,
+input[data-pmams-search]::-webkit-search-results-decoration,
+input[data-pmams-inline-search]::-webkit-search-cancel-button,
+input[data-pmams-inline-search]::-webkit-search-decoration,
+input[data-pmams-inline-search]::-webkit-search-results-button,
+input[data-pmams-inline-search]::-webkit-search-results-decoration,
+input[type='search']:not([data-pmams-search])::-webkit-search-cancel-button,
+input[type='search']:not([data-pmams-search])::-webkit-search-decoration,
+input[type='search']:not([data-pmams-search])::-webkit-search-results-button,
+input[type='search']:not([data-pmams-search])::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}

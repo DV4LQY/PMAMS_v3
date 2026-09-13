@@ -131,6 +131,7 @@ class DeviceController extends Controller
                     'currentAssignment.office.location',
                     'currentAssignment.location',
                     'latestMaintenanceRecord',
+                    'latestAuditLog',
                     'parentProperty.latestMaintenanceRecord',
                 ])
                 ->filterInventory($filters);
@@ -770,6 +771,7 @@ class DeviceController extends Controller
             'currentAssignment.office.location',
             'currentAssignment.location',
             'latestMaintenanceRecord',
+            'latestAuditLog',
             'parentProperty.latestMaintenanceRecord',
         ]);
 
@@ -786,6 +788,7 @@ class DeviceController extends Controller
             // validation redirect cannot repopulate the checklist's own
             // remarks textarea with issuance-only text.
             'issuance_remarks' => ['nullable', 'string', 'max:1000'],
+            'return_to' => ['nullable', 'string', 'max:2048'],
         ], [
             'staff_id.required' => 'Please select a registered end user.',
             'staff_id.exists' => 'The selected end user could not be found.',
@@ -794,10 +797,16 @@ class DeviceController extends Controller
         $staff = Staff::query()
             ->with('office.location')
             ->findOrFail($data['staff_id']);
+        if (! $staff->office?->location) {
+            return back()
+                ->withErrors(['staff_id' => 'The selected staff member must have a registered office and location before equipment can be assigned.'])
+                ->withInput();
+        }
 
         $assignment = $device->currentAssignment()
             ->with(['staff.office.location', 'office.location', 'location'])
             ->first();
+        $returnTo = $this->safeLocalReturnPath($data['return_to'] ?? null);
         $from = $this->assignmentContext($assignment);
         // Reissue has no location input. The location follows the selected
         // end user's registered office/location instead of a stale relocation.
@@ -850,7 +859,15 @@ class DeviceController extends Controller
             ])
         );
 
-        return back()->with('success', 'Equipment reissued successfully.');
+        $successMessage = $assignment
+            ? 'Equipment reissued successfully.'
+            : 'Equipment assigned successfully.';
+
+        if ($returnTo) {
+            return redirect()->to($returnTo)->with('success', $successMessage);
+        }
+
+        return back()->with('success', $successMessage);
     }
 
     public function issue(Request $request, Device $device)
@@ -952,6 +969,7 @@ class DeviceController extends Controller
         $device->load([
             'type',
             'latestMaintenanceRecord',
+            'latestAuditLog',
             'parentProperty.latestMaintenanceRecord',
         ]);
 
@@ -3551,8 +3569,26 @@ class DeviceController extends Controller
      */
     public function markChecked(Request $request, Device $device)
     {
-        $device->loadMissing('type');
+        $device->loadMissing([
+            'type',
+            'currentAssignment.staff.office.location',
+            'currentAssignment.office.location',
+            'currentAssignment.location',
+        ]);
         abort_unless($this->isComputerDevice($device->type?->name), 404);
+        if (! $this->hasAssignedStaffLocation($device)) {
+            $checklistUrl = route('admin.devices.checklist.form', $device);
+            $checklistPath = parse_url($checklistUrl, PHP_URL_PATH) ?: $checklistUrl;
+
+            return redirect()->route('admin.devices.show', [
+                'device' => $device,
+                'reissue_open' => 1,
+                'return_to' => $checklistPath,
+            ])->with(
+                'warning',
+                'Assign this equipment to a staff member with a registered office and location before marking it checked.'
+            );
+        }
         if (auth()->user() && in_array(auth()->user()->role, [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_UNIT_HEAD], true)) {
             abort_unless(
                 PreventiveMaintenancePlanController::canMarkDevice(auth()->user(), $device),
@@ -4027,6 +4063,40 @@ class DeviceController extends Controller
                 ? (($location->code ? $location->code . ' - ' : '') . $location->name)
                 : null,
         ];
+    }
+
+    private function hasAssignedStaffLocation(Device $device): bool
+    {
+        $assignment = $device->currentAssignment;
+        $staff = $assignment?->staff;
+        $office = $assignment?->office ?: $staff?->office;
+        $location = $assignment?->location ?: $office?->location;
+
+        return (bool) $staff && (bool) $location;
+    }
+
+    /**
+     * Accept only an application-local path for assignment-flow navigation.
+     * This keeps return_to from becoming an open redirect vector.
+     */
+    private function safeLocalReturnPath(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $returnTo = trim((string) $value);
+
+        if ($returnTo === ''
+            || ! str_starts_with($returnTo, '/')
+            || str_starts_with($returnTo, '//')
+            || str_starts_with($returnTo, '/\\')
+            || str_contains($returnTo, "\r")
+            || str_contains($returnTo, "\n")) {
+            return null;
+        }
+
+        return $returnTo;
     }
 
     private function searchTokens(string $value): array

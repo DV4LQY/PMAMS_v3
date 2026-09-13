@@ -30,6 +30,9 @@ class DeviceChecklistController extends Controller
         ]);
 
         abort_unless($this->isComputerDevice($device->type?->name), 404);
+        if (! $this->hasAssignedStaffLocation($device)) {
+            return $this->redirectToStaffAssignment($device);
+        }
         $this->assertPlanAccess($device);
 
         $linkablePeripherals = Device::query()
@@ -66,8 +69,18 @@ class DeviceChecklistController extends Controller
 
     public function store(Request $request, Device $device)
     {
-        $device->load(['type', 'latestMaintenanceRecord', 'linkedPeripherals.type']);
+        $device->load([
+            'type',
+            'latestMaintenanceRecord',
+            'linkedPeripherals.type',
+            'currentAssignment.staff.office.location',
+            'currentAssignment.office.location',
+            'currentAssignment.location',
+        ]);
         abort_unless($this->isComputerDevice($device->type?->name), 404);
+        if (! $this->hasAssignedStaffLocation($device)) {
+            return $this->redirectToStaffAssignment($device);
+        }
         $this->assertPlanAccess($device);
 
         $hardwareRules = [];
@@ -753,6 +766,64 @@ class DeviceChecklistController extends Controller
         $path = parse_url($url, PHP_URL_PATH);
 
         return ($path ?: $url) . '#pm-plan-progress';
+    }
+
+    /**
+     * A maintenance checklist must be tied to a named staff member and a
+     * registered location so its history and PM Plan scope remain actionable.
+     */
+    private function hasAssignedStaffLocation(Device $device): bool
+    {
+        $assignment = $device->currentAssignment;
+        $staff = $assignment?->staff;
+        $office = $assignment?->office ?: $staff?->office;
+        $location = $assignment?->location ?: $office?->location;
+
+        return (bool) $staff && (bool) $location;
+    }
+
+    /**
+     * Send unassigned equipment to the existing staff-issuance form. The
+     * checklist URL is the safe return target so a successful assignment
+     * brings the reviewer back to the interrupted checklist workflow.
+     */
+    private function redirectToStaffAssignment(Device $device)
+    {
+        $checklistUrl = route('admin.devices.checklist.form', $device);
+        $checklistPath = parse_url($checklistUrl, PHP_URL_PATH) ?: $checklistUrl;
+
+        return redirect()->route('admin.devices.show', [
+            'device' => $device,
+            'reissue_open' => 1,
+            'return_to' => $checklistPath,
+        ])->with(
+            'warning',
+            'Assign this equipment to a staff member with a registered office and location before opening the maintenance checklist.'
+        );
+    }
+
+    /**
+     * Accept only an application-local path when carrying the checklist
+     * return target through the assignment form.
+     */
+    private function safeLocalReturnPath(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $returnTo = trim((string) $value);
+
+        if ($returnTo === ''
+            || ! str_starts_with($returnTo, '/')
+            || str_starts_with($returnTo, '//')
+            || str_starts_with($returnTo, '/\\')
+            || str_contains($returnTo, "\r")
+            || str_contains($returnTo, "\n")) {
+            return null;
+        }
+
+        return $returnTo;
     }
 
     private function assertPlanAccess(Device $device): void

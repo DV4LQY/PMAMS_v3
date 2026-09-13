@@ -68,17 +68,6 @@ function registerLocationManager() {
         issueDeviceSelected: null,
         issueRemarks: '',
 
-        clearSearch() {
-            try {
-                window.sessionStorage.removeItem(`pmams.search:${window.location.pathname}:q`);
-            } catch (error) {
-                // Session storage may be unavailable in private/restricted browsers.
-            }
-
-            const url = new URL('{{ route('admin.locations.index') }}', window.location.origin);
-            window.location.assign(url.toString());
-        },
-
         openAdd() {
             this.addOpen = true;
             this.bulkEnabled = false;
@@ -277,42 +266,16 @@ document.addEventListener('livewire:navigated', () => {
         >
             <div class="min-w-0 flex-1">
                 <label for="location-search" class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Search locations, offices, and staff</label>
-                <div class="relative">
-                    <input
-                        id="location-search"
-                        name="q"
-                        data-pmams-search
-                        x-ref="locationSearch"
-                        value="{{ $search }}"
-                        type="search"
-                        autocomplete="off"
-                        maxlength="150"
-                        placeholder="Search by location, office, or staff name"
-                        x-on:keydown.enter.prevent="$refs.locationFilterForm.requestSubmit()"
-                        class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-11 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
-                    >
-                    <button
-                        type="submit"
-                        class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-r-lg text-gray-500 transition hover:bg-gray-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-blue-300"
-                        aria-label="Search locations, offices, and staff"
-                        title="Search"
-                    >
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
-                            <circle cx="11" cy="11" r="7"></circle>
-                            <path stroke-linecap="round" d="m20 20-4-4"></path>
-                        </svg>
-                    </button>
-                </div>
+                <x-search-field
+                    id="location-search"
+                    name="q"
+                    :value="$search"
+                    placeholder="Search by location, office, or staff name"
+                    ariaLabel="Search locations, offices, and staff"
+                    maxlength="150"
+                    inputClass="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-20 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
+                />
             </div>
-            @if($search !== '')
-                <button
-                    type="button"
-                    class="inline-flex items-center justify-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                    @click="clearSearch()"
-                >
-                    Clear
-                </button>
-            @endif
         </form>
         <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
             Enter a term, then press Enter or select the search icon. Search matches location names, codes, office names, and staff names.
@@ -664,6 +627,7 @@ document.addEventListener('livewire:navigated', () => {
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">End user <span class="text-red-600">*</span></label>
                 <input
                     type="search"
+                    aria-label="Search end users"
                     x-model="issueStaffQuery"
                     @input.debounce.300ms="searchIssueStaff()"
                     class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -692,6 +656,7 @@ document.addEventListener('livewire:navigated', () => {
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Available equipment <span class="text-red-600">*</span></label>
                 <input
                     type="search"
+                    aria-label="Search available equipment"
                     x-model="issueDeviceQuery"
                     @input.debounce.300ms="searchIssueDevices()"
                     class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white"

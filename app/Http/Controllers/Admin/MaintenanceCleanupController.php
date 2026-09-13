@@ -33,8 +33,13 @@ class MaintenanceCleanupController extends Controller
             ->paginate(50, ['*'], 'deleted_page')
             ->withQueryString();
 
+        $deletedBy = ActivityLog::deletedByFor([
+            'DeviceMaintenanceRecord' => $deletedRecords->getCollection(),
+        ]);
+
         return view('admin.maintenance-cleanup.index', [
             'deletedRecords' => $deletedRecords,
+            'deletedBy' => $deletedBy,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'windowMonths' => (int) SystemSetting::getValue(self::WINDOW_KEY, 3),

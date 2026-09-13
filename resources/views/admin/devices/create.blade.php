@@ -58,9 +58,11 @@
 
             {{-- Computer Name --}}
             <div id="computer_name_wrapper" data-equipment-field="computer">
-                <label class="text-sm font-medium">Computer Name</label>
+                <label class="text-sm font-medium">Computer Name <span class="text-red-600" aria-hidden="true">*</span></label>
                 <input name="computer_name"
                        id="computer_name_input"
+                       data-equipment-suggestion="computer_name"
+                       list="pmams-equipment-suggestions-computer_name"
                        value="{{ old('computer_name') }}"
                        class="mt-1 w-full border rounded px-3 py-2"
                        maxlength="100"
@@ -79,21 +81,24 @@
 
             {{-- Brand --}}
             <div>
-                <label class="text-sm font-medium">Brand</label>
+                <label class="text-sm font-medium">Brand <span class="text-red-600" aria-hidden="true">*</span></label>
                 <input name="brand"
+                       data-equipment-suggestion="brand"
+                       list="pmams-equipment-suggestions-brand"
                        maxlength="100"
                        pattern="[A-Za-zÑñ0-9][A-Za-zÑñ0-9.\-\s]*"
                        title="Letters and numbers only"
                        value="{{ old('brand') }}"
-                       class="mt-1 w-full border rounded px-3 py-2">
+                       class="mt-1 w-full border rounded px-3 py-2"
+                       required>
                 @error('brand')
                     <div class="text-sm text-red-600 mt-1">{{ $message }}</div>
                 @enderror
             </div>
 
             <div>
-                <label class="text-sm font-medium">Model</label>
-                <input name="model" value="{{ old('model') }}" maxlength="100" pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*" title="Letters and numbers only" class="mt-1 w-full border rounded px-3 py-2" placeholder="Example: L3210, 2199">
+                <label class="text-sm font-medium">Model <span class="text-red-600" aria-hidden="true">*</span></label>
+                <input name="model" data-equipment-suggestion="model" list="pmams-equipment-suggestions-model" value="{{ old('model') }}" maxlength="100" pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*" title="Letters and numbers only" class="mt-1 w-full border rounded px-3 py-2" placeholder="Example: L3210, 2199" required>
                 @error('model')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
@@ -136,8 +141,9 @@
 
             {{-- MAC Address --}}
             <div id="mac_address_wrapper">
-                <label class="text-sm font-medium">MAC Address</label>
+                <label class="text-sm font-medium">MAC Address <span class="text-red-600" aria-hidden="true">*</span></label>
                 <input name="mac_address"
+                       id="mac_address_input"
                        value="{{ old('mac_address') }}"
                        class="mt-1 w-full border rounded px-3 py-2"
                        maxlength="100"
@@ -151,23 +157,20 @@
 
             {{-- Memory (Computer only) --}}
             <div id="memory_wrapper" style="display:none;">
-                <label class="text-sm font-medium">Memory</label>
+                <label class="text-sm font-medium">Memory <span class="text-red-600" aria-hidden="true">*</span></label>
                 <select name="specs[memory]" id="memory_select" class="mt-1 w-full border rounded px-3 py-2" disabled>
                     <option value="">-- Select Memory --</option>
-                    @foreach(['2GB', '4GB', '8GB', '16GB', '32GB', '64GB'] as $memoryOption)
+                    @foreach(['2GB', '4GB', '6GB', '8GB', '12GB', '16GB', '24GB', '32GB', '64GB'] as $memoryOption)
                         <option value="{{ $memoryOption }}" @selected(old('specs.memory') === $memoryOption)>{{ $memoryOption }}</option>
                     @endforeach
-                    @if(old('specs.memory') && !in_array(old('specs.memory'), ['2GB', '4GB', '8GB', '16GB', '32GB', '64GB'], true))
-                        <option value="{{ old('specs.memory') }}" selected>{{ old('specs.memory') }}</option>
-                    @endif
                 </select>
                 @error('specs.memory')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
             {{-- Processor (Computer only) --}}
             <div id="processor_wrapper" style="display:none;">
-                <label class="text-sm font-medium">Processor</label>
-                <input name="specs[processor]" id="processor_input" value="{{ old('specs.processor') }}"
+                <label class="text-sm font-medium">Processor <span class="text-red-600" aria-hidden="true">*</span></label>
+                <input name="specs[processor]" id="processor_input" data-equipment-suggestion="processor" list="pmams-equipment-suggestions-processor" value="{{ old('specs.processor') }}"
                        maxlength="255"
                        placeholder="Example: Intel Core i5-12400"
                        class="mt-1 w-full border rounded px-3 py-2" disabled>
@@ -176,12 +179,28 @@
 
             {{-- Storage (Computer only) --}}
             <div id="storage_wrapper" style="display:none;">
-                <label class="text-sm font-medium">Storage</label>
+                <label class="text-sm font-medium">Storage <span class="text-red-600" aria-hidden="true">*</span></label>
                 <div id="storage_rows" class="mt-1 space-y-2"></div>
                 <button type="button" id="add_storage_button" class="mt-2 inline-flex items-center rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">+ Add storage</button>
                 <input type="hidden" name="specs[storage]" id="storage_value_input" value="{{ $createStorage }}" disabled>
                 <p class="mt-1 text-xs text-gray-500">Add another drive when needed. Saved values are combined, for example: 128GB SSD + 1TB HDD.</p>
                 @error('specs.storage')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
+            </div>
+
+            {{-- Form Factor (Desktop only) --}}
+            <div id="form_factor_wrapper" style="display:none;">
+                <label class="text-sm font-medium">Form Factor <span class="text-red-600" aria-hidden="true">*</span></label>
+                <select name="specs[form_factor]"
+                        id="form_factor_select"
+                        class="mt-1 w-full border rounded px-3 py-2"
+                        disabled>
+                    <option value="">-- Select Form Factor --</option>
+                    <option value="Tower Desktop" @selected(old('specs.form_factor') === 'Tower Desktop')>Tower Desktop</option>
+                    <option value="Small Form Factor (SFF) Desktop" @selected(old('specs.form_factor') === 'Small Form Factor (SFF) Desktop')>Small Form Factor (SFF) Desktop</option>
+                    <option value="All-in-One (AIO) Desktop" @selected(old('specs.form_factor') === 'All-in-One (AIO) Desktop')>All-in-One (AIO) Desktop</option>
+                    <option value="Mini PC" @selected(old('specs.form_factor') === 'Mini PC')>Mini PC</option>
+                </select>
+                @error('specs.form_factor')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
             {{-- Date Acquired --}}
@@ -224,7 +243,7 @@
 
             {{-- OS Version (Computer only) --}}
             <div id="os_version_wrapper" style="display:none;">
-                <label class="text-sm font-medium">OS Version</label>
+                <label class="text-sm font-medium">OS Version <span class="text-red-600" aria-hidden="true">*</span></label>
                 <select name="os_version"
                         id="os_version_select"
                         class="mt-1 w-full border rounded px-3 py-2">
@@ -258,7 +277,7 @@
 
             {{-- MS Office Version (Computer only) --}}
             <div id="ms_office_version_wrapper" style="display:none;">
-                <label class="text-sm font-medium">MS Office Version</label>
+                <label class="text-sm font-medium">MS Office Version <span class="text-red-600" aria-hidden="true">*</span></label>
                 <select name="ms_office_version"
                         id="ms_office_version_select"
                         class="mt-1 w-full border rounded px-3 py-2">
@@ -292,6 +311,8 @@
 
         </div>
 
+        @include('admin.devices._audit-meta', ['auditMode' => 'create'])
+
         <div class="flex gap-2">
             <button class="px-4 py-2 rounded bg-blue-600 text-white">Save</button>
             <a href="{{ route('admin.devices.index') }}" data-equipment-add-cancel class="px-4 py-2 rounded bg-gray-100">Cancel</a>
@@ -312,6 +333,7 @@
         var networkTypeWrap = document.getElementById('network_device_type_wrapper');
         var locationDeployedWrap = document.getElementById('location_deployed_wrapper');
         var macAddressWrap = document.getElementById('mac_address_wrapper');
+        var macAddressInput = document.getElementById('mac_address_input');
 
         var osVersionWrap   = document.getElementById('os_version_wrapper');
         var osLicenseWrap   = document.getElementById('os_license_wrapper');
@@ -327,6 +349,8 @@
         var storageRows = document.getElementById('storage_rows');
         var storageAddButton = document.getElementById('add_storage_button');
         var storageValueInput = document.getElementById('storage_value_input');
+        var formFactorWrap = document.getElementById('form_factor_wrapper');
+        var formFactorSelect = document.getElementById('form_factor_select');
         var storageCapacities = {
             SSD: ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'],
             HDD: ['256GB', '500GB', '1TB', '2TB']
@@ -338,6 +362,10 @@
         function isComputer(name) {
             name = String(name || '').trim().toLowerCase();
             return name === 'desktop' || name === 'laptop';
+        }
+
+        function isDesktop(name) {
+            return String(name || '').trim().toLowerCase() === 'desktop';
         }
 
         function isNetworkDevice(name) {
@@ -491,35 +519,53 @@
             var selected = typeSelect.options[typeSelect.selectedIndex];
             var typeName = selected ? selected.dataset.name : '';
             var computer = isComputer(typeName);
+            var desktop = isDesktop(typeName);
             var networkDevice = isNetworkDevice(typeName);
 
             if (networkTypeWrap) networkDevice ? show(networkTypeWrap) : hide(networkTypeWrap);
             if (locationDeployedWrap) networkDevice ? show(locationDeployedWrap) : hide(locationDeployedWrap);
             if (macAddressWrap) networkDevice || computer ? show(macAddressWrap) : hide(macAddressWrap);
+            if (macAddressInput) macAddressInput.required = computer || networkDevice;
+            if (computerNameInput) computerNameInput.required = computer;
+            if (formFactorWrap) desktop ? show(formFactorWrap) : hide(formFactorWrap);
+            if (formFactorSelect) {
+                formFactorSelect.disabled = !desktop;
+                formFactorSelect.required = desktop;
+                if (!desktop) formFactorSelect.value = '';
+            }
+            if (osVersionSel) osVersionSel.required = computer;
+            if (msVersionSel) msVersionSel.required = computer;
 
             if (computer) {
                 show(computerNameWrap);
                 computerNameInput.disabled = false;
                 show(memoryWrap);
                 memorySelect.disabled = false;
+                memorySelect.required = true;
                 show(processorWrap);
                 processorInput.disabled = false;
+                processorInput.required = true;
                 show(storageWrap);
                 if (storageAddButton) storageAddButton.disabled = false;
                 renderStorageRows();
                 storageValueInput.disabled = false;
+                storageValueInput.required = true;
             } else {
                 hide(computerNameWrap);
                 computerNameInput.disabled = true;
+                computerNameInput.required = false;
                 computerNameInput.value = '';
                 hide(memoryWrap);
                 memorySelect.disabled = true;
+                memorySelect.required = false;
                 hide(processorWrap);
                 processorInput.disabled = true;
+                processorInput.required = false;
                 processorInput.value = '';
                 hide(storageWrap);
                 if (storageAddButton) storageAddButton.disabled = true;
                 storageValueInput.disabled = true;
+                storageValueInput.required = false;
                 storageEntries = [{ capacity: '', type: '' }];
                 storageRaw = '';
                 storageDirty = true;

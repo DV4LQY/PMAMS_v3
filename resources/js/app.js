@@ -855,6 +855,183 @@ import './bootstrap';
     }
 })();
 
+// Offer recently entered, reusable equipment values through native datalist
+// suggestions. The history is intentionally tab-scoped and bounded: it helps
+// the current operator repeat common brand/model/name values without copying
+// unique identifiers or remarks into browser storage. Existing saved values
+// seed the same local history when an edit form is opened; a suggestion never
+// changes a field automatically and remains an ordinary user-editable value.
+(function setupEquipmentInputSuggestions() {
+    if (window.__pmamsEquipmentInputSuggestionsReady) return;
+    window.__pmamsEquipmentInputSuggestionsReady = true;
+
+    const storageKey = 'pmams.equipment.input-suggestions.v1';
+    const maxValuesPerField = 8;
+    const maxValueLength = 255;
+    const fields = new Set(['brand', 'model', 'computer_name', 'processor']);
+    const lists = new Map();
+
+    const getStorage = () => {
+        try { return window.sessionStorage; } catch (error) { return null; }
+    };
+
+    const emptyState = () => Object.fromEntries(
+        Array.from(fields, (field) => [field, []])
+    );
+
+    const normalize = (value) => String(value ?? '').trim();
+
+    const read = () => {
+        const storage = getStorage();
+        const state = emptyState();
+        if (!storage) return state;
+
+        try {
+            const stored = JSON.parse(storage.getItem(storageKey) || '{}');
+            fields.forEach((field) => {
+                const values = Array.isArray(stored?.[field]) ? stored[field] : [];
+                const seen = new Set();
+                state[field] = values
+                    .map(normalize)
+                    .filter((value) => {
+                        const key = value.toLocaleLowerCase();
+                        if (!value || value.length > maxValueLength || seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    })
+                    .slice(0, maxValuesPerField);
+            });
+        } catch (error) {
+            // Session storage can contain stale or malformed data; ignore it.
+        }
+
+        return state;
+    };
+
+    const write = (state) => {
+        const storage = getStorage();
+        if (!storage) return;
+
+        try {
+            storage.setItem(storageKey, JSON.stringify(state));
+        } catch (error) {
+            // Session storage can be unavailable in private/restricted browsers.
+        }
+    };
+
+    const listId = (field) => `pmams-equipment-suggestions-${field}`;
+
+    const ensureList = (field) => {
+        if (!document.body) return null;
+
+        if (lists.has(field) && document.getElementById(listId(field))) {
+            return lists.get(field);
+        }
+
+        let list = document.getElementById(listId(field));
+        if (!list) {
+            list = document.createElement('datalist');
+            list.id = listId(field);
+            list.dataset.pmamsEquipmentSuggestions = '1';
+            document.body.appendChild(list);
+        }
+        lists.set(field, list);
+        return list;
+    };
+
+    const render = (field, state = read()) => {
+        const list = ensureList(field);
+        if (!list) return;
+
+        list.replaceChildren(...state[field].map((value) => {
+            const option = document.createElement('option');
+            option.value = value;
+            return option;
+        }));
+    };
+
+    const eligibleInputs = (root = document) => Array.from(
+        root.querySelectorAll('input[data-equipment-suggestion]')
+    ).filter((input) => fields.has(String(input.dataset.equipmentSuggestion || '')));
+
+    const attach = (input) => {
+        const field = String(input.dataset.equipmentSuggestion || '');
+        if (!fields.has(field)) return null;
+
+        input.setAttribute('list', listId(field));
+        input.setAttribute('autocomplete', 'off');
+        ensureList(field);
+        return field;
+    };
+
+    const remember = (input) => {
+        const field = attach(input);
+        if (!field || input.disabled) return;
+
+        const value = normalize(input.value);
+        if (!value || value.length > maxValueLength) return;
+
+        const state = read();
+        const key = value.toLocaleLowerCase();
+        state[field] = [value, ...state[field].filter((candidate) => (
+            candidate.toLocaleLowerCase() !== key
+        ))].slice(0, maxValuesPerField);
+        write(state);
+        fields.forEach((candidate) => render(candidate, state));
+    };
+
+    const initialize = () => {
+        const state = read();
+        eligibleInputs().forEach((input) => {
+            const field = attach(input);
+            if (field) render(field, state);
+            // Seed suggestions from values already persisted by the server,
+            // but never overwrite the current form value.
+            if (field && normalize(input.value)) remember(input);
+        });
+    };
+
+    document.addEventListener('focusin', (event) => {
+        const input = event.target?.closest?.('input[data-equipment-suggestion]');
+        if (!input) return;
+        const field = attach(input);
+        if (field) render(field);
+    }, true);
+
+    document.addEventListener('change', (event) => {
+        const input = event.target?.closest?.('input[data-equipment-suggestion]');
+        if (!input || event.isTrusted === false) return;
+        remember(input);
+    }, true);
+
+    document.addEventListener('focusout', (event) => {
+        const input = event.target?.closest?.('input[data-equipment-suggestion]');
+        if (!input || event.isTrusted === false) return;
+        // Store the completed value after the operator leaves the field, not
+        // every partial keystroke typed into it.
+        remember(input);
+    }, true);
+
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement)
+            || !form.matches('form[data-equipment-add-form], form[data-equipment-edit-form]')) {
+            return;
+        }
+
+        // Capture the final submitted values as well, including values that
+        // came from a native datalist selection without an input event.
+        eligibleInputs(form).forEach((input) => remember(input));
+    }, true);
+
+    document.addEventListener('livewire:navigated', initialize);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    } else {
+        initialize();
+    }
+})();
+
 // Submit marked PM Plan actions through fetch, then let Livewire replace the
 // current page. This keeps the PM Plan in SPA mode while preserving Laravel's
 // normal redirects, validation errors, flash messages, CSRF protection, and
@@ -1055,11 +1232,63 @@ import './bootstrap';
     let stream = null;
     let requestId = 0;
 
+    const setStatus = (message) => {
+        ['device-photo-status', 'device-camera-status']
+            .map((id) => document.getElementById(id))
+            .filter(Boolean)
+            .forEach((status) => { status.textContent = message || ''; });
+    };
+
+    const syncBodyLock = () => {
+        const camera = document.getElementById('device-camera-modal');
+        const lightbox = document.getElementById('device-photo-lightbox');
+        const open = [camera, lightbox].some((overlay) => overlay && !overlay.classList.contains('hidden'));
+        document.body?.classList.toggle('overflow-hidden', open);
+    };
+
+    const setCameraModal = (open) => {
+        const modal = document.getElementById('device-camera-modal');
+        if (!modal) return;
+        modal.classList.toggle('hidden', !open);
+        modal.classList.toggle('flex', open);
+        modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+        syncBodyLock();
+        if (open) {
+            requestAnimationFrame(() => document.getElementById('device-camera-close-button')?.focus({ preventScroll: true }));
+        }
+    };
+
+    const openLightbox = () => {
+        const image = document.getElementById('device-photo-image');
+        const modal = document.getElementById('device-photo-lightbox');
+        const lightboxImage = document.getElementById('device-photo-lightbox-image');
+        const source = image?.currentSrc || image?.src || '';
+        if (!image || image.classList.contains('hidden') || !source || !modal || !lightboxImage) return;
+        lightboxImage.src = source;
+        lightboxImage.alt = image.alt || 'Equipment photo';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        modal.setAttribute('aria-hidden', 'false');
+        syncBodyLock();
+        requestAnimationFrame(() => document.getElementById('device-photo-lightbox-close')?.focus({ preventScroll: true }));
+    };
+
+    const closeLightbox = () => {
+        const modal = document.getElementById('device-photo-lightbox');
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        modal?.setAttribute('aria-hidden', 'true');
+        document.getElementById('device-photo-lightbox-image')?.removeAttribute('src');
+        syncBodyLock();
+    };
+
     const setBusy = (busy) => {
-        ['device-take-photo-button', 'device-capture-photo-button', 'device-clear-photo-button']
+        ['device-take-photo-button', 'device-clear-photo-button']
             .map((id) => document.getElementById(id))
             .filter(Boolean)
             .forEach((button) => { button.disabled = busy; });
+        const captureButton = document.getElementById('device-capture-photo-button');
+        if (captureButton) captureButton.disabled = busy || !stream;
     };
 
     const close = () => {
@@ -1069,6 +1298,8 @@ import './bootstrap';
         window.__deviceDetailsCameraStream = null;
         const video = document.getElementById('device-camera-video');
         const controls = document.getElementById('device-camera-controls');
+        const placeholder = document.getElementById('device-camera-placeholder');
+        const captureButton = document.getElementById('device-capture-photo-button');
         if (video) {
             video.pause?.();
             video.srcObject = null;
@@ -1076,21 +1307,26 @@ import './bootstrap';
         }
         controls?.classList.add('hidden');
         controls?.classList.remove('flex');
+        placeholder?.classList.remove('hidden');
+        if (captureButton) captureButton.disabled = true;
+        setCameraModal(false);
     };
 
     const open = async () => {
         const video = document.getElementById('device-camera-video');
         const controls = document.getElementById('device-camera-controls');
-        const status = document.getElementById('device-photo-status');
-        if (!video || !controls || !status) return;
+        const placeholder = document.getElementById('device-camera-placeholder');
+        if (!video || !controls) return;
+        if (stream) close();
+        const currentRequest = ++requestId;
+        setCameraModal(true);
+        placeholder?.classList.remove('hidden');
+        setStatus('Opening camera...');
         if (!navigator.mediaDevices?.getUserMedia) {
-            status.textContent = 'Camera access is not available in this browser.';
+            setStatus('Camera access is not available in this browser.');
             return;
         }
 
-        close();
-        const currentRequest = ++requestId;
-        status.textContent = 'Opening camera...';
         setBusy(true);
         try {
             const nextStream = await navigator.mediaDevices.getUserMedia({
@@ -1106,11 +1342,14 @@ import './bootstrap';
             video.srcObject = stream;
             await video.play();
             video.classList.remove('hidden');
+            placeholder?.classList.add('hidden');
             controls.classList.remove('hidden');
             controls.classList.add('flex');
-            status.textContent = 'Camera ready.';
+            setStatus('Camera ready. Center the equipment and capture when ready.');
         } catch (error) {
-            status.textContent = 'Camera permission was blocked or no camera was found.';
+            setStatus(window.isSecureContext
+                ? 'Camera permission was blocked or no camera was found.'
+                : 'Camera requires HTTPS or localhost.');
         } finally {
             setBusy(false);
         }
@@ -1122,10 +1361,10 @@ import './bootstrap';
         const canvas = document.getElementById('device-camera-canvas');
         const image = document.getElementById('device-photo-image');
         const empty = document.getElementById('device-photo-empty');
-        const status = document.getElementById('device-photo-status');
-        if (!form || !video || !canvas || !image || !status || !stream || !video.videoWidth) return;
+        const zoomButton = document.getElementById('device-photo-zoom-button');
+        if (!form || !video || !canvas || !image || !stream || !video.videoWidth) return;
         setBusy(true);
-        status.textContent = 'Saving photo...';
+        setStatus('Saving photo...');
         try {
             const size = Math.min(video.videoWidth, video.videoHeight);
             canvas.width = 1280;
@@ -1139,27 +1378,31 @@ import './bootstrap';
             if (!response.ok) throw new Error('Photo upload failed.');
             const result = await response.json();
             image.src = `${result.photo_url}?v=${Date.now()}`;
+            image.alt = 'Photo of equipment';
             image.classList.remove('hidden');
             empty?.classList.add('hidden');
             empty?.classList.remove('flex');
+            zoomButton?.classList.remove('hidden');
+            zoomButton?.classList.add('flex');
             document.getElementById('device-clear-photo-button')?.classList.remove('hidden');
-            status.textContent = result.message || 'Photo saved.';
+            setStatus(result.message || 'Photo saved.');
             close();
         } catch (error) {
-            status.textContent = error.message || 'Photo upload failed. Please try again.';
+            setStatus(error.message || 'Photo upload failed. Please try again.');
         } finally {
             setBusy(false);
         }
     };
 
     const clearPhoto = async () => {
-        if (!window.confirm('Delete this equipment photo?')) return;
+        if (!window.confirm('Delete this equipment photo? This action cannot be undone.')) return;
         const form = document.getElementById('device-photo-delete-form');
         const image = document.getElementById('device-photo-image');
         const empty = document.getElementById('device-photo-empty');
-        const status = document.getElementById('device-photo-status');
-        if (!form || !status) return;
+        const zoomButton = document.getElementById('device-photo-zoom-button');
+        if (!form) return;
         setBusy(true);
+        setStatus('Deleting photo...');
         try {
             const response = await fetch(form.getAttribute('action') || window.location.href, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
             if (!response.ok) throw new Error('Photo delete failed.');
@@ -1168,10 +1411,13 @@ import './bootstrap';
             image?.removeAttribute('src');
             empty?.classList.remove('hidden');
             empty?.classList.add('flex');
+            zoomButton?.classList.add('hidden');
+            zoomButton?.classList.remove('flex');
+            closeLightbox();
             document.getElementById('device-clear-photo-button')?.classList.add('hidden');
-            status.textContent = result.message || 'Photo cleared.';
+            setStatus(result.message || 'Photo cleared.');
         } catch (error) {
-            status.textContent = error.message || 'Photo delete failed. Please try again.';
+            setStatus(error.message || 'Photo delete failed. Please try again.');
         } finally {
             setBusy(false);
         }
@@ -1181,7 +1427,19 @@ import './bootstrap';
     if (!window.closeDeviceCamera) window.closeDeviceCamera = close;
     if (!window.captureDevicePhoto) window.captureDevicePhoto = capture;
     if (!window.clearDevicePhoto) window.clearDevicePhoto = clearPhoto;
-    document.addEventListener('livewire:navigating', close);
+    if (!window.openDevicePhotoLightbox) window.openDevicePhotoLightbox = openLightbox;
+    if (!window.closeDevicePhotoLightbox) window.closeDevicePhotoLightbox = closeLightbox;
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const cameraModal = document.getElementById('device-camera-modal');
+        const lightbox = document.getElementById('device-photo-lightbox');
+        if (cameraModal && !cameraModal.classList.contains('hidden')) close();
+        else if (lightbox && !lightbox.classList.contains('hidden')) closeLightbox();
+    });
+    document.addEventListener('livewire:navigating', () => {
+        close();
+        closeLightbox();
+    });
 })();
 
 (function setupAdminNavigationState() {

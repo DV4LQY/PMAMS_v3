@@ -13,7 +13,7 @@
     $formDeviceDateAcquired = $formDevice?->effectiveDateAcquired()?->format('Y-m-d') ?? $addParentDateAcquired;
     $formDeviceUnitPrice = $formDevice?->effectiveUnitPrice() ?? $addParentUnitPrice;
     $formDeviceLastMaintenanceDate = $formDevice?->effectiveLastMaintenanceDate()?->format('Y-m-d');
-    $memoryOptions = ['2GB', '4GB', '8GB', '16GB', '32GB', '64GB'];
+    $memoryOptions = ['2GB', '4GB', '6GB', '8GB', '12GB', '16GB', '24GB', '32GB', '64GB'];
     $storageCapacityOptions = [
         'SSD' => ['128GB', '256GB', '480GB', '512GB', '1TB', '2TB'],
         'HDD' => ['256GB', '500GB', '1TB', '2TB'],
@@ -177,14 +177,16 @@
         <div class="mt-1">
             <input
                 x-ref="partPropertyInput"
+                data-pmams-inline-search
                 name="part_of_property_number"
             value="{{ old('part_of_property_number', $formDevice?->part_of_property_number ?? ($addParentPropertyNumber ?? '')) }}"
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 maxlength="50"
                 pattern="[A-Za-z0-9][A-Za-z0-9\-/]*"
                 title="Letters, numbers, hyphens, and slashes only"
-            placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Scanner/Network Device/Other)"
-            autocomplete="off"
+                placeholder="e.g. PN-2026-0001 (link Printer/Monitor/UPS/AVR/Scanner/Network Device/Other)"
+                aria-label="Search linked parent property number"
+                autocomplete="off"
             :disabled="!visible"
             @if($lockPartPropertyNumber) readonly @endif
             :readonly="locked"
@@ -239,42 +241,51 @@
     </div>
 
     <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Computer Name</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Computer Name <span class="text-red-600" aria-hidden="true">*</span></label>
         <input
             name="computer_name"
+            data-equipment-suggestion="computer_name"
+            list="pmams-equipment-suggestions-computer_name"
             value="{{ old('computer_name', $formDevice?->computer_name ?? data_get($formDeviceSpecs, 'computer_name')) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             placeholder="Enter computer name"
             :disabled="!isComputerType(addTypeId)"
+            :required="isComputerType(addTypeId)"
         >
         @error('computer_name')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
     <div>
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Brand</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Brand <span class="text-red-600" aria-hidden="true">*</span></label>
         <input
             name="brand"
+            data-equipment-suggestion="brand"
+            list="pmams-equipment-suggestions-brand"
             value="{{ old('brand', $formDevice?->brand) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             pattern="[A-Za-zÑñ0-9][A-Za-zÑñ0-9.\-\s]*"
             title="Letters and numbers only"
             placeholder="Example: ACER, EPSON"
+            required
         >
         @error('brand')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
     <div>
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Model</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Model <span class="text-red-600" aria-hidden="true">*</span></label>
         <input
             name="model"
+            data-equipment-suggestion="model"
+            list="pmams-equipment-suggestions-model"
             value="{{ old('model', $formDevice?->model) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
             pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*"
             title="Letters and numbers only"
             placeholder="Example: L3210, 2199"
+            required
         >
         @error('model')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
@@ -316,7 +327,7 @@
     </div>
 
     <div x-show="isComputerType(addTypeId) || isNetworkDeviceType(addTypeId)" x-cloak data-equipment-field="mac">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">MAC Address</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">MAC Address <span class="text-red-600" aria-hidden="true">*</span></label>
         <input
             name="mac_address"
             value="{{ old('mac_address', $formDevice?->mac_address) }}"
@@ -326,37 +337,39 @@
             title="Enter one or more MAC addresses separated by semicolons"
             placeholder="90:DE:80:08:8D:5C; 00:DE:80:08:8D:5C"
             :disabled="!isComputerType(addTypeId) && !isNetworkDeviceType(addTypeId)"
+            :required="isComputerType(addTypeId) || isNetworkDeviceType(addTypeId)"
         >
         @error('mac_address')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
     <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Memory</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Memory <span class="text-red-600" aria-hidden="true">*</span></label>
         <select
             name="specs[memory]"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             :disabled="!isComputerType(addTypeId)"
+            :required="isComputerType(addTypeId)"
         >
             <option value="">-- Select Memory --</option>
             @foreach($memoryOptions as $memoryOption)
                 <option value="{{ $memoryOption }}" @selected($existingMemory === $memoryOption)>{{ $memoryOption }}</option>
             @endforeach
-            @if($existingMemory !== '' && !in_array($existingMemory, $memoryOptions, true))
-                <option value="{{ $existingMemory }}" selected>{{ $existingMemory }}</option>
-            @endif
         </select>
         @error('specs.memory')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
     <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Processor</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Processor <span class="text-red-600" aria-hidden="true">*</span></label>
         <input
             name="specs[processor]"
+            data-equipment-suggestion="processor"
+            list="pmams-equipment-suggestions-processor"
             value="{{ old('specs.processor', data_get($formDeviceSpecs, 'processor', '')) }}"
             maxlength="255"
             placeholder="Example: Intel Core i5-12400"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             :disabled="!isComputerType(addTypeId)"
+            :required="isComputerType(addTypeId)"
         >
         @error('specs.processor')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
@@ -412,7 +425,7 @@
                 }
             }
         }" x-init="parseStorage(storageRaw)" x-on:pmams-storage-sync.window="parseStorage($event.detail)">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Storage</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Storage <span class="text-red-600" aria-hidden="true">*</span></label>
         <div class="mt-1 space-y-2">
             <template x-for="(storage, index) in storageEntries" :key="'storage-entry-' + index">
                 <div class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
@@ -468,17 +481,19 @@
             @input="parseStorage($event.target.value)"
             @change="parseStorage($event.target.value)"
             :disabled="!isComputerType(addTypeId)"
+            :required="isComputerType(addTypeId)"
         >
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Add another drive when needed. Saved values are combined, for example: 128GB SSD + 1TB HDD.</p>
         @error('specs.storage')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 
     <div x-show="isDesktopType(addTypeId)" x-cloak data-equipment-field="desktop">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Form Factor</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Form Factor <span class="text-red-600" aria-hidden="true">*</span></label>
         <select
             name="specs[form_factor]"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             :disabled="!isDesktopType(addTypeId)"
+            :required="isDesktopType(addTypeId)"
         >
             <option value="">-- Select Form Factor --</option>
             <option value="Tower Desktop" @selected(old('specs.form_factor', data_get($formDeviceSpecs, 'form_factor')) === 'Tower Desktop')>Tower Desktop</option>
@@ -491,12 +506,13 @@
     </div>
 
     <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">OS Version</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">OS Version <span class="text-red-600" aria-hidden="true">*</span></label>
         <select
             name="os_version"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             x-model="addOsVersion"
             :disabled="!isComputerType(addTypeId)"
+            :required="isComputerType(addTypeId)"
         >
             <option value="">-- Select OS --</option>
             <option value="Windows 7">Windows 7</option>
@@ -525,12 +541,13 @@
     </div>
 
     <div x-show="isComputerType(addTypeId)" x-cloak data-equipment-field="computer">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">MS Office Version</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">MS Office Version <span class="text-red-600" aria-hidden="true">*</span></label>
         <select
             name="ms_office_version"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             x-model="addMsVersion"
             :disabled="!isComputerType(addTypeId)"
+            :required="isComputerType(addTypeId)"
         >
             <option value="">-- Select MS Office --</option>
             <option value="Office 2007">Office 2007</option>

@@ -102,12 +102,13 @@
               class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
 
 
-            <input
+            <x-search-field
                 name="q"
-                data-pmams-search
-                value="{{ $q }}"
+                :value="$q"
                 placeholder="Search property #, remarks..."
-                class="rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">
+                ariaLabel="Search checked equipment"
+                inputClass="w-full rounded-lg border px-3 py-2 pr-20 text-sm dark:bg-gray-800 dark:text-white"
+            />
 
 
             @if($canViewAllCheckedReports ?? true)

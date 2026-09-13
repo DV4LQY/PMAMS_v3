@@ -300,6 +300,7 @@ class OfficeController extends Controller
         }
 
         $items = $offices->map(fn (Office $office) => [
+            'id' => $office->id,
             'summary' => $this->buildDeleteSummary($office),
         ])->values()->all();
 

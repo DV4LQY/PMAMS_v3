@@ -137,7 +137,15 @@
             </div>
             <div class="min-w-0 md:col-span-5">
                 <label for="maintenance-attention-search" class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Search equipment</label>
-                <input id="maintenance-attention-search" data-pmams-persist-input name="q" value="{{ $q }}" type="search" autocomplete="off" placeholder="Search property #, serial #, model, brand..." class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400" />
+                <x-search-field
+                    id="maintenance-attention-search"
+                    name="q"
+                    :value="$q"
+                    placeholder="Search property #, serial #, model, brand..."
+                    ariaLabel="Search equipment"
+                    persist
+                    inputClass="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-20 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
+                />
             </div>
             <div class="min-w-0 md:col-span-2">
                 <label for="maintenance-attention-location" class="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-200">Location</label>
