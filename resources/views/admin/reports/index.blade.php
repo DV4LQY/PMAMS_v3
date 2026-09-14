@@ -29,11 +29,11 @@
             </div>
 
             <h2 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">
-                Assets by Maintenance / PM Plan Scope / Type / Office / Location
+                All Maintained and Not maintained Assets
             </h2>
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                Generate reports for all equipment with Maintained/Not maintained, active PM Plan scope, equipment type, semi-annual period, year, location, office, or keyword filters.
+                View all equipment with Maintained/Not maintained labels, then narrow by active PM Plan scope, equipment type, semi-annual period, year, location, office, or keyword filters.
             </p>
         </a>
 
@@ -52,6 +52,25 @@
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 Review peripherals linked to a parent property by maintenance year/month, Location, Office, or searchable equipment and staff details. Export the filtered list to Excel.
+            </p>
+        </a>
+        @endif
+
+        {{-- Software licenses --}}
+        @if(auth()->user()?->canMenu('reports'))
+        <a href="{{ route('admin.reports.software') }}"
+           class="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:hover:border-violet-500">
+
+            <div class="text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">
+                Software Reports
+            </div>
+
+            <h2 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">
+                Computer Software Inventory
+            </h2>
+
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Review and overwrite Desktop and Laptop OS/MS Office versions and licenses by semi-annual period, year, Location, Office, or keyword, then download a formatted filtered Excel report.
             </p>
         </a>
         @endif

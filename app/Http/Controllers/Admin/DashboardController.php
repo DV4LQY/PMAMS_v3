@@ -117,16 +117,26 @@ class DashboardController extends Controller
             ->sortDesc();
 
         // Keep maintenance coverage in one semiannual stacked-bar dataset.
-        // Maintained is counted once per eligible device when a checklist
-        // record exists in the window; the remaining eligible devices are
-        // Not Maintained for that window. Condemned equipment is excluded
-        // from both segments so the chart is actionable and its totals are
-        // easy to reconcile with the equipment inventory.
-        $eligibleMaintenanceCount = Device::query()
+        // Each equipment type gets its own color in the chart. A solid
+        // segment means Maintained and a translucent segment means Not
+        // Maintained for that type/window. Condemned equipment is excluded
+        // from both segments so the chart remains actionable and its totals
+        // reconcile with the active equipment inventory.
+        $eligibleMaintenanceDevices = Device::query()
             ->where(function ($query) {
                 $query->whereNull('condition')->orWhere('condition', '<>', 'condemned');
             })
-            ->count();
+            ->with([
+                'type:id,name',
+                'parentProperty:id,property_number,last_maintenance_date',
+            ])
+            ->get(['id', 'device_type_id', 'part_of_property_number', 'last_maintenance_date']);
+
+        $eligibleMaintenanceCount = $eligibleMaintenanceDevices->count();
+        $eligibleMaintenanceIds = $eligibleMaintenanceDevices->pluck('id');
+        $maintenanceTypeDeviceIds = $eligibleMaintenanceDevices
+            ->groupBy(fn (Device $device) => $device->type?->name ?? 'Unknown')
+            ->map(fn ($devices) => $devices->pluck('id')->values());
 
         $semiannualPeriod = static function ($value): string {
             $date = $value instanceof Carbon ? $value : Carbon::parse($value);
@@ -134,35 +144,103 @@ class DashboardController extends Controller
             return $date->format('Y') . ' ' . ($date->month <= 6 ? 'Jan-Jun' : 'Jul-Dec');
         };
 
-        $maintenanceRecordsByPeriod = DeviceMaintenanceRecord::query()
+        $maintenanceSourceIds = $eligibleMaintenanceIds
+            ->merge($eligibleMaintenanceDevices->map(fn (Device $device) => $device->parentProperty?->id))
+            ->filter()
+            ->unique()
+            ->values();
+
+        // A report row is Maintained when its own or inherited maintenance
+        // history/date is available. Keep a set of eligible device ids per
+        // window so linked peripherals inherit the same parent checklist as
+        // All Assets, even when the child has no separate record of its own.
+        $maintenanceDeviceIdsByPeriod = [];
+        $rememberMaintenance = function ($value, int $deviceId) use (&$maintenanceDeviceIdsByPeriod, $semiannualPeriod): void {
+            if (! filled($value)) {
+                return;
+            }
+
+            $period = $semiannualPeriod($value);
+            $maintenanceDeviceIdsByPeriod[$period] ??= [];
+            $maintenanceDeviceIdsByPeriod[$period][$deviceId] = true;
+        };
+
+        foreach ($eligibleMaintenanceDevices as $device) {
+            $rememberMaintenance($device->last_maintenance_date, (int) $device->id);
+            $rememberMaintenance($device->parentProperty?->last_maintenance_date, (int) $device->id);
+        }
+
+        $maintenanceRecords = DeviceMaintenanceRecord::query()
             ->whereNotNull('maintenance_date')
-            ->whereHas('device', function ($query) {
-                $query->whereNull('condition')->orWhere('condition', '<>', 'condemned');
-            })
+            ->whereIn('device_id', $maintenanceSourceIds)
             ->get(['device_id', 'maintenance_date'])
-            ->groupBy(fn ($record) => $semiannualPeriod($record->maintenance_date));
+            ->all();
+
+        $eligibleDeviceIds = $eligibleMaintenanceIds->mapWithKeys(fn ($id) => [(int) $id => true]);
+        $childrenByParentId = $eligibleMaintenanceDevices
+            ->filter(fn (Device $device) => $device->parentProperty?->id)
+            ->groupBy(fn (Device $device) => (int) $device->parentProperty->id);
+
+        foreach ($maintenanceRecords as $record) {
+            $recordDeviceId = (int) $record->device_id;
+
+            if ($eligibleDeviceIds->has($recordDeviceId)) {
+                $rememberMaintenance($record->maintenance_date, $recordDeviceId);
+            }
+
+            foreach ($childrenByParentId->get($recordDeviceId, collect()) as $child) {
+                $rememberMaintenance($record->maintenance_date, (int) $child->id);
+            }
+        }
+
+        $maintenanceDeviceIdsByPeriod = collect($maintenanceDeviceIdsByPeriod)
+            ->map(fn (array $deviceIds) => collect(array_keys($deviceIds)));
 
         // Always expose the current window, even when no checklist has been
         // saved yet, so the dashboard clearly shows the outstanding count.
         $currentMaintenancePeriod = $semiannualPeriod(now());
-        $maintenancePeriods = $maintenanceRecordsByPeriod->keys()
+        $maintenancePeriods = $maintenanceDeviceIdsByPeriod->keys()
             ->push($currentMaintenancePeriod)
             ->unique()
             ->sort()
             ->values();
 
         $maintenanceCoverageSemiannually = $maintenancePeriods
-            ->map(function (string $period) use ($maintenanceRecordsByPeriod, $eligibleMaintenanceCount) {
-                $maintained = $maintenanceRecordsByPeriod
-                    ->get($period, collect())
-                    ->pluck('device_id')
-                    ->unique()
-                    ->count();
+            ->map(function (string $period) use ($maintenanceDeviceIdsByPeriod, $maintenanceTypeDeviceIds, $eligibleMaintenanceCount) {
+                $maintainedIds = $maintenanceDeviceIdsByPeriod->get($period, collect());
+
+                $types = $maintenanceTypeDeviceIds
+                    ->map(function ($deviceIds) use ($maintainedIds) {
+                        $maintained = $deviceIds->intersect($maintainedIds)->count();
+
+                        return [
+                            'maintained' => $maintained,
+                            'not_maintained' => max($deviceIds->count() - $maintained, 0),
+                        ];
+                    });
 
                 return [
                     'label' => $period,
+                    'types' => $types->all(),
+                    'total' => $eligibleMaintenanceCount,
+                ];
+            });
+
+        // Provide a direct current-window comparison as well as the
+        // historical semiannual chart above. This keeps every equipment type
+        // visible while making the Maintained vs Not Maintained split easy to
+        // compare at a glance. Condemned equipment remains excluded.
+        $currentMaintenanceIds = $maintenanceDeviceIdsByPeriod
+            ->get($currentMaintenancePeriod, collect())
+            ->values();
+
+        $maintenanceCoverageByType = $maintenanceTypeDeviceIds
+            ->map(function ($deviceIds) use ($currentMaintenanceIds) {
+                $maintained = $deviceIds->intersect($currentMaintenanceIds)->count();
+
+                return [
                     'maintained' => $maintained,
-                    'not_maintained' => max($eligibleMaintenanceCount - $maintained, 0),
+                    'not_maintained' => max($deviceIds->count() - $maintained, 0),
                 ];
             });
 
@@ -289,6 +367,8 @@ class DashboardController extends Controller
             'devicesByOffice',
             'endUsersByLocation',
             'maintenanceCoverageSemiannually',
+            'maintenanceCoverageByType',
+            'currentMaintenancePeriod',
             'transferSemiannually',
             'maintenancePlanStatuses',
             'maintenanceAttention',

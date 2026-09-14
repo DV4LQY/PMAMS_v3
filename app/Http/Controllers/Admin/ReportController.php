@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exports\AllAssetsExport;
 use App\Exports\LinkedEquipmentMaintenanceExport;
+use App\Exports\SoftwareLicenseExport;
+use App\Exports\SoftwareImportTemplateExport;
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Location;
 use App\Models\Device;
 use App\Models\DeviceMaintenanceRecord;
@@ -16,6 +19,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends Controller
@@ -27,17 +31,10 @@ class ReportController extends Controller
 
     public function assets(Request $request)
     {
-        $loadReport = $this->shouldLoadReport($request, [
-            'q',
-            'type_id',
-            'location_id',
-            'college_id',
-            'office_id',
-            'maintenance_status',
-            'semester',
-            'year',
-            'pm_plan_scope',
-        ]);
+        // All Assets is the inventory-wide report, so show both Maintained
+        // and Not maintained equipment on entry. The maintenance-status
+        // selector remains available when a narrower result is needed.
+        $loadReport = true;
         $filters = self::assetsFilters($request);
 
         $devices = $loadReport
@@ -69,6 +66,175 @@ class ReportController extends Controller
         $filename = 'all-assets-' . now()->format('Y-m-d-His') . '.xlsx';
 
         return Excel::download(new AllAssetsExport($request->query()), $filename);
+    }
+
+    /**
+     * Show the operating-system and office-license inventory for computers.
+     *
+     * The maintenance period filter follows the same effective-date rules as
+     * All Assets: a saved checklist on a linked parent also qualifies its
+     * peripheral. Software inventory itself remains device-based, so each
+     * Desktop/Laptop appears once regardless of how many checklist records it
+     * has.
+     */
+    public function software(Request $request)
+    {
+        $filters = self::softwareFilters($request);
+        $devices = self::softwareQuery($filters)
+            ->orderBy('property_number')
+            ->paginate(25)
+            ->withQueryString();
+
+        return view('admin.reports.software', [
+            'devices' => $devices,
+            'filters' => $filters,
+            'year' => $filters['year'],
+            'semester' => $filters['semester'],
+            'locationId' => $filters['location_id'],
+            'officeId' => $filters['office_id'],
+            'q' => $filters['q'],
+            'periodLabel' => self::assetsMaintenancePeriodLabel($filters['year'], $filters['semester']),
+            'canEditSoftware' => $request->user()?->isSuperAdmin()
+                || $request->user()?->canAction('equipment', 'edit'),
+            'locations' => Location::query()->orderBy('name')->get(['id', 'name', 'code']),
+            'offices' => $filters['location_id']
+                ? Office::query()
+                    ->where('location_id', $filters['location_id'])
+                    ->orderBy('name')
+                    ->get(['id', 'location_id', 'name'])
+                : collect(),
+        ]);
+    }
+
+    /** Download the same filtered Software report as a formatted workbook. */
+    public function softwareExport(Request $request)
+    {
+        $filters = self::softwareFilters($request);
+        $year = $filters['year'] ?: 'all-years';
+        $semester = $filters['semester'] ? 'h' . $filters['semester'] : 'all-periods';
+        $filename = "software-report-{$year}-{$semester}-" . now()->format('Y-m-d-His') . '.xlsx';
+
+        return Excel::download(new SoftwareLicenseExport($filters), $filename);
+    }
+
+    /** Download a filtered, import-ready software-only workbook. */
+    public function softwareImportTemplate(Request $request)
+    {
+        $filters = self::softwareFilters($request);
+        $year = $filters['year'] ?: 'all-years';
+        $semester = $filters['semester'] ? 'h' . $filters['semester'] : 'all-periods';
+        $filename = "software-import-{$year}-{$semester}-" . now()->format('Y-m-d-His') . '.xlsx';
+
+        return Excel::download(new SoftwareImportTemplateExport($filters), $filename);
+    }
+
+    /**
+     * Overwrite only the software fields shown by the Software report.
+     *
+     * This deliberately does not reuse the full equipment update request:
+     * saving software fields from a report must not accidentally overwrite the
+     * computer's property number, assignment, maintenance date, or specs.
+     */
+    public function softwareUpdate(Request $request, Device $device)
+    {
+        abort_unless(
+            $request->user()?->isSuperAdmin()
+                || $request->user()?->canAction('equipment', 'edit'),
+            403
+        );
+
+        $device->load('type');
+        abort_unless(in_array(strtolower((string) $device->type?->name), ['desktop', 'laptop'], true), 404);
+
+        // Keep a legacy/custom value editable when it is already stored on
+        // the row, while still constraining new values to the same choices as
+        // the Add/Edit equipment forms.
+        $osVersionOptions = array_values(array_unique(array_filter([
+            'Windows 7',
+            'Windows 8',
+            'Windows 10',
+            'Windows 11',
+            'Windows Server',
+            'Linux',
+            $device->os_version,
+        ], fn ($value) => filled($value))));
+        $msOfficeVersionOptions = array_values(array_unique(array_filter([
+            'Office 2007',
+            'Office 2010',
+            'Office 2013',
+            'Office 2016',
+            'Office 2019',
+            'Office 2021',
+            'Microsoft 365',
+            $device->ms_office_version,
+        ], fn ($value) => filled($value))));
+        $osLicenseOptions = array_values(array_unique(array_filter([
+            'Cracked',
+            'OEM Licensed',
+            'Open Source',
+            $device->os_license,
+        ], fn ($value) => filled($value))));
+        $msOfficeLicenseOptions = array_values(array_unique(array_filter([
+            'Cracked',
+            'OEM Licensed',
+            $device->ms_office_license,
+        ], fn ($value) => filled($value))));
+
+        $data = $request->validate([
+            'os_version' => ['nullable', 'string', 'max:255', Rule::in($osVersionOptions)],
+            'os_license' => ['nullable', 'string', 'max:255', Rule::in($osLicenseOptions)],
+            'ms_office_version' => ['nullable', 'string', 'max:255', Rule::in($msOfficeVersionOptions)],
+            'ms_office_license' => ['nullable', 'string', 'max:255', Rule::in($msOfficeLicenseOptions)],
+        ]);
+
+        $before = [
+            'os_version' => $device->os_version,
+            'os_license' => $device->os_license,
+            'ms_office_version' => $device->ms_office_version,
+            'ms_office_license' => $device->ms_office_license,
+        ];
+
+        $device->fill($data);
+        $after = [
+            'os_version' => $device->os_version,
+            'os_license' => $device->os_license,
+            'ms_office_version' => $device->ms_office_version,
+            'ms_office_license' => $device->ms_office_license,
+        ];
+        $changes = ActivityLog::buildChanges($before, $after);
+
+        if ($changes !== []) {
+            $device->save();
+
+            ActivityLog::record(
+                'updated',
+                "Updated software data for device \"{$device->property_number}\"",
+                $device,
+                ActivityLog::makePayload([
+                    'device' => $device->property_number,
+                    'device_type' => $device->type?->name,
+                    'os_version' => $device->os_version,
+                    'os_license' => $device->os_license,
+                    'ms_office_version' => $device->ms_office_version,
+                    'ms_office_license' => $device->ms_office_license,
+                ], $changes)
+            );
+        }
+
+        $returnFilters = self::softwareFilters($request->only(['year', 'semester', 'location_id', 'office_id', 'q']));
+        $returnQuery = array_filter([
+            'year' => $returnFilters['year'],
+            'semester' => $returnFilters['semester'],
+            'location_id' => $returnFilters['location_id'],
+            'office_id' => $returnFilters['office_id'],
+            'q' => $returnFilters['q'],
+        ], fn ($value) => $value !== null && $value !== '');
+
+        return redirect()
+            ->route('admin.reports.software', $returnQuery)
+            ->with('success', $changes === []
+                ? 'No software changes were detected.'
+                : 'Software data updated successfully.');
     }
 
     /**
@@ -1042,6 +1208,107 @@ class ReportController extends Controller
         return $period ?: 'All periods';
     }
 
+    /**
+     * Normalize the Software report filters. Keep the same year/semester and
+     * location aliases as All Assets so report links remain interchangeable.
+     * Software rows are intentionally not restricted by maintenance status;
+     * the optional period only limits computers with a checklist in that
+     * effective window.
+     */
+    public static function softwareFilters(Request|array $request): array
+    {
+        $filters = self::assetsFilters($request);
+
+        return [
+            'location_id' => $filters['location_id'],
+            'office_id' => $filters['office_id'],
+            'year' => $filters['year'],
+            'semester' => $filters['semester'],
+            'q' => $filters['q'],
+        ];
+    }
+
+    /**
+     * Build the Software report query from the same assignment/deployment
+     * location rules and effective search fields used by All Assets.
+     */
+    public static function softwareQuery(Request|array $request)
+    {
+        $filters = self::softwareFilters($request);
+        $query = self::assetsQuery([
+            'location_id' => $filters['location_id'],
+            'office_id' => $filters['office_id'],
+            // Software reports add their own search scope below so location,
+            // office, and linked-parent values can be matched consistently.
+            'q' => '',
+        ])->whereHas('type', fn (Builder $typeQuery) => $typeQuery->whereIn('name', ['Desktop', 'Laptop']));
+
+        if ($filters['q'] !== '') {
+            $like = "%{$filters['q']}%";
+
+            $query->where(function (Builder $searchScope) use ($like): void {
+                $searchScope
+                    ->where('property_number', 'like', $like)
+                    ->orWhere('serial_number', 'like', $like)
+                    ->orWhere('brand', 'like', $like)
+                    ->orWhere('model', 'like', $like)
+                    ->orWhere('computer_name', 'like', $like)
+                    ->orWhere('network_device_type', 'like', $like)
+                    ->orWhere('location_deployed', 'like', $like)
+                    ->orWhere('mac_address', 'like', $like)
+                    ->orWhere('os_version', 'like', $like)
+                    ->orWhere('os_license', 'like', $like)
+                    ->orWhere('ms_office_version', 'like', $like)
+                    ->orWhere('ms_office_license', 'like', $like)
+                    ->orWhereHas('deployedLocation', function (Builder $locationQuery) use ($like): void {
+                        $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                    })
+                    ->orWhereHas('deployedOffice', function (Builder $officeQuery) use ($like): void {
+                        $officeQuery->where('name', 'like', $like)
+                            ->orWhereHas('location', function (Builder $locationQuery) use ($like): void {
+                                $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                            });
+                    })
+                    ->orWhereHas('currentAssignment', function (Builder $assignmentQuery) use ($like): void {
+                        self::whereAssignmentMatchesSearch($assignmentQuery, $like);
+                    })
+                    ->orWhereHas('parentProperty', function (Builder $parentQuery) use ($like): void {
+                        $parentQuery
+                            ->where('property_number', 'like', $like)
+                            ->orWhere('serial_number', 'like', $like)
+                            ->orWhere('brand', 'like', $like)
+                            ->orWhere('model', 'like', $like)
+                            ->orWhere('computer_name', 'like', $like)
+                            ->orWhere('network_device_type', 'like', $like)
+                            ->orWhere('location_deployed', 'like', $like)
+                            ->orWhere('mac_address', 'like', $like)
+                            ->orWhere('os_version', 'like', $like)
+                            ->orWhere('os_license', 'like', $like)
+                            ->orWhere('ms_office_version', 'like', $like)
+                            ->orWhere('ms_office_license', 'like', $like)
+                            ->orWhereHas('deployedLocation', function (Builder $locationQuery) use ($like): void {
+                                $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                            })
+                            ->orWhereHas('deployedOffice', function (Builder $officeQuery) use ($like): void {
+                                $officeQuery->where('name', 'like', $like)
+                                    ->orWhereHas('location', function (Builder $locationQuery) use ($like): void {
+                                        $locationQuery->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                                    });
+                            })
+                            ->orWhereHas('currentAssignment', function (Builder $assignmentQuery) use ($like): void {
+                                self::whereAssignmentMatchesSearch($assignmentQuery, $like);
+                            });
+                    });
+            });
+        }
+
+        if ($filters['year'] || $filters['semester']) {
+            self::whereAssetsHaveMaintenance($query, $filters['year'], $filters['semester']);
+        }
+
+        return $query;
+    }
+
     public static function assetsQuery(Request|array $request)
     {
         $filters = self::assetsFilters($request);
@@ -1122,6 +1389,10 @@ class ReportController extends Controller
                         ->orWhere('model', 'like', "%{$q}%")
                         ->orWhere('computer_name', 'like', "%{$q}%")
                         ->orWhere('mac_address', 'like', "%{$q}%")
+                        ->orWhere('os_version', 'like', "%{$q}%")
+                        ->orWhere('os_license', 'like', "%{$q}%")
+                        ->orWhere('ms_office_version', 'like', "%{$q}%")
+                        ->orWhere('ms_office_license', 'like', "%{$q}%")
                         ->orWhereHas('currentAssignment.staff', function (Builder $staffQuery) use ($q) {
                             $staffQuery->where('first_name', 'like', "%{$q}%")
                                 ->orWhere('last_name', 'like', "%{$q}%")
@@ -1192,8 +1463,10 @@ class ReportController extends Controller
     }
 
     /**
-     * Reports deliberately start with no result query. A filter submission or
-     * an explicit Reset (?load=1) opts in to loading the report data.
+     * Filter-first reports deliberately start with no result query. A filter
+     * submission or an explicit Reset (?load=1) opts those reports into
+     * loading their data. All Assets is the inventory-wide exception and
+     * loads both maintenance states on entry.
      */
     private function shouldLoadReport(Request $request, array $filterKeys): bool
     {

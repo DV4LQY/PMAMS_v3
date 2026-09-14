@@ -23,6 +23,9 @@
     $editDateAcquired = old('date_acquired', $effectiveDateAcquired?->format('Y-m-d') ?? '');
     $effectiveLastMaintenanceDate = $device->effectiveLastMaintenanceDate();
     $editLastMaintenanceDate = old('last_maintenance_date', $effectiveLastMaintenanceDate?->format('Y-m-d') ?? '');
+    $editMaintenanceRemarks = filled($device->maintenance_remarks)
+        ? $device->maintenance_remarks
+        : ($device->latestMaintenanceRecord?->remarks ?? '');
     $editCondition = strtolower((string) old('condition', $device->condition ?? 'serviceable'));
     $reissueReturnTo = request()->query('return_to');
     $reissueReturnTo = is_scalar($reissueReturnTo) ? trim((string) $reissueReturnTo) : '';
@@ -73,8 +76,9 @@
             unit_price: @json(old('unit_price', $effectiveUnitPrice)),
             date_acquired: @json($editDateAcquired),
             last_maintenance_date: @json($editLastMaintenanceDate),
-            // Do not preload checklist-generated remarks into the edit form.
-            maintenance_remarks: @json(old('maintenance_remarks', '')),
+            // Preload the latest saved maintenance remark so it can be
+            // reviewed and edited from the Equipment Details form.
+            maintenance_remarks: @json(old('maintenance_remarks', $editMaintenanceRemarks)),
             status: @json($device->status ?? 'available'),
             condition: @json($editCondition),
             os_version: @json(old('os_version', $device->os_version)),
@@ -225,9 +229,10 @@
                 setValue('condition', device.condition ?? 'serviceable');
                 setValue('status', this.addStatus);
                 setValue('last_maintenance_date', device.last_maintenance_date);
-                // Keep edit remarks blank; existing checklist data remains in
-                // the equipment history and is not overwritten by an empty edit.
-                setValue('maintenance_remarks', '');
+                // Show the latest saved checklist remark while keeping the
+                // textarea editable. The update endpoint preserves it when
+                // the editor submits the field blank.
+                setValue('maintenance_remarks', device.maintenance_remarks);
             },
 
             openEdit() {

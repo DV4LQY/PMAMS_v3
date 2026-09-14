@@ -190,6 +190,10 @@ Route::middleware(['no.cache', 'auth', 'role:admin,custodian', 'permission'])->g
             Route::get('/', [ReportController::class, 'index'])->name('index');
             Route::get('/assets', [ReportController::class, 'assets'])->name('assets');
             Route::get('/assets/export', [ReportController::class, 'assetsExport'])->name('assets.export');
+            Route::get('/software', [ReportController::class, 'software'])->name('software');
+            Route::get('/software/export', [ReportController::class, 'softwareExport'])->name('software.export');
+            Route::get('/software/import-template', [ReportController::class, 'softwareImportTemplate'])->name('software.importTemplate');
+            Route::patch('/software/{device}/licenses', [ReportController::class, 'softwareUpdate'])->name('software.update');
             Route::get('/linked-equipment', [ReportController::class, 'linkedEquipment'])->name('linkedEquipment');
             Route::get('/linked-equipment/export', [ReportController::class, 'linkedEquipmentExport'])->name('linkedEquipment.export');
             Route::get('/issuance', [IssuanceController::class, 'index'])->name('issuance');

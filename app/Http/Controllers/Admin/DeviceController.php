@@ -995,9 +995,8 @@ class DeviceController extends Controller
         // the checklist-derived value.
         unset($data['last_maintenance_date']);
 
-        // Edit forms intentionally leave Maintenance Remarks blank. An empty
-        // edit must not replace the latest checklist remark retained for
-        // history; only text explicitly entered by the user updates it.
+        // An empty edit must not replace the latest checklist remark retained
+        // for history; only text explicitly entered by the user updates it.
         if (blank($data['maintenance_remarks'] ?? null)) {
             unset($data['maintenance_remarks']);
         }

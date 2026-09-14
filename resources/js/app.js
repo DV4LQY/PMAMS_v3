@@ -1964,39 +1964,137 @@ import './bootstrap';
                 scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
             });
 
+            const maintenanceCoverage = data.maintenance_coverage || {};
+            const maintenanceCoverageLabels = maintenanceCoverage.labels || [];
+            const maintenanceCoverageTypes = maintenanceCoverage.types || [];
+            const maintenanceCoverageMaintained = maintenanceCoverage.maintained || [];
+            const maintenanceCoverageNotMaintained = maintenanceCoverage.not_maintained || [];
+            const maintenanceTypeColors = [
+                '#2563eb', // blue
+                '#7c3aed', // violet
+                '#059669', // emerald
+                '#d97706', // amber
+                '#dc2626', // red
+                '#0891b2', // cyan
+                '#db2777', // pink
+                '#4f46e5', // indigo
+                '#65a30d', // lime
+                '#9333ea', // purple
+                '#0f766e', // teal
+                '#ea580c', // orange
+            ];
+            const maintenanceCoverageValue = (series, periodIndex, typeName) => {
+                const periodValues = series[periodIndex];
+
+                return periodValues && typeof periodValues === 'object'
+                    ? Number(periodValues[typeName] || 0)
+                    : 0;
+            };
+            const maintenanceCoverageDatasets = maintenanceCoverageTypes.flatMap((typeName, typeIndex) => {
+                const color = maintenanceTypeColors[typeIndex % maintenanceTypeColors.length];
+                const maintainedLabel = `${typeName} · Maintained`;
+                const notMaintainedLabel = `${typeName} · Not Maintained`;
+
+                return [
+                    {
+                        label: maintainedLabel,
+                        data: maintenanceCoverageLabels.map((_, periodIndex) => maintenanceCoverageValue(maintenanceCoverageMaintained, periodIndex, typeName)),
+                        backgroundColor: color,
+                        borderColor: color,
+                        borderRadius: 6,
+                        borderSkipped: false,
+                        stack: 'maintenance',
+                    },
+                    {
+                        label: notMaintainedLabel,
+                        data: maintenanceCoverageLabels.map((_, periodIndex) => maintenanceCoverageValue(maintenanceCoverageNotMaintained, periodIndex, typeName)),
+                        backgroundColor: `${color}66`,
+                        borderColor: `${color}99`,
+                        borderRadius: 6,
+                        borderSkipped: false,
+                        stack: 'maintenance',
+                    },
+                ];
+            });
+
             create('maintenanceCoverageChart', 'bar', {
-                labels: data.maintenance_coverage?.labels || [],
-                datasets: [
-                    {
-                        label: 'Maintained',
-                        data: data.maintenance_coverage?.maintained || [],
-                        backgroundColor: '#22c55e',
-                        borderRadius: 6,
-                        borderSkipped: false,
-                    },
-                    {
-                        label: 'Not Maintained',
-                        data: data.maintenance_coverage?.not_maintained || [],
-                        backgroundColor: '#f59e0b',
-                        borderRadius: 6,
-                        borderSkipped: false,
-                    },
-                ],
+                labels: maintenanceCoverageLabels,
+                datasets: maintenanceCoverageDatasets,
             }, {
                 ...common,
                 indexAxis: 'y',
-                interaction: { mode: 'index', intersect: false },
+                // Select only the segment directly under the pointer. Using
+                // index/intersect:false made every type in the same window
+                // appear in one large tooltip.
+                interaction: { mode: 'nearest', intersect: true },
                 plugins: {
-                    legend: { position: 'bottom', labels: { padding: 12, boxWidth: 12 } },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 12,
+                            boxWidth: 12,
+                            // Keep one legend key per equipment type. The
+                            // translucent companion segment represents its
+                            // Not Maintained count.
+                            filter: (legendItem, chartData) => !String(chartData.datasets[legendItem.datasetIndex]?.label || '').includes('· Not Maintained'),
+                        },
+                    },
                     tooltip: {
+                        mode: 'nearest',
+                        intersect: true,
                         callbacks: {
-                            footer: (items) => `Total eligible equipment: ${items.reduce((total, item) => total + Number(item.raw || 0), 0).toLocaleString()}`,
+                            label: (context) => `${context.dataset.label}: ${Number(context.raw || 0).toLocaleString()}`,
                         },
                     },
                 },
                 scales: {
                     x: { beginAtZero: true, stacked: true, ticks: { stepSize: 1 } },
                     y: { stacked: true, ticks: { autoSkip: false } },
+                },
+            });
+
+            const maintenanceByType = data.maintenance_by_type || {};
+            create('maintenanceStatusByTypeChart', 'bar', {
+                labels: maintenanceByType.labels || [],
+                datasets: [
+                    {
+                        label: 'Maintained',
+                        data: maintenanceByType.maintained || [],
+                        backgroundColor: '#22c55e',
+                        borderColor: '#16a34a',
+                        borderRadius: 6,
+                        borderSkipped: false,
+                        barPercentage: 0.72,
+                        categoryPercentage: 0.82,
+                    },
+                    {
+                        label: 'Not Maintained',
+                        data: maintenanceByType.not_maintained || [],
+                        backgroundColor: '#f59e0b',
+                        borderColor: '#d97706',
+                        borderRadius: 6,
+                        borderSkipped: false,
+                        barPercentage: 0.72,
+                        categoryPercentage: 0.82,
+                    },
+                ],
+            }, {
+                ...common,
+                indexAxis: 'y',
+                interaction: { mode: 'nearest', intersect: true },
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 12, boxWidth: 12 } },
+                    tooltip: {
+                        mode: 'nearest',
+                        intersect: true,
+                        callbacks: {
+                            label: (context) => `${context.dataset.label}: ${Number(context.raw || 0).toLocaleString()}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: { beginAtZero: true, stacked: false, ticks: { stepSize: 1 } },
+                    y: { stacked: false, ticks: { autoSkip: false } },
                 },
             });
 

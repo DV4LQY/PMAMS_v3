@@ -74,7 +74,6 @@
             @include('admin.devices._add-equipment-fields', [
                 'lockEquipmentType' => true,
                 'formDevice' => $device,
-                'blankMaintenanceRemarks' => true,
             ])
 
             @include('admin.devices._audit-meta', [

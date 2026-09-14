@@ -182,6 +182,24 @@
             padding-bottom: calc(.75rem + env(safe-area-inset-bottom));
         }
     }
+
+    /* A linked-peripheral return uses a fragment target so the refreshed
+       checklist can put the changed section back in view. Keep the target
+       clear of the sticky progress/header controls on every viewport. */
+    .checklist-items-table tbody tr[id] {
+        scroll-margin-top: 7rem;
+    }
+
+    .checklist-items-table tbody tr:target {
+        outline: 3px solid rgba(245, 158, 11, .8);
+        outline-offset: -3px;
+        background-color: rgba(254, 243, 199, .45);
+    }
+
+    .dark .checklist-items-table tbody tr:target {
+        outline-color: rgba(251, 191, 36, .85);
+        background-color: rgba(120, 53, 15, .28);
+    }
 </style>
 @php
     $assignment = $device->currentAssignment;
@@ -200,10 +218,18 @@
     $openLink = request()->boolean('open_link');
     $requestedPeripheralType = request()->query('peripheral_type', '');
     $requestedAllowLinked = request()->boolean('allow_linked');
+    $requestedFocusKey = match (strtolower(trim((string) $requestedPeripheralType))) {
+        'monitor' => 'monitor_display',
+        'avr/ups', 'avr', 'ups' => 'avr_ups_power_recovery',
+        'printer' => 'printer_printout',
+        default => null,
+    };
+    $requestedFocusAnchor = $requestedFocusKey ? 'checklist-row-' . $requestedFocusKey : null;
     $checklistPath = parse_url(route('admin.devices.checklist.form', $device), PHP_URL_PATH);
     $checklistReturnPath = parse_url(route('admin.devices.checklist.form', $device), PHP_URL_PATH)
         . '?open_link=1&peripheral_type=' . rawurlencode($requestedPeripheralType ?: 'monitor')
-        . '&allow_linked=' . ($requestedAllowLinked ? '1' : '0');
+        . '&allow_linked=' . ($requestedAllowLinked ? '1' : '0')
+        . ($requestedFocusAnchor ? '#' . $requestedFocusAnchor : '');
     $issuanceSectionKeys = ['system unit', 'monitor', 'avr/ups', 'printer'];
     $canChangeIssuance = (bool) auth()->user()?->canAction('issuance', 'edit');
     $issuanceDevices = collect([$device])
@@ -850,9 +876,11 @@
                             };
                             $sectionEditReturnPath = $checklistPath
                                 . '?open_link=1&peripheral_type=' . rawurlencode($sectionKey)
-                                . '&allow_linked=1';
+                                . '&allow_linked=1'
+                                . '#checklist-row-' . $key;
+                            $checklistRowId = 'checklist-row-' . $key;
                         @endphp
-                        <tr>
+                        <tr id="{{ $checklistRowId }}" data-pmams-checklist-row="{{ $key }}" tabindex="-1">
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 <div>{{ $sectionName }}</div>
                                 @if($sectionProperties)
@@ -861,7 +889,7 @@
                                             type="button"
                                             title="Change linked equipment"
                                             class="mt-1 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-indigo-600 underline decoration-dotted underline-offset-2 hover:text-indigo-800 dark:text-indigo-300 dark:hover:text-indigo-200"
-                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: true })"
+                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: true, focusAnchor: @js($checklistRowId) })"
                                         >
                                             Property #: {{ implode(', ', $sectionProperties) }}
                                             <span aria-hidden="true">&#128279;</span>
@@ -906,7 +934,7 @@
                                             type="button"
                                             title="Link equipment"
                                             class="mt-1 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-amber-600 underline decoration-dotted underline-offset-2 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200"
-                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: true })"
+                                            x-on:click.prevent="$dispatch('open-checklist-link', { peripheralType: @js($sectionKey), allowLinked: true, focusAnchor: @js($checklistRowId) })"
                                         >
                                             Property #: Not linked
                                             <span aria-hidden="true" title="Link equipment">&#128279;</span>
@@ -1295,6 +1323,7 @@
                 linkOpen: @json($openLink),
                 peripheralType: @js($requestedPeripheralType),
                 allowLinked: @json($requestedAllowLinked),
+                focusAnchor: @js($requestedFocusAnchor),
                 peripheralQuery: '',
                 candidates: [],
                 selectedPeripheral: null,
@@ -1308,6 +1337,18 @@
                 linkError: '',
                 linkDraftKey() {
                     return `pmams-checklist-link:${window.location.pathname}`;
+                },
+                checklistAnchorForType(type) {
+                    const normalized = String(type || '').trim().toLowerCase();
+                    const key = {
+                        monitor: 'monitor_display',
+                        'avr/ups': 'avr_ups_power_recovery',
+                        avr: 'avr_ups_power_recovery',
+                        ups: 'avr_ups_power_recovery',
+                        printer: 'printer_printout',
+                    }[normalized];
+
+                    return key ? `checklist-row-${key}` : '';
                 },
                 readLinkDraft() {
                     try {
@@ -1328,6 +1369,7 @@
                             peripheralQuery: this.peripheralQuery || '',
                             selectedPeripheralId: this.selectedPeripheral?.id ?? null,
                             parentPropertyNumber: this.parentPropertyNumber || '',
+                            focusAnchor: this.focusAnchor || this.checklistAnchorForType(this.peripheralType),
                         }));
                     } catch (error) {
                         // State restoration is best effort only.
@@ -1358,6 +1400,7 @@
                     if (sameParent) {
                         this.peripheralType = stored.peripheralType || this.peripheralType;
                         this.allowLinked = Boolean(stored.allowLinked);
+                        this.focusAnchor = stored.focusAnchor || this.checklistAnchorForType(this.peripheralType);
                         this.peripheralQuery = stored.peripheralQuery || '';
                         this.rebuildLinkCandidates();
                         this.selectedPeripheral = this.candidates.find((peripheral) =>
@@ -1370,6 +1413,7 @@
                     if (stored) this.clearLinkState();
 
                     if (this.linkOpen && this.peripheralType) {
+                        this.focusAnchor = this.focusAnchor || this.checklistAnchorForType(this.peripheralType);
                         this.rebuildLinkCandidates();
                         this.rememberLinkState();
                     }
@@ -1431,6 +1475,18 @@
                         target.searchParams.delete('peripheral_type');
                         target.searchParams.delete('allow_linked');
                         target.searchParams.delete('link_refresh');
+                        if (this.focusAnchor) {
+                            target.hash = `#${this.focusAnchor}`;
+                        }
+                        // A second replacement in the same section can have
+                        // the same checklist URL and fragment as the previous
+                        // link. Add the existing SPA refresh marker in that
+                        // case so Livewire fetches the newly linked data.
+                        const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+                        const targetPath = `${target.pathname}${target.search}${target.hash}`;
+                        if (targetPath === currentPath) {
+                            target.searchParams.set('_spa_refresh', String(Date.now()));
+                        }
                         const path = window.adminLocalNavigatePath
                             ? window.adminLocalNavigatePath(target)
                             : `${target.pathname}${target.search}`;
@@ -1445,9 +1501,10 @@
                         this.linkError = error.message || 'The peripheral could not be linked. Please try again.';
                     }
                 },
-                openLink(type, allowLinked = false) {
+                openLink(type, allowLinked = false, focusAnchor = '') {
                     this.peripheralType = type;
                     this.allowLinked = allowLinked;
+                    this.focusAnchor = focusAnchor || this.checklistAnchorForType(type);
                     this.peripheralQuery = '';
                     this.selectedPeripheral = null;
                     this.rebuildLinkCandidates();
@@ -1477,7 +1534,10 @@
                     returnUrl.searchParams.set('open_link', '1');
                     returnUrl.searchParams.set('peripheral_type', this.peripheralType);
                     returnUrl.searchParams.set('allow_linked', this.allowLinked ? '1' : '0');
-                    url.searchParams.set('return_to', returnUrl.pathname + returnUrl.search);
+                    if (this.focusAnchor) {
+                        returnUrl.hash = `#${this.focusAnchor}`;
+                    }
+                    url.searchParams.set('return_to', `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`);
                     this.rememberChecklistState();
                     this.rememberLinkState();
                     const path = window.adminLocalNavigatePath
@@ -1500,8 +1560,12 @@
                     target.searchParams.set('peripheral_type', requestedType);
                     // Keep linked records visible after returning from edit.
                     target.searchParams.set('allow_linked', '1');
+                    const focusAnchor = this.focusAnchor || this.checklistAnchorForType(requestedType);
+                    if (focusAnchor) {
+                        target.hash = `#${focusAnchor}`;
+                    }
 
-                    return `${target.pathname}${target.search}`;
+                    return `${target.pathname}${target.search}${target.hash}`;
                 },
                 selectPeripheral(peripheral) {
                     this.linkError = '';
@@ -1510,7 +1574,7 @@
                 }
             }"
             x-init="restoreLinkState()"
-            x-on:open-checklist-link.window="openLink($event.detail.peripheralType, $event.detail.allowLinked)"
+            x-on:open-checklist-link.window="openLink($event.detail.peripheralType, $event.detail.allowLinked, $event.detail.focusAnchor)"
             x-on:pmams-modal-close.window="if ($event.detail.id === 'checklist-link-modal') clearLinkState()"
         >
             <x-modal id="checklist-link-modal" show="linkOpen" title="Link Peripheral to This System Unit" maxWidth="max-w-xl">

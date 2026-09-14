@@ -15,7 +15,7 @@
 <div class="space-y-5">
     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a filter or press Reset to load the asset records.</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">All Maintained and Not maintained equipment is shown by default. Use the filters to narrow the report.</p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -72,7 +72,7 @@
                 aria-label="Maintenance status"
                 class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900"
             >
-                <option value="">All maintenance status</option>
+                <option value="">All Maintained and Not maintained</option>
                 <option value="maintained" @selected($maintenanceStatus === 'maintained')>Maintained</option>
                 <option value="not_maintained" @selected($maintenanceStatus === 'not_maintained')>Not maintained</option>
             </select>
@@ -160,7 +160,7 @@
         </form>
 
         <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Press Enter or select the search icon to apply the keyword. Maintenance status can be narrowed by equipment type, semi-annual period, and year. PM Plan scope only limits results to active Desktop/Laptop targets and uses each plan's effective checklist cycle. Other filters submit when changed. The report stays unloaded until a filter is applied or Reset is pressed.
+            Press Enter or select the search icon to apply the keyword. The report includes both Maintained and Not maintained equipment unless a maintenance status is selected. Maintenance status can be narrowed by equipment type, semi-annual period, and year. PM Plan scope only limits results to active Desktop/Laptop targets and uses each plan's effective checklist cycle. Other filters submit when changed.
         </p>
     </div>
 
@@ -172,7 +172,7 @@
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     {{ number_format($devices->total()) }} result(s)
                     <span class="mx-1" aria-hidden="true">·</span>
-                    {{ $maintenanceStatus === 'maintained' ? 'Maintained' : ($maintenanceStatus === 'not_maintained' ? 'Not maintained' : 'All maintenance status') }}
+                    {{ $maintenanceStatus === 'maintained' ? 'Maintained' : ($maintenanceStatus === 'not_maintained' ? 'Not maintained' : 'All Maintained and Not maintained') }}
                     <span class="mx-1" aria-hidden="true">·</span>
                     {{ $maintenancePeriodLabel }}
                     @if($pmPlanScopeOnly)
@@ -266,7 +266,7 @@
     @else
         <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900/50">
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Asset report is ready</h2>
-            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Apply a filter or press Reset to load the equipment records.</p>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">No equipment matches the selected filters.</p>
         </div>
     @endif
 </div>
