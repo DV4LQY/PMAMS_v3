@@ -247,7 +247,6 @@
         <input
             name="computer_name"
             data-equipment-suggestion="computer_name"
-            list="pmams-equipment-suggestions-computer_name"
             value="{{ old('computer_name', $formDevice?->computer_name ?? data_get($formDeviceSpecs, 'computer_name')) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
@@ -263,7 +262,6 @@
         <input
             name="brand"
             data-equipment-suggestion="brand"
-            list="pmams-equipment-suggestions-brand"
             value="{{ old('brand', $formDevice?->brand) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
@@ -280,7 +278,6 @@
         <input
             name="model"
             data-equipment-suggestion="model"
-            list="pmams-equipment-suggestions-model"
             value="{{ old('model', $formDevice?->model) }}"
             class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             maxlength="100"
@@ -365,7 +362,6 @@
         <input
             name="specs[processor]"
             data-equipment-suggestion="processor"
-            list="pmams-equipment-suggestions-processor"
             value="{{ old('specs.processor', data_get($formDeviceSpecs, 'processor', '')) }}"
             maxlength="255"
             placeholder="Example: Intel Core i5-12400"

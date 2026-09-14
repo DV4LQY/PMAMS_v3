@@ -21,6 +21,7 @@ use App\Models\Office;
 use App\Models\Staff;
 use App\Models\SystemSetting;
 use App\Support\DeviceQrPayload;
+use App\Services\MaintenanceAttentionService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\Rule;
@@ -616,6 +617,7 @@ class DeviceController extends Controller
         abort_unless($this->isPeripheralDevice($device->type?->name), 404);
 
         $previousParent = $device->part_of_property_number;
+        $returnTo = $this->safeLocalReturnPath($request->input('return_to'));
         if (blank($previousParent)) {
             $message = "{$device->type?->name} {$device->property_number} is already unlinked.";
 
@@ -625,6 +627,10 @@ class DeviceController extends Controller
                     'device_id' => $device->id,
                     'unlinked' => false,
                 ]);
+            }
+
+            if ($returnTo) {
+                return redirect()->to($returnTo)->with('success', $message);
             }
 
             return back()->with('success', $message);
@@ -653,6 +659,10 @@ class DeviceController extends Controller
                 'previous_parent_property_number' => $previousParent,
                 'unlinked' => true,
             ]);
+        }
+
+        if ($returnTo) {
+            return redirect()->to($returnTo)->with('success', $message);
         }
 
         return back()->with('success', $message);
@@ -764,7 +774,7 @@ class DeviceController extends Controller
             ->with('success', $successMessage);
     }
 
-    public function show(Device $device)
+    public function show(Device $device, MaintenanceAttentionService $maintenanceAttentionService)
     {
         $device->load([
             'type',
@@ -782,7 +792,9 @@ class DeviceController extends Controller
         ]);
 
         $types = $this->allowedDeviceTypes();
-        return view('admin.devices.show', compact('device', 'types'));
+        $maintenanceRisk = $maintenanceAttentionService->recommendationFor($device);
+
+        return view('admin.devices.show', compact('device', 'types', 'maintenanceRisk'));
     }
 
     public function reissue(Request $request, Device $device)

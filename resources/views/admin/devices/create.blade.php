@@ -62,7 +62,6 @@
                 <input name="computer_name"
                        id="computer_name_input"
                        data-equipment-suggestion="computer_name"
-                       list="pmams-equipment-suggestions-computer_name"
                        value="{{ old('computer_name') }}"
                        class="mt-1 w-full border rounded px-3 py-2"
                        maxlength="100"
@@ -84,7 +83,6 @@
                 <label class="text-sm font-medium">Brand <span class="text-red-600" aria-hidden="true">*</span></label>
                 <input name="brand"
                        data-equipment-suggestion="brand"
-                       list="pmams-equipment-suggestions-brand"
                        maxlength="100"
                        pattern="[A-Za-zÑñ0-9][A-Za-zÑñ0-9.\-\s]*"
                        title="Letters and numbers only"
@@ -98,7 +96,7 @@
 
             <div>
                 <label class="text-sm font-medium">Model <span class="text-red-600" aria-hidden="true">*</span></label>
-                <input name="model" data-equipment-suggestion="model" list="pmams-equipment-suggestions-model" value="{{ old('model') }}" maxlength="100" pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*" title="Letters and numbers only" class="mt-1 w-full border rounded px-3 py-2" placeholder="Example: L3210, 2199" required>
+                <input name="model" data-equipment-suggestion="model" value="{{ old('model') }}" maxlength="100" pattern="[A-Za-z0-9][A-Za-z0-9.\-\/\s]*" title="Letters and numbers only" class="mt-1 w-full border rounded px-3 py-2" placeholder="Example: L3210, 2199" required>
                 @error('model')<div class="text-sm text-red-600 mt-1">{{ $message }}</div>@enderror
             </div>
 
@@ -170,7 +168,7 @@
             {{-- Processor (Computer only) --}}
             <div id="processor_wrapper" style="display:none;">
                 <label class="text-sm font-medium">Processor <span class="text-red-600" aria-hidden="true">*</span></label>
-                <input name="specs[processor]" id="processor_input" data-equipment-suggestion="processor" list="pmams-equipment-suggestions-processor" value="{{ old('specs.processor') }}"
+                <input name="specs[processor]" id="processor_input" data-equipment-suggestion="processor" value="{{ old('specs.processor') }}"
                        maxlength="255"
                        placeholder="Example: Intel Core i5-12400"
                        class="mt-1 w-full border rounded px-3 py-2" disabled>

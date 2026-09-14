@@ -38,14 +38,51 @@ class MaintenanceAttentionService
     }
 
     /**
+     * Return the maintenance-attention assessment for one equipment record.
+     *
+     * Equipment details only need one assessment. Reuse the same scoring and
+     * model pipeline as the maintenance-attention report, but avoid loading
+     * every eligible device just to render a single badge. The assessment is
+     * available for every non-condemned equipment type.
+     */
+    public function recommendationFor(Device $device, ?string $mode = null): ?array
+    {
+        $device->loadMissing([
+            'type',
+            'latestMaintenanceRecord',
+            'parentProperty.latestMaintenanceRecord',
+            'currentAssignment.staff.office.location',
+            'currentAssignment.staff.office.responsibleStaff',
+            'currentAssignment.office.location',
+            'currentAssignment.office.responsibleStaff',
+            'currentAssignment.location',
+            'deployedLocation',
+            'deployedOffice.location',
+            'deployedOffice.responsibleStaff',
+        ]);
+
+        // Every non-condemned equipment type can use the shared maintenance
+        // signals in the scorer.  Keep condemned assets out of advisory UI.
+        if ($this->key($device->condition) === 'condemned') {
+            return null;
+        }
+
+        return $this->recommendations($mode, false, collect([$device]))->first();
+    }
+
+    /**
      * Return equipment ordered by the likelihood that it needs attention at
      * the next preventive-maintenance cycle.
      */
-    public function recommendations(?string $mode = null, bool $includeModelFeatures = false): Collection
+    public function recommendations(
+        ?string $mode = null,
+        bool $includeModelFeatures = false,
+        ?Collection $candidateDevices = null
+    ): Collection
     {
         $mode = self::normalizeMode($mode ?? SystemSetting::getValue(self::MODE_SETTING_KEY, 'hybrid'));
 
-        $devices = Device::query()
+        $devices = $candidateDevices ?? Device::query()
             ->with([
                 'type',
                 'latestMaintenanceRecord',
@@ -77,7 +114,11 @@ class MaintenanceAttentionService
             return collect();
         }
 
-        $deviceIds = $devices->modelKeys();
+        $deviceIds = $devices
+            ->map(fn (Device $device) => $device->getKey())
+            ->filter()
+            ->values()
+            ->all();
         $historySince = Carbon::now()->subMonths(12)->startOfDay();
 
         $recentRecords = DeviceMaintenanceRecord::query()

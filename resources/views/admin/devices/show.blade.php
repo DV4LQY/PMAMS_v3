@@ -27,6 +27,25 @@
         ? $device->maintenance_remarks
         : ($device->latestMaintenanceRecord?->remarks ?? '');
     $editCondition = strtolower((string) old('condition', $device->condition ?? 'serviceable'));
+    $maintenanceRiskPriority = strtolower(trim((string) ($maintenanceRisk['priority'] ?? '')));
+    $maintenanceRiskLabel = match ($maintenanceRiskPriority) {
+        'low' => 'Low',
+        'medium' => 'Moderate',
+        default => null,
+    };
+    $maintenanceRiskScore = isset($maintenanceRisk['score'])
+        ? max(0, min(100, (int) $maintenanceRisk['score']))
+        : null;
+    $maintenanceRiskProbability = isset($maintenanceRisk['ai_probability'])
+        ? max(0, min(100, (int) round((float) $maintenanceRisk['ai_probability'] * 100)))
+        : null;
+    $maintenanceRiskHasAi = $maintenanceRiskProbability !== null;
+    $maintenanceRiskBadgeClasses = $maintenanceRiskLabel === 'Moderate'
+        ? 'border-amber-300 bg-amber-500/15 text-amber-700 shadow-lg shadow-amber-500/30 ring-2 ring-amber-400/40 focus:ring-amber-400 dark:border-amber-300/70 dark:bg-amber-400/20 dark:text-amber-200'
+        : 'border-emerald-300 bg-emerald-500/15 text-emerald-700 shadow-lg shadow-emerald-500/30 ring-2 ring-emerald-400/40 focus:ring-emerald-400 dark:border-emerald-300/70 dark:bg-emerald-400/20 dark:text-emerald-200';
+    $maintenanceRiskDotClasses = $maintenanceRiskLabel === 'Moderate'
+        ? 'bg-amber-500 dark:bg-amber-300'
+        : 'bg-emerald-500 dark:bg-emerald-300';
     $reissueReturnTo = request()->query('return_to');
     $reissueReturnTo = is_scalar($reissueReturnTo) ? trim((string) $reissueReturnTo) : '';
     $reissueReturnPath = parse_url($deviceUrl, PHP_URL_PATH) . '?reissue_open=1';
@@ -602,8 +621,8 @@
 >
     <div>
         <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
+            <div class="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
                     <h1 class="break-words text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
                         {{ $device->property_number }}
                     </h1>
@@ -613,7 +632,68 @@
                     </p>
                 </div>
 
-                <div class="flex w-full flex-wrap justify-start gap-2 sm:w-auto sm:justify-end">
+                <div class="flex w-full flex-col items-end gap-2 sm:w-auto">
+                    @if($maintenanceRiskLabel)
+                        <div
+                            x-data="{ open: false }"
+                            class="relative z-[80] shrink-0 self-end"
+                            @click.outside="open = false"
+                            @keydown.escape.window="open = false"
+                        >
+                            <button
+                                type="button"
+                                class="inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800 {{ $maintenanceRiskBadgeClasses }} animate-pulse"
+                                x-on:click="open = !open"
+                                x-bind:aria-expanded="open ? 'true' : 'false'"
+                                aria-controls="equipment-maintenance-risk-tooltip"
+                                aria-label="{{ $maintenanceRiskHasAi ? 'AI' : 'Advisory' }} maintenance risk: {{ $maintenanceRiskLabel }}. Click for details."
+                            >
+                                <span class="h-2 w-2 rounded-full {{ $maintenanceRiskDotClasses }}" aria-hidden="true"></span>
+                                @if($maintenanceRiskHasAi)<span aria-hidden="true">AI</span><span aria-hidden="true">·</span>@endif
+                                <span>{{ $maintenanceRiskLabel }}</span>
+                            </button>
+
+                            <div
+                                id="equipment-maintenance-risk-tooltip"
+                                x-cloak
+                                x-show="open"
+                                x-transition
+                                role="tooltip"
+                                class="absolute right-0 top-full z-[80] mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-3 text-left text-gray-700 shadow-2xl dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                            >
+                                <p class="text-xs font-bold uppercase tracking-wide {{ $maintenanceRiskLabel === 'Moderate' ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-300' }}">
+                                    {{ $maintenanceRiskHasAi ? 'Local AI maintenance risk' : 'Maintenance risk advisory' }}
+                                </p>
+                                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                                    {{ $maintenanceRiskLabel }} risk
+                                    @if($maintenanceRiskScore !== null)
+                                        <span class="font-normal text-gray-500 dark:text-gray-400">({{ $maintenanceRiskScore }}/100)</span>
+                                    @endif
+                                </p>
+                                @if($maintenanceRiskProbability !== null)
+                                    <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                        Model prediction: {{ $maintenanceRiskProbability }}% likelihood of maintenance attention.
+                                    </p>
+                                @endif
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    Source: {{ $maintenanceRisk['recommendation_source'] ?? 'Laravel rules' }}
+                                </p>
+                                @if(!empty($maintenanceRisk['reasons']))
+                                    <ul class="mt-2 list-disc space-y-1 pl-4 text-xs text-gray-600 dark:text-gray-300">
+                                        @foreach(array_slice($maintenanceRisk['reasons'], 0, 3) as $reason)
+                                            <li>{{ $reason }}</li>
+                                        @endforeach
+                                    </ul>
+                                @endif
+                                <p class="mt-2 border-t border-gray-100 pt-2 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                    Advisory only; review the Maintenance Attention report before taking action.
+                                </p>
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- Keep the badge in its own flow row; action buttons retain their existing layout and styles. --}}
+                    <div class="flex w-full flex-wrap justify-start gap-2 sm:w-auto sm:justify-end">
                     @if($isComputerType && auth()->user()?->canMenu('equipment'))
                         <a
                             href="{{ route('admin.devices.history', $device) }}"
@@ -713,6 +793,7 @@
                             </button>
                         </form>
                     @endif
+                    </div>
                 </div>
             </div>
 

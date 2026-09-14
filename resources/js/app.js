@@ -1046,12 +1046,14 @@ import './bootstrap';
     }
 })();
 
-// Offer recently entered, reusable equipment values through native datalist
-// suggestions. The history is intentionally tab-scoped and bounded: it helps
-// the current operator repeat common brand/model/name values without copying
-// unique identifiers or remarks into browser storage. Existing saved values
-// seed the same local history when an edit form is opened; a suggestion never
-// changes a field automatically and remains an ordinary user-editable value.
+// Offer recently entered, reusable equipment values through an inline
+// suggestion panel. Native datalist popups are controlled by the browser and
+// can cover the active field or the on-screen keyboard on mobile devices. The
+// history is intentionally tab-scoped and bounded: it helps the current
+// operator repeat common brand/model/name values without copying unique
+// identifiers or remarks into browser storage. Existing saved values seed the
+// same local history when an edit form is opened; a suggestion never changes a
+// field automatically and remains an ordinary user-editable value.
 (function setupEquipmentInputSuggestions() {
     if (window.__pmamsEquipmentInputSuggestionsReady) return;
     window.__pmamsEquipmentInputSuggestionsReady = true;
@@ -1060,7 +1062,9 @@ import './bootstrap';
     const maxValuesPerField = 8;
     const maxValueLength = 255;
     const fields = new Set(['brand', 'model', 'computer_name', 'processor']);
-    const lists = new Map();
+    const inputMenus = new WeakMap();
+    const suppressNextFocusMenu = new WeakSet();
+    let menuSequence = 0;
 
     const getStorage = () => {
         try { return window.sessionStorage; } catch (error) { return null; }
@@ -1110,49 +1114,104 @@ import './bootstrap';
         }
     };
 
-    const listId = (field) => `pmams-equipment-suggestions-${field}`;
-
-    const ensureList = (field) => {
-        if (!document.body) return null;
-
-        if (lists.has(field) && document.getElementById(listId(field))) {
-            return lists.get(field);
-        }
-
-        let list = document.getElementById(listId(field));
-        if (!list) {
-            list = document.createElement('datalist');
-            list.id = listId(field);
-            list.dataset.pmamsEquipmentSuggestions = '1';
-            document.body.appendChild(list);
-        }
-        lists.set(field, list);
-        return list;
-    };
-
-    const render = (field, state = read()) => {
-        const list = ensureList(field);
-        if (!list) return;
-
-        list.replaceChildren(...state[field].map((value) => {
-            const option = document.createElement('option');
-            option.value = value;
-            return option;
-        }));
-    };
-
     const eligibleInputs = (root = document) => Array.from(
         root.querySelectorAll('input[data-equipment-suggestion]')
     ).filter((input) => fields.has(String(input.dataset.equipmentSuggestion || '')));
+
+    const menuId = (input, field) => {
+        const suffix = input.id || input.name || field;
+        menuSequence += 1;
+        return `pmams-equipment-suggestions-${String(suffix).replace(/[^a-z0-9_-]/gi, '-')}-${menuSequence}`;
+    };
+
+    const hideMenu = (input) => {
+        const menu = inputMenus.get(input);
+        if (!menu) return;
+
+        menu.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+    };
+
+    const ensureMenu = (input, field) => {
+        let menu = inputMenus.get(input);
+        if (menu?.isConnected) return menu;
+
+        menu = document.createElement('div');
+        menu.id = menuId(input, field);
+        menu.dataset.pmamsEquipmentSuggestionMenu = '1';
+        menu.setAttribute('role', 'listbox');
+        menu.setAttribute('aria-label', `${field.replace(/_/g, ' ')} suggestions`);
+        menu.className = 'mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800';
+        menu.hidden = true;
+
+        // Keep the menu in normal document flow. In particular, do not use
+        // absolute/fixed positioning: the form can then scroll the suggestions
+        // above the mobile keyboard instead of letting them cover the field.
+        input.insertAdjacentElement('afterend', menu);
+        input.setAttribute('aria-controls', menu.id);
+        input.setAttribute('aria-autocomplete', 'list');
+        input.setAttribute('aria-expanded', 'false');
+        inputMenus.set(input, menu);
+
+        return menu;
+    };
 
     const attach = (input) => {
         const field = String(input.dataset.equipmentSuggestion || '');
         if (!fields.has(field)) return null;
 
-        input.setAttribute('list', listId(field));
+        // Remove the native datalist hook. Its popup is browser/OS-owned and
+        // cannot be constrained to the input's layout on mobile.
+        input.removeAttribute('list');
         input.setAttribute('autocomplete', 'off');
-        ensureList(field);
+        ensureMenu(input, field);
         return field;
+    };
+
+    const valuesFor = (input, state = read()) => {
+        const field = String(input.dataset.equipmentSuggestion || '');
+        if (!fields.has(field)) return [];
+
+        const query = normalize(input.value).toLocaleLowerCase();
+        return state[field].filter((value) => !query || value.toLocaleLowerCase().includes(query));
+    };
+
+    const showMenu = (input, state = read()) => {
+        const field = attach(input);
+        if (!field) return;
+
+        const menu = ensureMenu(input, field);
+        const values = valuesFor(input, state);
+        menu.replaceChildren(...values.map((value) => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.dataset.pmamsEquipmentSuggestionOption = '1';
+            option.dataset.value = value;
+            option.setAttribute('role', 'option');
+            option.className = 'block w-full truncate border-b border-gray-100 px-3 py-2 text-left text-sm text-gray-700 last:border-b-0 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus:bg-gray-700';
+            option.textContent = value;
+            option.addEventListener('mousedown', (event) => event.preventDefault());
+            option.addEventListener('click', () => {
+                input.value = option.dataset.value || '';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                hideMenu(input);
+                // The mousedown guard normally keeps the input focused. If a
+                // touch/keyboard interaction moved focus to the option first,
+                // restore it without reopening the menu on that focus event.
+                if (document.activeElement !== input) {
+                    suppressNextFocusMenu.add(input);
+                    input.focus();
+                } else {
+                    suppressNextFocusMenu.delete(input);
+                }
+            });
+            return option;
+        }));
+
+        const visible = values.length > 0;
+        menu.hidden = !visible;
+        input.setAttribute('aria-expanded', visible ? 'true' : 'false');
     };
 
     const remember = (input) => {
@@ -1168,14 +1227,14 @@ import './bootstrap';
             candidate.toLocaleLowerCase() !== key
         ))].slice(0, maxValuesPerField);
         write(state);
-        fields.forEach((candidate) => render(candidate, state));
     };
 
     const initialize = () => {
-        const state = read();
+        // Clean up lists created by older page instances after a Livewire
+        // morph. The current controls no longer reference native datalists.
+        document.querySelectorAll('datalist[data-pmams-equipment-suggestions]').forEach((list) => list.remove());
         eligibleInputs().forEach((input) => {
             const field = attach(input);
-            if (field) render(field, state);
             // Seed suggestions from values already persisted by the server,
             // but never overwrite the current form value.
             if (field && normalize(input.value)) remember(input);
@@ -1185,8 +1244,17 @@ import './bootstrap';
     document.addEventListener('focusin', (event) => {
         const input = event.target?.closest?.('input[data-equipment-suggestion]');
         if (!input) return;
-        const field = attach(input);
-        if (field) render(field);
+        if (suppressNextFocusMenu.has(input)) {
+            suppressNextFocusMenu.delete(input);
+            return;
+        }
+        showMenu(input);
+    }, true);
+
+    document.addEventListener('input', (event) => {
+        const input = event.target?.closest?.('input[data-equipment-suggestion]');
+        if (!input) return;
+        showMenu(input);
     }, true);
 
     document.addEventListener('change', (event) => {
@@ -1201,6 +1269,15 @@ import './bootstrap';
         // Store the completed value after the operator leaves the field, not
         // every partial keystroke typed into it.
         remember(input);
+        window.setTimeout(() => {
+            if (document.activeElement !== input) hideMenu(input);
+        }, 120);
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+        const input = event.target?.closest?.('input[data-equipment-suggestion]');
+        if (!input || event.key !== 'Escape') return;
+        hideMenu(input);
     }, true);
 
     document.addEventListener('submit', (event) => {
@@ -1211,7 +1288,7 @@ import './bootstrap';
         }
 
         // Capture the final submitted values as well, including values that
-        // came from a native datalist selection without an input event.
+        // came from browser autofill or the inline menu without an input event.
         eligibleInputs(form).forEach((input) => remember(input));
     }, true);
 

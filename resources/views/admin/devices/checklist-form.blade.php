@@ -824,7 +824,6 @@
             <div class="mt-3 h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/50" role="progressbar" aria-label="Checklist completion" x-bind:aria-valuenow="checklistCompletionPercent()" aria-valuemin="0" aria-valuemax="100">
                 <div class="h-full rounded-full bg-blue-600 transition-all duration-300 dark:bg-blue-400" x-bind:style="`width: ${checklistCompletionPercent()}%`"></div>
             </div>
-            <p class="mt-2 text-xs text-blue-800 dark:text-blue-200" x-show="!checklistReady" x-cloak>Select one result for every hardware and software item. Not OK rows expose Condition, and Status is available for OK rows or for Not OK rows marked Unserviceable.</p>
             <p class="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300" x-show="checklistReady" x-cloak>All checklist items are complete. You can save this checklist.</p>
         </div>
 
@@ -918,7 +917,8 @@
                                                 class="mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-red-600 underline decoration-dotted underline-offset-2 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200"
                                                 data-unlink-url="{{ route('admin.devices.unlinkParent', $sectionDevice) }}"
                                                 data-unlink-label="{{ $sectionDevice->property_number }}"
-                                                onclick="if (!window.confirm('Unlink this peripheral (' + this.dataset.unlinkLabel + ') from the system unit?')) return; const form = document.createElement('form'); form.method = 'POST'; form.action = this.dataset.unlinkUrl; const token = document.querySelector('#maintenance-checklist-form input[name=_token]')?.value || ''; const add = (name, value) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; form.appendChild(input); }; add('_token', token); add('_method', 'PATCH'); document.body.appendChild(form); form.submit();"
+                                                data-unlink-return-to="{{ $checklistPath }}#{{ $checklistRowId }}"
+                                                onclick="if (!window.confirm('Unlink this peripheral (' + this.dataset.unlinkLabel + ') from the system unit?')) return; const form = document.createElement('form'); form.method = 'POST'; form.action = this.dataset.unlinkUrl; const token = document.querySelector('#maintenance-checklist-form input[name=_token]')?.value || ''; const add = (name, value) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; form.appendChild(input); }; add('_token', token); add('_method', 'PATCH'); add('return_to', this.dataset.unlinkReturnTo); document.body.appendChild(form); form.submit();"
                                             >
                                                 Unlink {{ $sectionDevice->property_number }}
                                             </button>
