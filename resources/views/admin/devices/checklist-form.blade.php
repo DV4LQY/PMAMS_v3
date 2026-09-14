@@ -216,10 +216,12 @@
         })
         ->keyBy('id');
     $issuanceDevicePayload = function ($assignmentDevice) use ($checklistPath) {
-        $currentAssignment = $assignmentDevice->currentAssignment;
-        $assignedStaff = $currentAssignment?->staff;
-        $assignedOffice = $currentAssignment?->office ?: $assignedStaff?->office;
-        $assignedLocation = $currentAssignment?->location ?: $assignedOffice?->location;
+        $assignmentContext = $assignmentDevice->effectiveAssignmentContext();
+        $currentAssignment = $assignmentContext['assignment'];
+        $directAssignment = $assignmentContext['child_assignment'];
+        $assignedStaff = $assignmentContext['staff'];
+        $assignedOffice = $assignmentContext['office'];
+        $assignedLocation = $assignmentContext['location'];
         $assignedStaffName = $assignedStaff
             ? trim(($assignedStaff->last_name ?? '') . ', ' . ($assignedStaff->first_name ?? ''))
             : null;
@@ -231,6 +233,9 @@
             'propertyNumber' => (string) $assignmentDevice->property_number,
             'assignedStaffName' => $assignedStaffName ?: null,
             'hasAssignment' => (bool) $currentAssignment,
+            'hasDirectAssignment' => (bool) $directAssignment,
+            'assignmentInherited' => (bool) $assignmentContext['inherited_context'],
+            'staffInherited' => (bool) $assignmentContext['inherited_staff'],
             'assignedOfficeName' => $assignedOffice?->name,
             'assignedLocationName' => $assignedLocation
                 ? trim(($assignedLocation->code ? $assignedLocation->code . ' - ' : '') . $assignedLocation->name)
@@ -1071,6 +1076,9 @@
                                                         >
                                                             {{ $issuanceDevice['assignedStaffName'] }}
                                                         </a>
+                                                        @if($issuanceDevice['staffInherited'])
+                                                            <span class="mt-0.5 block text-[10px] font-normal text-indigo-600 dark:text-indigo-300">Inherited from linked parent</span>
+                                                        @endif
                                                     @elseif($currentAssignment)
                                                         <span class="mt-0.5 inline-flex font-semibold text-gray-700 dark:text-gray-200">Location assignment</span>
                                                     @else

@@ -630,8 +630,18 @@
             value="{{ old('last_maintenance_date', $formDeviceLastMaintenanceDate) }}"
             type="date"
             max="{{ now()->format('Y-m-d') }}"
-            class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            @if($formDevice)
+                disabled
+                aria-disabled="true"
+                class="mt-1 w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
+            @else
+                class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            @endif
         >
+        @if($formDevice)
+            <input type="hidden" name="last_maintenance_date" value="{{ old('last_maintenance_date', $formDeviceLastMaintenanceDate) }}">
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Locked during equipment edits. Update this date by saving a Maintenance Checklist.</p>
+        @endif
         @error('last_maintenance_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
 

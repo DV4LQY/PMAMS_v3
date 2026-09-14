@@ -29,11 +29,11 @@
             </div>
 
             <h2 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">
-                Assets by Type / Office / Location
+                Assets by Maintenance / PM Plan Scope / Type / Office / Location
             </h2>
 
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                Generate reports for all equipment by type, location, office, or in keyword.
+                Generate reports for all equipment with Maintained/Not maintained, active PM Plan scope, equipment type, semi-annual period, year, location, office, or keyword filters.
             </p>
         </a>
 

@@ -9,6 +9,7 @@ use App\Models\Location;
 use App\Models\Device;
 use App\Models\DeviceMaintenanceRecord;
 use App\Models\DeviceType;
+use App\Models\MaintenancePlanSchedule;
 use App\Models\Office;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -32,10 +33,15 @@ class ReportController extends Controller
             'location_id',
             'college_id',
             'office_id',
+            'maintenance_status',
+            'semester',
+            'year',
+            'pm_plan_scope',
         ]);
+        $filters = self::assetsFilters($request);
 
         $devices = $loadReport
-            ? $this->filteredAssetsQuery($request)
+            ? $this->filteredAssetsQuery($filters)
                 ->orderByDesc('id')
                 ->paginate(25)
                 ->withQueryString()
@@ -44,12 +50,18 @@ class ReportController extends Controller
         return view('admin.reports.assets', array_merge([
             'devices' => $devices,
             'loadReport' => $loadReport,
-            'selectedTypeId' => $request->integer('type_id'),
-            'selectedLocationId' => ($request->integer('location_id') ?: $request->integer('college_id')),
-            'selectedCollegeId' => ($request->integer('location_id') ?: $request->integer('college_id')), // backward-compatible variable for existing report views,
-            'selectedOfficeId' => $request->integer('office_id'),
-            'q' => $request->string('q')->toString(),
-        ], $this->filterOptions(($request->integer('location_id') ?: $request->integer('college_id')) ?: null)));
+            'filters' => $filters,
+            'selectedTypeId' => $filters['type_id'],
+            'selectedLocationId' => $filters['location_id'],
+            'selectedCollegeId' => $filters['location_id'], // backward-compatible variable for existing report views,
+            'selectedOfficeId' => $filters['office_id'],
+            'maintenanceStatus' => $filters['maintenance_status'],
+            'maintenanceYear' => $filters['year'],
+            'maintenanceSemester' => $filters['semester'],
+            'maintenancePeriodLabel' => self::assetsMaintenancePeriodLabel($filters['year'], $filters['semester']),
+            'pmPlanScopeOnly' => $filters['pm_plan_scope'],
+            'q' => $filters['q'],
+        ], $this->filterOptions($filters['location_id'])));
     }
 
     public function assetsExport(Request $request)
@@ -572,25 +584,16 @@ class ReportController extends Controller
     public static function linkedEquipmentRow(Device $device): array
     {
         $parent = $device->parentProperty;
-        $childAssignment = $device->currentAssignment;
-        $parentAssignment = $parent?->currentAssignment;
-        $childStaff = $childAssignment?->staff;
-        $parentStaff = $parentAssignment?->staff;
-        $staff = $childStaff ?: $parentStaff;
+        $assignmentContext = $device->effectiveAssignmentContext();
+        $childAssignment = $assignmentContext['child_assignment'];
+        $parentAssignment = $assignmentContext['parent_assignment'];
+        $staff = $assignmentContext['staff'];
 
-        $office = $childAssignment?->office
-            ?: $childStaff?->office
-            ?: $parentAssignment?->office
-            ?: $parentStaff?->office
+        $office = $assignmentContext['office']
             ?: $device->deployedOffice
             ?: $parent?->deployedOffice;
 
-        $location = $childAssignment?->location
-            ?: $childAssignment?->office?->location
-            ?: $childStaff?->office?->location
-            ?: $parentAssignment?->location
-            ?: $parentAssignment?->office?->location
-            ?: $parentStaff?->office?->location
+        $location = $assignmentContext['location']
             ?: $device->deployedLocation
             ?: $device->deployedOffice?->location
             ?: $parent?->deployedLocation
@@ -598,7 +601,7 @@ class ReportController extends Controller
 
         $staffName = $staff
             ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? ''))
-            : ($childAssignment?->location || $parentAssignment?->location ? 'Location assignment' : null);
+            : ($assignmentContext['assignment']?->location || $childAssignment?->location || $parentAssignment?->location ? 'Location assignment' : null);
 
         $maintenanceDate = $device->effectiveLastMaintenanceDate();
         $maintenanceRemarks = filled($device->maintenance_remarks)
@@ -634,6 +637,157 @@ class ReportController extends Controller
             ->take(5)
             ->values()
             ->all();
+    }
+
+    /**
+     * Constrain a Device query to equipment with a maintenance date in the
+     * requested window. A linked peripheral also matches its parent's saved
+     * checklist date, including legacy records that were never synchronized.
+     */
+    private static function whereAssetsHaveMaintenance(
+        Builder $query,
+        ?int $year,
+        ?int $semester
+    ): void {
+        $query->where(function (Builder $scope) use ($year, $semester): void {
+            $scope
+                ->where(function (Builder $dateScope) use ($year, $semester): void {
+                    self::applyAssetsMaintenanceDateParts($dateScope, $year, $semester, 'last_maintenance_date');
+                })
+                ->orWhereHas('maintenanceRecords', function (Builder $recordQuery) use ($year, $semester): void {
+                    self::applyAssetsMaintenanceDateParts($recordQuery, $year, $semester, 'maintenance_date');
+                })
+                ->orWhereHas('parentProperty', function (Builder $parentQuery) use ($year, $semester): void {
+                    $parentQuery
+                        ->where(function (Builder $dateScope) use ($year, $semester): void {
+                            self::applyAssetsMaintenanceDateParts($dateScope, $year, $semester, 'last_maintenance_date');
+                        })
+                        ->orWhereHas('maintenanceRecords', function (Builder $recordQuery) use ($year, $semester): void {
+                            self::applyAssetsMaintenanceDateParts($recordQuery, $year, $semester, 'maintenance_date');
+                        });
+            });
+        });
+    }
+
+    /**
+     * Return the active (non-recycled) PM Plan targets used by the published
+     * schedule. The effective date is retained so the optional maintenance
+     * status filter can use the same current-cycle boundary as PM Plan
+     * progress.
+     *
+     * @return list<array{location_id:int, office_id:int|null, effective_date:string}>
+     */
+    private static function activePmPlanScopes(): array
+    {
+        return MaintenancePlanSchedule::query()
+            ->with('latestOverride')
+            ->get(['id', 'location_id', 'office_id', 'scheduled_date', 'schedule_month_from'])
+            ->filter(fn (MaintenancePlanSchedule $schedule): bool => (bool) $schedule->location_id)
+            ->map(fn (MaintenancePlanSchedule $schedule): array => [
+                'location_id' => (int) $schedule->location_id,
+                'office_id' => $schedule->office_id ? (int) $schedule->office_id : null,
+                'effective_date' => $schedule->effectiveDate()->toDateString(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Match the PM Plan target-device rules: active Desktop/Laptop equipment,
+     * not condemned, with a current assignment in an active plan's office or
+     * location. An EXISTS-style whereHas is used so a device remains one row
+     * even when more than one plan covers the same target.
+     *
+     * @param list<array{location_id:int, office_id:int|null, effective_date:string}> $planScopes
+     */
+    private static function whereAssetsInPmPlanScope(Builder $query, array $planScopes): void
+    {
+        $query
+            ->whereHas('type', fn (Builder $typeQuery) => $typeQuery->whereIn('name', ['Desktop', 'Laptop']))
+            ->where(function (Builder $conditionQuery): void {
+                $conditionQuery->whereNull('condition')->orWhere('condition', '<>', 'condemned');
+            });
+
+        if ($planScopes === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where(function (Builder $scopeQuery) use ($planScopes): void {
+            foreach ($planScopes as $planScope) {
+                $scopeQuery->orWhereHas('currentAssignment', function (Builder $assignmentQuery) use ($planScope): void {
+                    if ($planScope['office_id']) {
+                        self::whereAssignmentMatchesOffice($assignmentQuery, $planScope['office_id']);
+
+                        return;
+                    }
+
+                    self::whereAssignmentMatchesLocation($assignmentQuery, $planScope['location_id']);
+                });
+            }
+        });
+    }
+
+    /**
+     * Match checklist records in the effective cycle of at least one active
+     * PM Plan target. This is intentionally separate from the broad All
+     * Assets maintenance query so selecting PM Plan scope only makes the
+     * Maintained/Not maintained totals comparable to PM Plan progress.
+     *
+     * @param list<array{location_id:int, office_id:int|null, effective_date:string}> $planScopes
+     */
+    private static function whereAssetsHavePmPlanMaintenance(
+        Builder $query,
+        array $planScopes,
+        ?int $year,
+        ?int $semester
+    ): void {
+        if ($planScopes === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where(function (Builder $scopeQuery) use ($planScopes, $year, $semester): void {
+            foreach ($planScopes as $planScope) {
+                $scopeQuery->orWhere(function (Builder $planQuery) use ($planScope, $year, $semester): void {
+                    $planQuery
+                        ->whereHas('currentAssignment', function (Builder $assignmentQuery) use ($planScope): void {
+                            if ($planScope['office_id']) {
+                                self::whereAssignmentMatchesOffice($assignmentQuery, $planScope['office_id']);
+
+                                return;
+                            }
+
+                            self::whereAssignmentMatchesLocation($assignmentQuery, $planScope['location_id']);
+                        })
+                        ->whereHas('maintenanceRecords', function (Builder $recordQuery) use ($planScope, $year, $semester): void {
+                            $recordQuery->whereDate('maintenance_date', '>=', $planScope['effective_date']);
+                            self::applyAssetsMaintenanceDateParts($recordQuery, $year, $semester, 'maintenance_date');
+                        });
+                });
+            }
+        });
+    }
+
+    private static function applyAssetsMaintenanceDateParts(
+        Builder $query,
+        ?int $year,
+        ?int $semester,
+        string $column
+    ): void {
+        $query->whereNotNull($column);
+
+        if ($year) {
+            $query->whereYear($column, $year);
+        }
+
+        if ($semester === 1) {
+            $query->whereMonth($column, '<=', 6);
+        } elseif ($semester === 2) {
+            $query->whereMonth($column, '>=', 7);
+        }
     }
 
     private static function applyMaintenanceDateParts(Builder $query, ?int $year, ?int $month, string $column): void
@@ -795,40 +949,168 @@ class ReportController extends Controller
             || (int) $record->checked_by === (int) auth()->id();
     }
 
-    public static function assetsQuery(Request|array $request)
+    /**
+     * Normalize the all-assets report filters shared by the HTML page and
+     * formatted Excel export. Maintenance status is based on a saved
+     * checklist date (including a linked parent's date); when a year and/or
+     * semiannual window is supplied, only dates in that window count.
+     */
+    public static function assetsFilters(Request|array $request): array
     {
         $input = $request instanceof Request ? $request->query() : $request;
-        $typeId = (int) ($input['type_id'] ?? 0) ?: null;
-        $locationId = ((int) ($input['location_id'] ?? 0) ?: (int) ($input['college_id'] ?? 0)) ?: null;
-        $officeId = (int) ($input['office_id'] ?? 0) ?: null;
-        $q = trim((string) ($input['q'] ?? ''));
 
-        return Device::query()
+        $typeId = is_scalar($input['type_id'] ?? null) ? (int) $input['type_id'] : 0;
+        $typeId = $typeId > 0 ? $typeId : null;
+
+        $locationId = is_scalar($input['location_id'] ?? null) ? (int) $input['location_id'] : 0;
+        if (! $locationId && is_scalar($input['college_id'] ?? null)) {
+            $locationId = (int) $input['college_id'];
+        }
+        $locationId = $locationId > 0 ? $locationId : null;
+
+        $officeId = is_scalar($input['office_id'] ?? null) ? (int) $input['office_id'] : 0;
+        $officeId = $officeId > 0 ? $officeId : null;
+        if (! $locationId) {
+            $officeId = null;
+        } elseif ($officeId && ! Office::query()
+            ->whereKey($officeId)
+            ->where('location_id', $locationId)
+            ->exists()) {
+            $officeId = null;
+        }
+
+        $maintenanceStatus = is_scalar($input['maintenance_status'] ?? null)
+            ? strtolower(trim((string) $input['maintenance_status']))
+            : '';
+        $maintenanceStatus = str_replace(['-', ' '], '_', $maintenanceStatus);
+        $maintenanceStatus = in_array($maintenanceStatus, ['maintained', 'not_maintained'], true)
+            ? $maintenanceStatus
+            : null;
+
+        $year = is_scalar($input['year'] ?? null) ? (int) $input['year'] : 0;
+        $year = $year >= 2000 && $year <= 2100 ? $year : null;
+
+        // Accept the explicit semester field and the older semiannual alias
+        // so bookmarked/report links remain compatible with future UI labels.
+        $semesterInput = $input['semester'] ?? ($input['semiannual'] ?? null);
+        $semester = is_scalar($semesterInput) ? strtolower(trim((string) $semesterInput)) : '';
+        $semester = match ($semester) {
+            '1', 'h1', 'first', 'jan-jun', 'jan–jun' => 1,
+            '2', 'h2', 'second', 'jul-dec', 'jul–dec' => 2,
+            default => null,
+        };
+
+        $pmPlanScopeInput = $input['pm_plan_scope'] ?? null;
+        $pmPlanScopeOnly = is_bool($pmPlanScopeInput)
+            ? $pmPlanScopeInput
+            : is_scalar($pmPlanScopeInput)
+                && in_array(strtolower(trim((string) $pmPlanScopeInput)), ['1', 'true', 'on', 'yes'], true);
+
+        $q = is_scalar($input['q'] ?? null) ? trim((string) $input['q']) : '';
+        if (mb_strlen($q) > 255) {
+            $q = mb_substr($q, 0, 255);
+        }
+
+        return [
+            'type_id' => $typeId,
+            'location_id' => $locationId,
+            'office_id' => $officeId,
+            'maintenance_status' => $maintenanceStatus,
+            'year' => $year,
+            'semester' => $semester,
+            'pm_plan_scope' => $pmPlanScopeOnly,
+            'q' => $q,
+        ];
+    }
+
+    public static function assetsMaintenancePeriodLabel(?int $year, ?int $semester): string
+    {
+        $period = match ($semester) {
+            1 => 'Jan-Jun',
+            2 => 'Jul-Dec',
+            default => null,
+        };
+
+        if ($year && $period) {
+            return "{$year} {$period}";
+        }
+
+        if ($year) {
+            return (string) $year;
+        }
+
+        return $period ?: 'All periods';
+    }
+
+    public static function assetsQuery(Request|array $request)
+    {
+        $filters = self::assetsFilters($request);
+        $typeId = $filters['type_id'];
+        $locationId = $filters['location_id'];
+        $officeId = $filters['office_id'];
+        $q = $filters['q'];
+        $maintenanceStatus = $filters['maintenance_status'];
+        $maintenanceYear = $filters['year'];
+        $maintenanceSemester = $filters['semester'];
+        $pmPlanScopeOnly = $filters['pm_plan_scope'];
+        $pmPlanScopes = $pmPlanScopeOnly ? self::activePmPlanScopes() : [];
+
+        $query = Device::query()
             ->with([
                 'type',
+                'deployedLocation',
+                'deployedOffice.location',
                 'currentAssignment.staff.office.location',
                 'currentAssignment.office.location',
                 'currentAssignment.location',
                 'latestMaintenanceRecord.checkedBy',
                 'parentProperty',
+                'parentProperty.currentAssignment.staff.office.location',
+                'parentProperty.currentAssignment.office.location',
+                'parentProperty.currentAssignment.location',
+                'parentProperty.latestMaintenanceRecord',
+                'parentProperty.deployedLocation',
+                'parentProperty.deployedOffice.location',
             ])
             ->when($typeId, fn ($query) => $query->where('device_type_id', $typeId))
             ->when($locationId, function ($query) use ($locationId) {
-                $query->whereHas('currentAssignment', function ($assignmentQuery) use ($locationId) {
-                    $assignmentQuery->where('location_id', $locationId)
-                        ->orWhereHas('office', function ($officeQuery) use ($locationId) {
-                            $officeQuery->where('location_id', $locationId);
+                $query->where(function (Builder $locationScope) use ($locationId) {
+                    $locationScope
+                        ->whereHas('currentAssignment', function (Builder $assignmentQuery) use ($locationId) {
+                            self::whereAssignmentMatchesLocation($assignmentQuery, $locationId);
                         })
-                        ->orWhereHas('staff.office', function ($officeQuery) use ($locationId) {
-                            $officeQuery->where('location_id', $locationId);
+                        ->orWhere(function (Builder $inherited) use ($locationId) {
+                            $inherited->whereDoesntHave('currentAssignment.staff')
+                                ->whereHas('parentProperty.currentAssignment', function (Builder $assignmentQuery) use ($locationId) {
+                                    self::whereAssignmentMatchesLocation($assignmentQuery, $locationId);
+                                });
+                        })
+                        ->orWhere(function (Builder $deployment) use ($locationId) {
+                            $deployment->whereDoesntHave('currentAssignment')
+                                ->whereDoesntHave('parentProperty.currentAssignment')
+                                ->where(function (Builder $deploymentLocation) use ($locationId) {
+                                    $deploymentLocation->where('location_deployed_id', $locationId)
+                                        ->orWhereHas('deployedOffice', fn (Builder $officeQuery) => $officeQuery->where('location_id', $locationId));
+                                });
                         });
                 });
             })
             ->when($officeId, function ($query) use ($officeId) {
-                $query->whereHas('currentAssignment', function ($assignmentQuery) use ($officeId) {
-                    $assignmentQuery->where('office_id', $officeId)
-                        ->orWhereHas('staff', function ($staffQuery) use ($officeId) {
-                            $staffQuery->where('office_id', $officeId);
+                $query->where(function (Builder $officeScope) use ($officeId) {
+                    $officeScope
+                        ->whereHas('currentAssignment', function (Builder $assignmentQuery) use ($officeId) {
+                            self::whereAssignmentMatchesOffice($assignmentQuery, $officeId);
+                        })
+                        ->orWhere(function (Builder $inherited) use ($officeId) {
+                            $inherited->whereDoesntHave('currentAssignment.staff')
+                                ->whereHas('parentProperty.currentAssignment', function (Builder $assignmentQuery) use ($officeId) {
+                                    self::whereAssignmentMatchesOffice($assignmentQuery, $officeId);
+                                });
+                        })
+                        ->orWhere(function (Builder $deployment) use ($officeId) {
+                            $deployment->whereDoesntHave('currentAssignment')
+                                ->whereDoesntHave('parentProperty.currentAssignment')
+                                ->where('office_deployed_id', $officeId);
                         });
                 });
             })
@@ -839,12 +1121,59 @@ class ReportController extends Controller
                         ->orWhere('brand', 'like', "%{$q}%")
                         ->orWhere('model', 'like', "%{$q}%")
                         ->orWhere('computer_name', 'like', "%{$q}%")
-                        ->orWhere('mac_address', 'like', "%{$q}%");
+                        ->orWhere('mac_address', 'like', "%{$q}%")
+                        ->orWhereHas('currentAssignment.staff', function (Builder $staffQuery) use ($q) {
+                            $staffQuery->where('first_name', 'like', "%{$q}%")
+                                ->orWhere('last_name', 'like', "%{$q}%")
+                                ->orWhere('email', 'like', "%{$q}%");
+                        })
+                        ->orWhere(function (Builder $inherited) use ($q) {
+                            $inherited->whereDoesntHave('currentAssignment.staff')
+                                ->whereHas('parentProperty.currentAssignment.staff', function (Builder $staffQuery) use ($q) {
+                                    $staffQuery->where('first_name', 'like', "%{$q}%")
+                                        ->orWhere('last_name', 'like', "%{$q}%")
+                                        ->orWhere('email', 'like', "%{$q}%");
+                                });
+                        });
                 });
             });
+
+        if ($pmPlanScopeOnly) {
+            self::whereAssetsInPmPlanScope($query, $pmPlanScopes);
+        }
+
+        if ($maintenanceStatus) {
+            $maintenanceMatch = function (Builder $scope) use (
+                $pmPlanScopeOnly,
+                $pmPlanScopes,
+                $maintenanceYear,
+                $maintenanceSemester
+            ): void {
+                if ($pmPlanScopeOnly) {
+                    self::whereAssetsHavePmPlanMaintenance(
+                        $scope,
+                        $pmPlanScopes,
+                        $maintenanceYear,
+                        $maintenanceSemester
+                    );
+
+                    return;
+                }
+
+                self::whereAssetsHaveMaintenance($scope, $maintenanceYear, $maintenanceSemester);
+            };
+
+            if ($maintenanceStatus === 'maintained') {
+                $query->where($maintenanceMatch);
+            } else {
+                $query->whereNot($maintenanceMatch);
+            }
+        }
+
+        return $query;
     }
 
-    private function filteredAssetsQuery(Request $request)
+    private function filteredAssetsQuery(Request|array $request)
     {
         return self::assetsQuery($request);
     }

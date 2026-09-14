@@ -133,6 +133,9 @@ class DeviceController extends Controller
                     'latestMaintenanceRecord',
                     'latestAuditLog',
                     'parentProperty.latestMaintenanceRecord',
+                    'parentProperty.currentAssignment.staff.office.location',
+                    'parentProperty.currentAssignment.office.location',
+                    'parentProperty.currentAssignment.location',
                 ])
                 ->filterInventory($filters);
 
@@ -773,6 +776,9 @@ class DeviceController extends Controller
             'latestMaintenanceRecord',
             'latestAuditLog',
             'parentProperty.latestMaintenanceRecord',
+            'parentProperty.currentAssignment.staff.office.location',
+            'parentProperty.currentAssignment.office.location',
+            'parentProperty.currentAssignment.location',
         ]);
 
         $types = $this->allowedDeviceTypes();
@@ -982,6 +988,12 @@ class DeviceController extends Controller
     {
         $data = $request->validated();
         unset($data['equipment_photo']);
+
+        // Last Maintenance Date is controlled by saved checklist records.
+        // The edit forms render it as disabled/read-only, and this server-side
+        // guard prevents a manually crafted update request from overwriting
+        // the checklist-derived value.
+        unset($data['last_maintenance_date']);
 
         // Edit forms intentionally leave Maintenance Remarks blank. An empty
         // edit must not replace the latest checklist remark retained for

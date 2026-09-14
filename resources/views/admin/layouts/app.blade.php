@@ -2281,7 +2281,7 @@
             // that parent as the positioning context moves the icons into the
             // middle of the results list as it grows.
             const wrapper = document.createElement('div');
-            wrapper.className = 'relative min-w-0';
+            wrapper.className = 'relative isolate min-w-0';
             wrapper.dataset.pmamsInlineSearchWrapper = 'true';
             parent.insertBefore(wrapper, field);
             // Preserve the input's vertical spacing on the wrapper. Keeping
@@ -2294,15 +2294,16 @@
                     wrapper.classList.add(className);
                 });
             wrapper.append(field);
-            field.classList.add('pr-20');
+            field.classList.add('appearance-none', 'pr-20');
 
             const actions = document.createElement('div');
-            actions.className = 'pointer-events-none absolute inset-y-0 right-0 flex items-center gap-0.5 pr-1';
+            actions.className = 'pointer-events-none absolute inset-y-0 right-1 z-10 flex items-center gap-0.5 pr-1';
+            actions.dataset.pmamsInlineSearchActions = 'true';
 
             const clear = document.createElement('button');
             clear.type = 'button';
             clear.dataset.pmamsInlineSearchClear = 'true';
-            clear.className = 'pointer-events-auto inline-flex h-9 w-8 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white';
+            clear.className = 'pointer-events-auto inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white';
             clear.setAttribute('aria-label', `Clear ${field.getAttribute('aria-label') || 'search'}`);
             clear.title = 'Clear search';
             clear.append(icon('clear'));
@@ -2310,7 +2311,7 @@
             const trigger = document.createElement('button');
             trigger.type = 'button';
             trigger.dataset.pmamsInlineSearchTrigger = 'true';
-            trigger.className = 'pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-500 transition hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300';
+            trigger.className = 'pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 transition hover:bg-blue-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300';
             trigger.setAttribute('aria-label', field.getAttribute('aria-label') || 'Search');
             trigger.title = field.getAttribute('aria-label') || 'Search';
             trigger.append(icon('search'));

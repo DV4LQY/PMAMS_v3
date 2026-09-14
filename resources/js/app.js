@@ -1964,19 +1964,40 @@ import './bootstrap';
                 scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
             });
 
-            create('maintenanceChart', 'bar', {
-                labels: data.maintenance?.labels || [],
-                datasets: [{
-                    label: 'Maintained Equipment',
-                    data: data.maintenance?.values || [],
-                    backgroundColor: '#0ea5e9',
-                    borderRadius: 6,
-                    borderSkipped: false,
-                }],
+            create('maintenanceCoverageChart', 'bar', {
+                labels: data.maintenance_coverage?.labels || [],
+                datasets: [
+                    {
+                        label: 'Maintained',
+                        data: data.maintenance_coverage?.maintained || [],
+                        backgroundColor: '#22c55e',
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    },
+                    {
+                        label: 'Not Maintained',
+                        data: data.maintenance_coverage?.not_maintained || [],
+                        backgroundColor: '#f59e0b',
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    },
+                ],
             }, {
                 ...common,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                indexAxis: 'y',
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 12, boxWidth: 12 } },
+                    tooltip: {
+                        callbacks: {
+                            footer: (items) => `Total eligible equipment: ${items.reduce((total, item) => total + Number(item.raw || 0), 0).toLocaleString()}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: { beginAtZero: true, stacked: true, ticks: { stepSize: 1 } },
+                    y: { stacked: true, ticks: { autoSkip: false } },
+                },
             });
 
             create('transferChart', 'bar', {

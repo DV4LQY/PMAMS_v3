@@ -1026,14 +1026,20 @@
                     Current Assignment
                 </h2>
 
-                @if($device->currentAssignment)
-                    @php
-                        $currentAssignment = $device->currentAssignment;
-                        $currentStaff = $currentAssignment->staff;
-                        $currentOffice = $currentAssignment->office ?: $currentStaff?->office;
-                        // Reissue updates the location from the selected user's office.
-                        $assignmentLocation = $currentAssignment->location;
-                    @endphp
+                @php
+                    // Linked peripherals can retain a location-only assignment
+                    // while the parent computer owns the staff assignment. Use
+                    // the effective context for display without changing either
+                    // assignment record.
+                    $assignmentContext = $device->effectiveAssignmentContext();
+                    $currentAssignment = $assignmentContext['assignment'];
+                    $currentStaff = $assignmentContext['staff'];
+                    $currentOffice = $assignmentContext['office'];
+                    $assignmentLocation = $assignmentContext['location'];
+                    $assignmentInherited = (bool) ($assignmentContext['inherited_context'] || $assignmentContext['inherited_staff']);
+                @endphp
+
+                @if($currentAssignment)
                     <div class="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
                         @if($currentStaff)
                             <div class="font-medium text-gray-900 dark:text-white">
@@ -1045,6 +1051,9 @@
                                     {{ $currentStaff->last_name }}, {{ $currentStaff->first_name }}
                                 </a>
                             </div>
+                            @if($assignmentInherited)
+                                <div class="mt-1 text-xs font-medium text-indigo-600 dark:text-indigo-300">Staff and location inherited from linked parent</div>
+                            @endif
 
                             <div class="mt-1 break-words text-sm text-gray-600 dark:text-gray-300">
                                 @if($currentOffice)
@@ -1525,7 +1534,9 @@
                                 type="date"
                                 max="{{ now()->format('Y-m-d') }}"
                                 value="{{ old('last_maintenance_date', $effectiveLastMaintenanceDate?->format('Y-m-d') ?? '') }}"
-                                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                disabled
+                                aria-disabled="true"
+                                class="mt-1 w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
                             >
                         </div>
 

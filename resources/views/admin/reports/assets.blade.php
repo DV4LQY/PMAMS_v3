@@ -41,7 +41,7 @@
         <form
             id="asset-filter-form"
             method="GET"
-            class="grid grid-cols-1 gap-3 lg:grid-cols-5"
+            class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-8"
         >
             <x-search-field
                 id="asset-search"
@@ -49,6 +49,7 @@
                 :value="$q"
                 placeholder="Search property #, serial #, brand..."
                 ariaLabel="Search assets"
+                wrapperClass="xl:col-span-2"
                 inputClass="w-full rounded-lg border border-gray-300 px-3 py-2 pr-20 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-900"
             />
 
@@ -66,11 +67,64 @@
             </select>
 
             <select
-                id="asset-college-filter"
-                name="college_id"
+                id="asset-maintenance-status-filter"
+                name="maintenance_status"
+                aria-label="Maintenance status"
                 class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900"
             >
-                <option value="">All colleges</option>
+                <option value="">All maintenance status</option>
+                <option value="maintained" @selected($maintenanceStatus === 'maintained')>Maintained</option>
+                <option value="not_maintained" @selected($maintenanceStatus === 'not_maintained')>Not maintained</option>
+            </select>
+
+            <select
+                id="asset-maintenance-semester-filter"
+                name="semester"
+                aria-label="Semi-annual maintenance period"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900"
+            >
+                <option value="">All semi-annual periods</option>
+                <option value="1" @selected((int) $maintenanceSemester === 1)>Jan-Jun</option>
+                <option value="2" @selected((int) $maintenanceSemester === 2)>Jul-Dec</option>
+            </select>
+
+            <input
+                id="asset-maintenance-year-filter"
+                name="year"
+                type="number"
+                min="2000"
+                max="2100"
+                value="{{ $maintenanceYear ?: '' }}"
+                placeholder="Maintenance year"
+                aria-label="Maintenance year"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-900"
+            >
+
+            <label
+                for="asset-pm-plan-scope-filter"
+                class="flex items-start gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:text-gray-200 xl:col-span-2"
+            >
+                <input
+                    id="asset-pm-plan-scope-filter"
+                    name="pm_plan_scope"
+                    value="1"
+                    type="checkbox"
+                    @checked($pmPlanScopeOnly)
+                    class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 dark:border-gray-500 dark:bg-gray-800"
+                >
+                <span>
+                    <span class="block font-medium">PM Plan scope only</span>
+                    <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">Active Desktop/Laptop targets in published plans</span>
+                </span>
+            </label>
+
+            <select
+                id="asset-college-filter"
+                name="college_id"
+                aria-label="Location"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-500 dark:focus:ring-blue-900"
+            >
+                <option value="">All locations</option>
                 @foreach($colleges as $college)
                     <option value="{{ $college->id }}" @selected((int) $selectedCollegeId === $college->id)>
                         {{ $college->code ? $college->code . ' — ' : '' }}{{ $college->name }}
@@ -87,7 +141,7 @@
                 @foreach($offices as $office)
                     <option
                         value="{{ $office->id }}"
-                        data-college-id="{{ $office->college_id }}"
+                        data-college-id="{{ $office->location_id }}"
                         @selected((int) $selectedOfficeId === $office->id)
                     >
                         {{ $office->name }} @if($office->college) — {{ $office->college->code ?: $office->college->name }} @endif
@@ -95,7 +149,7 @@
                 @endforeach
             </select>
 
-            <div class="flex gap-2">
+            <div class="flex gap-2 xl:col-span-2">
                 <a
                     href="{{ route('admin.reports.assets', ['load' => 1]) }}"
                     class="inline-flex items-center rounded-xl bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -106,7 +160,7 @@
         </form>
 
         <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Press Enter or select the search icon to apply the keyword. Other filters submit when changed. The report stays unloaded until a filter is applied or Reset is pressed.
+            Press Enter or select the search icon to apply the keyword. Maintenance status can be narrowed by equipment type, semi-annual period, and year. PM Plan scope only limits results to active Desktop/Laptop targets and uses each plan's effective checklist cycle. Other filters submit when changed. The report stays unloaded until a filter is applied or Reset is pressed.
         </p>
     </div>
 
@@ -115,7 +169,17 @@
         <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-700">
             <div>
                 <h2 class="font-semibold text-gray-900 dark:text-gray-100">Assets</h2>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ number_format($devices->total()) }} result(s)</p>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ number_format($devices->total()) }} result(s)
+                    <span class="mx-1" aria-hidden="true">·</span>
+                    {{ $maintenanceStatus === 'maintained' ? 'Maintained' : ($maintenanceStatus === 'not_maintained' ? 'Not maintained' : 'All maintenance status') }}
+                    <span class="mx-1" aria-hidden="true">·</span>
+                    {{ $maintenancePeriodLabel }}
+                    @if($pmPlanScopeOnly)
+                        <span class="mx-1" aria-hidden="true">·</span>
+                        PM Plan scope only
+                    @endif
+                </p>
             </div>
 
         </div>
@@ -130,8 +194,9 @@
                         <th class="px-4 py-3">Brand / Model</th>
                         <th class="px-4 py-3">Status</th>
                         <th class="px-4 py-3">Condition</th>
+                        <th class="px-4 py-3">Maintenance</th>
                         <th class="px-4 py-3">Unit Price</th>
-                        <th class="px-4 py-3">College</th>
+                        <th class="px-4 py-3">Location</th>
                         <th class="px-4 py-3">Office</th>
                         <th class="px-4 py-3">Assigned To</th>
                     </tr>
@@ -140,14 +205,21 @@
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($devices as $device)
                         @php
-                            $assignment = $device->currentAssignment;
-                            $staff = $assignment?->staff;
-                            $office = $assignment?->office ?: $staff?->office;
-                            $college = $assignment?->location ?? $office?->college;
+                            $assignmentContext = $device->effectiveAssignmentContext();
+                            $assignment = $assignmentContext['assignment'];
+                            $staff = $assignmentContext['staff'];
+                            $deploymentOffice = $device->deployedOffice ?: $device->parentProperty?->deployedOffice;
+                            $deploymentLocation = $device->deployedLocation
+                                ?: $deploymentOffice?->location
+                                ?: $device->parentProperty?->deployedLocation
+                                ?: $device->parentProperty?->deployedOffice?->location;
+                            $office = $assignmentContext['office'] ?: $deploymentOffice;
+                            $college = $assignmentContext['location'] ?: $deploymentLocation ?: $office?->college;
                             $staffName = $staff
                                 ? trim(($staff->last_name ?? '') . ', ' . ($staff->first_name ?? ''))
                                 : ($assignment?->location ? 'Location assignment' : '-');
                             $effectiveUnitPrice = $device->effectiveUnitPrice();
+                            $effectiveMaintenanceDate = $device->effectiveLastMaintenanceDate();
                         @endphp
 
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
@@ -163,6 +235,14 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ trim(($device->brand ?? '') . ' ' . ($device->model ?? '')) ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300 capitalize">{{ $device->status ?: '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300 capitalize">{{ $device->condition ?: '-' }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                @if($effectiveMaintenanceDate)
+                                    <span class="font-medium text-emerald-700 dark:text-emerald-300">Maintained</span>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ $effectiveMaintenanceDate->format('M d, Y') }}</div>
+                                @else
+                                    <span class="font-medium text-amber-700 dark:text-amber-300">Not maintained</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $effectiveUnitPrice !== null && $effectiveUnitPrice !== '' ? number_format((float) $effectiveUnitPrice, 2) : '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $college?->name ?? '-' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $office?->name ?? '-' }}</td>
@@ -170,7 +250,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="11" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                 No assets found.
                             </td>
                         </tr>
@@ -195,6 +275,10 @@
     (function () {
         const form = document.getElementById('asset-filter-form');
         const typeFilter = document.getElementById('asset-type-filter');
+        const maintenanceStatusFilter = document.getElementById('asset-maintenance-status-filter');
+        const maintenanceSemesterFilter = document.getElementById('asset-maintenance-semester-filter');
+        const maintenanceYearFilter = document.getElementById('asset-maintenance-year-filter');
+        const pmPlanScopeFilter = document.getElementById('asset-pm-plan-scope-filter');
         const collegeFilter = document.getElementById('asset-college-filter');
         const officeFilter = document.getElementById('asset-office-filter');
 
@@ -228,11 +312,11 @@
 
         filterOfficeOptions();
 
-        [typeFilter, collegeFilter, officeFilter].forEach((select) => {
-            if (!select) return;
+        [typeFilter, maintenanceStatusFilter, maintenanceSemesterFilter, maintenanceYearFilter, pmPlanScopeFilter, collegeFilter, officeFilter].forEach((control) => {
+            if (!control) return;
 
-            select.addEventListener('change', function () {
-                if (select === collegeFilter) {
+            control.addEventListener('change', function () {
+                if (control === collegeFilter) {
                     filterOfficeOptions();
                 }
 

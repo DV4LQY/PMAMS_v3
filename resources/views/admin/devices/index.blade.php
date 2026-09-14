@@ -713,12 +713,13 @@
                 $isDesktop = $deviceTypeName === 'desktop';
                 $isComputerDevice = in_array($deviceTypeName, ['desktop', 'laptop'], true);
                     $isPeripheralDevice = in_array($deviceTypeName, ['printer', 'monitor', 'ups', 'avr', 'scanner', 'network device', 'other'], true);
-                $currentAssignment = $d->currentAssignment;
-                $assignedOffice = $currentAssignment?->office ?? $currentAssignment?->staff?->office;
-                $assignedLocation = $currentAssignment?->location ?? $assignedOffice?->location;
+                $assignmentContext = $d->effectiveAssignmentContext();
+                $currentAssignment = $assignmentContext['assignment'];
+                $assignedOffice = $assignmentContext['office'];
+                $assignedLocation = $assignmentContext['location'];
                 $displayOffice = $currentAssignment ? $assignedOffice : $d->deployedOffice;
                 $displayLocation = $currentAssignment
-                    ? ($assignedLocation ?? $assignedOffice?->location)
+                    ? $assignedLocation
                     : ($d->deployedOffice?->location ?? $d->deployedLocation);
                 $displayLocationName = $displayLocation?->name ?: ($currentAssignment ? '-' : ($d->location_deployed ?: '-'));
                 $displayOfficeName = $displayOffice?->name ?: '-';
@@ -939,12 +940,13 @@
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($devices as $d)
                         @php
-                            $currentAssignment = $d->currentAssignment;
-                            $assignedOffice = $currentAssignment?->office ?? $currentAssignment?->staff?->office;
-                            $assignedLocation = $currentAssignment?->location ?? $assignedOffice?->location;
+                            $assignmentContext = $d->effectiveAssignmentContext();
+                            $currentAssignment = $assignmentContext['assignment'];
+                            $assignedOffice = $assignmentContext['office'];
+                            $assignedLocation = $assignmentContext['location'];
                             $displayOffice = $currentAssignment ? $assignedOffice : $d->deployedOffice;
                             $displayLocation = $currentAssignment
-                                ? ($assignedLocation ?? $assignedOffice?->location)
+                                ? $assignedLocation
                                 : ($d->deployedOffice?->location ?? $d->deployedLocation);
                             $displayLocationName = $displayLocation?->name ?: ($currentAssignment ? '-' : ($d->location_deployed ?: '-'));
                             $displayOfficeName = $displayOffice?->name ?: '-';

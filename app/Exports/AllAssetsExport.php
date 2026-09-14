@@ -20,12 +20,14 @@ class AllAssetsExport implements FromView, ShouldAutoSize, WithEvents
 
     public function view(): View
     {
+        $filters = ReportController::assetsFilters($this->filters);
         $devices = ReportController::assetsQuery($this->filters)
             ->orderByDesc('id')
             ->get();
 
         return view('admin.reports.assets-export', [
             'devices' => $devices,
+            'filters' => $filters,
             'generatedAt' => now(),
         ]);
     }
@@ -42,15 +44,15 @@ class AllAssetsExport implements FromView, ShouldAutoSize, WithEvents
                     ->setPaperSize(PageSetup::PAPERSIZE_LEGAL);
 
                 $sheet->freezePane('A4');
-                $sheet->getStyle("A1:J{$highestRow}")
+                $sheet->getStyle("A1:K{$highestRow}")
                     ->getAlignment()
                     ->setVertical(Alignment::VERTICAL_CENTER)
                     ->setWrapText(true);
-                $sheet->getStyle("A3:J{$highestRow}")
+                $sheet->getStyle("A3:K{$highestRow}")
                     ->getBorders()
                     ->getAllBorders()
                     ->setBorderStyle(Border::BORDER_THIN);
-                $sheet->getStyle('A1:J3')->getFont()->setBold(true);
+                $sheet->getStyle('A1:K3')->getFont()->setBold(true);
             },
         ];
     }

@@ -108,7 +108,16 @@ class Device extends Model
                                             ->orWhereHas('location', function (Builder $location) use ($like) {
                                                 $location->where('name', 'like', $like)
                                                     ->orWhere('code', 'like', $like);
-                                            });
+                                        });
+                                    });
+                            })
+                            ->orWhere(function (Builder $inherited) use ($like) {
+                                $inherited->whereDoesntHave('currentAssignment.staff')
+                                    ->whereHas('parentProperty.currentAssignment.staff', function (Builder $staff) use ($like) {
+                                        $staff->where('first_name', 'like', $like)
+                                            ->orWhere('last_name', 'like', $like)
+                                            ->orWhere('email', 'like', $like)
+                                            ->orWhere('position', 'like', $like);
                                     });
                             });
                     });
@@ -130,8 +139,22 @@ class Device extends Model
                                     $office->where('location_id', $locationId);
                                 });
                         });
+                    })->orWhere(function (Builder $inherited) use ($locationId) {
+                        $inherited->whereDoesntHave('currentAssignment.staff')
+                            ->whereHas('parentProperty.currentAssignment', function (Builder $assignment) use ($locationId) {
+                                $assignment->where(function (Builder $assignmentLocation) use ($locationId) {
+                                    $assignmentLocation->where('location_id', $locationId)
+                                        ->orWhereHas('office', function (Builder $office) use ($locationId) {
+                                            $office->where('location_id', $locationId);
+                                        })
+                                        ->orWhereHas('staff.office', function (Builder $office) use ($locationId) {
+                                            $office->where('location_id', $locationId);
+                                        });
+                                });
+                            });
                     })->orWhere(function (Builder $deployment) use ($locationId) {
                         $deployment->whereDoesntHave('currentAssignment')
+                            ->whereDoesntHave('parentProperty.currentAssignment')
                             ->where(function (Builder $deploymentLocation) use ($locationId) {
                                 $deploymentLocation->where('location_deployed_id', $locationId)
                                     ->orWhereHas('deployedOffice', function (Builder $office) use ($locationId) {
@@ -148,8 +171,17 @@ class Device extends Model
                             ->orWhereHas('staff', function (Builder $staff) use ($officeId) {
                                 $staff->where('office_id', $officeId);
                             });
+                    })->orWhere(function (Builder $inherited) use ($officeId) {
+                        $inherited->whereDoesntHave('currentAssignment.staff')
+                            ->whereHas('parentProperty.currentAssignment', function (Builder $assignment) use ($officeId) {
+                                $assignment->where('office_id', $officeId)
+                                    ->orWhereHas('staff', function (Builder $staff) use ($officeId) {
+                                        $staff->where('office_id', $officeId);
+                                    });
+                            });
                     })->orWhere(function (Builder $deployment) use ($officeId) {
                         $deployment->whereDoesntHave('currentAssignment')
+                            ->whereDoesntHave('parentProperty.currentAssignment')
                             ->where('office_deployed_id', $officeId);
                     });
                 });
@@ -198,6 +230,82 @@ class Device extends Model
         return $this->hasOne(DeviceAssignment::class)
             ->whereNull('returned_at')
             ->latestOfMany();
+    }
+
+    /**
+     * Resolve the assignment context that should be shown to users.
+     *
+     * A linked peripheral may have a location-only assignment left over from
+     * an earlier workflow while its parent computer carries the staff
+     * assignment. A direct child staff assignment remains authoritative;
+     * location-only child rows inherit the parent's active staff, office, and
+     * location for display and filtering. This is deliberately read-only;
+     * linking a peripheral must not create duplicate assignment history rows.
+     */
+    public function effectiveAssignmentContext(): array
+    {
+        $childAssignment = $this->currentAssignment;
+        $parent = null;
+
+        if (filled($this->part_of_property_number)) {
+            $parent = $this->relationLoaded('parentProperty')
+                ? $this->getRelation('parentProperty')
+                : $this->parentProperty()->first();
+
+            $parent?->loadMissing([
+                'currentAssignment.staff.office.location',
+                'currentAssignment.office.location',
+                'currentAssignment.location',
+            ]);
+        }
+
+        $parentAssignment = $parent?->currentAssignment;
+        $childStaff = $childAssignment?->staff;
+        $parentStaff = $parentAssignment?->staff;
+        $staff = $childStaff ?: $parentStaff;
+
+        // A child assignment without a staff member is a legacy
+        // location-only record. Once the parent has a staff assignment, the
+        // parent is the current source of truth for the linked equipment's
+        // staff, office, and location; otherwise a direct child assignment
+        // remains authoritative.
+        $usesParentAssignment = ! $childStaff && (bool) $parentAssignment;
+        if ($usesParentAssignment) {
+            $office = $parentAssignment?->office
+                ?: $parentStaff?->office
+                ?: $childAssignment?->office
+                ?: $childStaff?->office;
+
+            $location = $parentAssignment?->location
+                ?: $parentAssignment?->office?->location
+                ?: $parentStaff?->office?->location
+                ?: $childAssignment?->location
+                ?: $childAssignment?->office?->location
+                ?: $childStaff?->office?->location;
+        } else {
+            $office = $childAssignment?->office
+                ?: $childStaff?->office
+                ?: $parentAssignment?->office
+                ?: $parentStaff?->office;
+
+            $location = $childAssignment?->location
+                ?: $childAssignment?->office?->location
+                ?: $childStaff?->office?->location
+                ?: $parentAssignment?->location
+                ?: $parentAssignment?->office?->location
+                ?: $parentStaff?->office?->location;
+        }
+
+        return [
+            'assignment' => $usesParentAssignment ? ($parentAssignment ?: $childAssignment) : ($childAssignment ?: $parentAssignment),
+            'child_assignment' => $childAssignment,
+            'parent_assignment' => $parentAssignment,
+            'staff' => $staff,
+            'office' => $office,
+            'location' => $location,
+            'inherited_staff' => ! $childStaff && (bool) $parentStaff,
+            'inherited_context' => $usesParentAssignment,
+        ];
     }
 
     /**

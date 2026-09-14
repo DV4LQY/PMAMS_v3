@@ -116,18 +116,55 @@ class DashboardController extends Controller
             ->map->count()
             ->sortDesc();
 
-        $maintenanceSemiannually = DeviceMaintenanceRecord::query()
-            ->whereNotNull('maintenance_date')
-            ->get(['maintenance_date'])
-            ->groupBy(function ($record) {
-                $date = $record->maintenance_date instanceof Carbon
-                    ? $record->maintenance_date
-                    : Carbon::parse($record->maintenance_date);
-
-                return $date->format('Y') . ' ' . ($date->month <= 6 ? 'Jan-Jun' : 'Jul-Dec');
+        // Keep maintenance coverage in one semiannual stacked-bar dataset.
+        // Maintained is counted once per eligible device when a checklist
+        // record exists in the window; the remaining eligible devices are
+        // Not Maintained for that window. Condemned equipment is excluded
+        // from both segments so the chart is actionable and its totals are
+        // easy to reconcile with the equipment inventory.
+        $eligibleMaintenanceCount = Device::query()
+            ->where(function ($query) {
+                $query->whereNull('condition')->orWhere('condition', '<>', 'condemned');
             })
-            ->sortKeys()
-            ->map->count();
+            ->count();
+
+        $semiannualPeriod = static function ($value): string {
+            $date = $value instanceof Carbon ? $value : Carbon::parse($value);
+
+            return $date->format('Y') . ' ' . ($date->month <= 6 ? 'Jan-Jun' : 'Jul-Dec');
+        };
+
+        $maintenanceRecordsByPeriod = DeviceMaintenanceRecord::query()
+            ->whereNotNull('maintenance_date')
+            ->whereHas('device', function ($query) {
+                $query->whereNull('condition')->orWhere('condition', '<>', 'condemned');
+            })
+            ->get(['device_id', 'maintenance_date'])
+            ->groupBy(fn ($record) => $semiannualPeriod($record->maintenance_date));
+
+        // Always expose the current window, even when no checklist has been
+        // saved yet, so the dashboard clearly shows the outstanding count.
+        $currentMaintenancePeriod = $semiannualPeriod(now());
+        $maintenancePeriods = $maintenanceRecordsByPeriod->keys()
+            ->push($currentMaintenancePeriod)
+            ->unique()
+            ->sort()
+            ->values();
+
+        $maintenanceCoverageSemiannually = $maintenancePeriods
+            ->map(function (string $period) use ($maintenanceRecordsByPeriod, $eligibleMaintenanceCount) {
+                $maintained = $maintenanceRecordsByPeriod
+                    ->get($period, collect())
+                    ->pluck('device_id')
+                    ->unique()
+                    ->count();
+
+                return [
+                    'label' => $period,
+                    'maintained' => $maintained,
+                    'not_maintained' => max($eligibleMaintenanceCount - $maintained, 0),
+                ];
+            });
 
         // Count actual equipment transfers/reissues by the same semiannual
         // windows used by maintenance reporting. The first assignment is an
@@ -251,12 +288,12 @@ class DashboardController extends Controller
             'devicesByType',
             'devicesByOffice',
             'endUsersByLocation',
-            'maintenanceSemiannually',
+            'maintenanceCoverageSemiannually',
             'transferSemiannually',
             'maintenancePlanStatuses',
             'maintenanceAttention',
             'maintenanceAttentionCount',
             'maintenanceAttentionSnapshots',
-         ));
+        ));
     }
 }

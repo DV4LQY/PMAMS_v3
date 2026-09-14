@@ -348,7 +348,11 @@
             'type' => ['labels' => ($devicesByType ?? collect())->keys()->values()->all(), 'values' => ($devicesByType ?? collect())->values()->all()],
             'office' => ['labels' => ($devicesByOffice ?? collect())->keys()->values()->all(), 'values' => ($devicesByOffice ?? collect())->values()->all()],
             'end_users' => ['labels' => ($endUsersByLocation ?? collect())->keys()->values()->all(), 'values' => ($endUsersByLocation ?? collect())->values()->all()],
-            'maintenance' => ['labels' => ($maintenanceSemiannually ?? collect())->keys()->values()->all(), 'values' => ($maintenanceSemiannually ?? collect())->values()->all()],
+            'maintenance_coverage' => [
+                'labels' => ($maintenanceCoverageSemiannually ?? collect())->pluck('label')->values()->all(),
+                'maintained' => ($maintenanceCoverageSemiannually ?? collect())->pluck('maintained')->map(fn ($value) => (int) $value)->values()->all(),
+                'not_maintained' => ($maintenanceCoverageSemiannually ?? collect())->pluck('not_maintained')->map(fn ($value) => (int) $value)->values()->all(),
+            ],
             'transfers' => ['labels' => ($transferSemiannually ?? collect())->keys()->values()->all(), 'values' => ($transferSemiannually ?? collect())->values()->all()],
             'maintenance_plan_status' => ['labels' => ($maintenancePlanStatuses ?? collect())->keys()->values()->all(), 'values' => ($maintenancePlanStatuses ?? collect())->values()->all()],
             'maintenance_attention' => [
@@ -428,10 +432,20 @@
             <div style="position:relative; height:250px;"><canvas id="totalEquipmentChart"></canvas></div>
         </div>
 
-        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 class="text-base font-semibold text-gray-900">Equipment Maintained</h2>
-            <p class="mt-1 mb-4 text-sm text-gray-500">Number of completed maintenance checklists per six-month period.</p>
-            <div style="position:relative; height:250px;"><canvas id="maintenanceChart"></canvas></div>
+        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm xl:col-span-2">
+            <h2 class="text-base font-semibold text-gray-900">Equipment Maintenance Coverage</h2>
+            <p class="mt-1 mb-4 text-sm text-gray-500">Maintained versus not maintained equipment per semi-annual window. Condemned equipment is excluded.</p>
+            @if(($maintenanceCoverageSemiannually ?? collect())->isEmpty())
+                <div class="flex h-[250px] items-center justify-center rounded-lg border border-dashed border-gray-200 text-center text-sm text-gray-500">
+                    No semi-annual maintenance windows are available yet.
+                </div>
+            @else
+                <div class="dashboard-chart-scroll max-h-[360px] rounded-lg" aria-label="Scrollable semi-annual equipment maintenance coverage chart">
+                    <div style="position:relative; height:{{ max(250, (($maintenanceCoverageSemiannually ?? collect())->count() * 48)) }}px; min-width:720px;">
+                        <canvas id="maintenanceCoverageChart"></canvas>
+                    </div>
+                </div>
+            @endif
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
